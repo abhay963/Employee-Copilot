@@ -12,7 +12,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { authAPI } from '../services/api';
+import { useUser } from '../context/UserContext';
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -30,6 +30,18 @@ const Register = () => {
     useState(false);
 
   const navigate = useNavigate();
+
+  /*
+   * IMPORTANT:
+   *
+   * Use the register function from UserContext.
+   *
+   * This updates:
+   * 1. React user state
+   * 2. localStorage user
+   * 3. localStorage token
+   */
+  const { register } = useUser();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -50,9 +62,9 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // ---------------------------------------------------------
-    // Basic validation
-    // ---------------------------------------------------------
+    // =========================================================
+    // BASIC VALIDATION
+    // =========================================================
 
     if (!formData.name.trim()) {
       toast.error('Please enter your full name.');
@@ -79,18 +91,20 @@ const Register = () => {
       return;
     }
 
-    // ---------------------------------------------------------
-    // Password match
-    // ---------------------------------------------------------
+    // =========================================================
+    // PASSWORD MATCH
+    // =========================================================
 
-    if (formData.password !== formData.confirmPassword) {
+    if (
+      formData.password !== formData.confirmPassword
+    ) {
       toast.error('Passwords do not match.');
       return;
     }
 
-    // ---------------------------------------------------------
-    // Password strength
-    // ---------------------------------------------------------
+    // =========================================================
+    // PASSWORD STRENGTH
+    // =========================================================
 
     if (formData.password.length < 8) {
       toast.error(
@@ -127,11 +141,15 @@ const Register = () => {
       return;
     }
 
-    // ---------------------------------------------------------
-    // Role validation
-    // ---------------------------------------------------------
+    // =========================================================
+    // ROLE VALIDATION
+    // =========================================================
 
-    if (!['employee', 'hr'].includes(formData.role)) {
+    if (
+      !['employee', 'hr'].includes(
+        formData.role
+      )
+    ) {
       toast.error('Please select a valid role.');
       return;
     }
@@ -139,23 +157,34 @@ const Register = () => {
     setLoading(true);
 
     try {
-      // Remove confirmPassword before sending to backend
-      const {
-        confirmPassword,
-        ...registerData
-      } = formData;
+      /*
+       * =======================================================
+       * REGISTER THROUGH USER CONTEXT
+       * =======================================================
+       *
+       * Do NOT call authAPI.register() directly here.
+       *
+       * UserContext.register() handles:
+       *
+       * - Backend registration
+       * - React authentication state
+       * - localStorage user
+       * - localStorage token
+       */
 
-      const response = await authAPI.register({
-        ...registerData,
-        name: registerData.name.trim(),
-        email: registerData.email.trim().toLowerCase(),
-        department: registerData.department.trim(),
-        role: registerData.role.toLowerCase()
+      const response = await register({
+        name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+        role: formData.role.toLowerCase(),
+        department: formData.department.trim()
       });
 
-      // -------------------------------------------------------
-      // Validate backend response
-      // -------------------------------------------------------
+      console.log('Registration response:', response);
+
+      // =========================================================
+      // VALIDATE RESPONSE
+      // =========================================================
 
       if (
         !response ||
@@ -165,29 +194,30 @@ const Register = () => {
       ) {
         throw new Error(
           response?.error ||
-          'Registration failed. Please try again.'
+            'Registration failed. Please try again.'
         );
       }
 
-      // -------------------------------------------------------
-      // Store authentication information
-      // -------------------------------------------------------
+      // =========================================================
+      // NORMALIZE ROLE
+      // =========================================================
 
-      localStorage.setItem(
-        'user',
-        JSON.stringify(response.user)
+      const role =
+        response.user.role?.toLowerCase();
+
+      console.log(
+        'Registered user:',
+        response.user
       );
 
-      localStorage.setItem(
-        'token',
-        response.token
+      console.log(
+        'Registered user role:',
+        role
       );
 
-      // -------------------------------------------------------
-      // Role-based redirect
-      // -------------------------------------------------------
-
-      const role = response.user.role?.toLowerCase();
+      // =========================================================
+      // ROLE-BASED REDIRECTION
+      // =========================================================
 
       if (role === 'hr') {
         toast.success(
@@ -213,16 +243,14 @@ const Register = () => {
         return;
       }
 
-      // -------------------------------------------------------
-      // Invalid role protection
-      // -------------------------------------------------------
-
-      localStorage.removeItem('user');
-      localStorage.removeItem('token');
+      // =========================================================
+      // INVALID ROLE
+      // =========================================================
 
       toast.error(
         'Your account has an invalid role. Please contact HR.'
       );
+
     } catch (err) {
       console.error(
         'Registration error:',
@@ -237,10 +265,6 @@ const Register = () => {
         'Registration failed. Please try again.';
 
       toast.error(message);
-
-      // Remove potentially stale authentication data
-      localStorage.removeItem('user');
-      localStorage.removeItem('token');
     } finally {
       setLoading(false);
     }

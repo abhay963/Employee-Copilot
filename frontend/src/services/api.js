@@ -1,10 +1,12 @@
 import axios from 'axios';
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+  import.meta.env.VITE_API_BASE_URL ||
+  'http://localhost:3001';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+
   headers: {
     'Content-Type': 'application/json',
   },
@@ -16,18 +18,21 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token =
+      localStorage.getItem('token');
 
     if (token) {
-      config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers =
+        config.headers || {};
+
+      config.headers.Authorization =
+        `Bearer ${token}`;
     }
 
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) =>
+    Promise.reject(error)
 );
 
 // ============================================================
@@ -36,21 +41,6 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => {
-    // IMPORTANT:
-    // Return response.data instead of the complete Axios response.
-    //
-    // Backend:
-    // {
-    //   success: true,
-    //   user: {...},
-    //   token: "..."
-    // }
-    //
-    // This allows:
-    // response.success
-    // response.user
-    // response.token
-
     return response.data;
   },
 
@@ -62,10 +52,16 @@ api.interceptors.response.use(
         error.response.data
       );
 
-      // Unauthorized
-      if (error.response.status === 401) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+      if (
+        error.response.status === 401
+      ) {
+        localStorage.removeItem(
+          'token'
+        );
+
+        localStorage.removeItem(
+          'user'
+        );
 
         const publicRoutes = [
           '/',
@@ -73,31 +69,46 @@ api.interceptors.response.use(
           '/register',
         ];
 
-        if (!publicRoutes.includes(window.location.pathname)) {
-          window.location.href = '/login';
+        if (
+          !publicRoutes.includes(
+            window.location.pathname
+          )
+        ) {
+          window.location.href =
+            '/login';
         }
       }
 
-      return Promise.reject(error.response.data);
+      return Promise.reject(
+        error.response.data
+      );
     }
 
-    // Request was made but server did not respond
     if (error.request) {
-      console.error('Network Error:', error.message);
+      console.error(
+        'Network Error:',
+        error.message
+      );
 
       return Promise.reject({
         success: false,
+
         error:
           'Unable to connect to the server. Please make sure the backend is running.',
       });
     }
 
-    // Something went wrong while creating request
-    console.error('Request Error:', error.message);
+    console.error(
+      'Request Error:',
+      error.message
+    );
 
     return Promise.reject({
       success: false,
-      error: error.message || 'Request failed.',
+
+      error:
+        error.message ||
+        'Request failed.',
     });
   }
 );
@@ -108,10 +119,16 @@ api.interceptors.response.use(
 
 export const authAPI = {
   login: (data) =>
-    api.post('/api/auth/login', data),
+    api.post(
+      '/api/auth/login',
+      data
+    ),
 
   register: (data) =>
-    api.post('/api/auth/register', data),
+    api.post(
+      '/api/auth/register',
+      data
+    ),
 
   getMe: () =>
     api.get('/api/auth/me'),
@@ -129,7 +146,9 @@ export const userAPI = {
     api.get('/api/users/all'),
 
   getUsersByRole: (role) =>
-    api.get(`/api/users/role/${role}`),
+    api.get(
+      `/api/users/role/${role}`
+    ),
 };
 
 // ============================================================
@@ -141,7 +160,9 @@ export const documentAPI = {
     api.get('/api/documents'),
 
   getDocumentById: (id) =>
-    api.get(`/api/documents/${id}`),
+    api.get(
+      `/api/documents/${id}`
+    ),
 
   uploadDocument: (formData) =>
     api.post(
@@ -149,19 +170,32 @@ export const documentAPI = {
       formData,
       {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Content-Type':
+            'multipart/form-data',
         },
       }
     ),
 
-  updateDocument: (id, data) =>
-    api.put(`/api/documents/${id}`, data),
+  updateDocument: (
+    id,
+    data
+  ) =>
+    api.put(
+      `/api/documents/${id}`,
+      data
+    ),
 
   deleteDocument: (id) =>
-    api.delete(`/api/documents/${id}`),
+    api.delete(
+      `/api/documents/${id}`
+    ),
 
-  getDocumentsByType: (type) =>
-    api.get(`/api/documents/type/${type}`),
+  getDocumentsByType: (
+    type
+  ) =>
+    api.get(
+      `/api/documents/type/${type}`
+    ),
 };
 
 // ============================================================
@@ -169,25 +203,46 @@ export const documentAPI = {
 // ============================================================
 
 export const conversationAPI = {
-  createConversation: (data) =>
-    api.post('/api/conversations', data),
+  createConversation: (
+    data
+  ) =>
+    api.post(
+      '/api/conversations',
+      data
+    ),
 
   getConversations: () =>
-    api.get('/api/conversations'),
+    api.get(
+      '/api/conversations'
+    ),
 
-  getConversationById: (id) =>
-    api.get(`/api/conversations/${id}`),
+  getConversationById: (
+    id
+  ) =>
+    api.get(
+      `/api/conversations/${id}`
+    ),
 
-  sendMessage: (id, data) =>
+  sendMessage: (
+    id,
+    data
+  ) =>
     api.post(
       `/api/conversations/${id}/message`,
       data
     ),
 
-  deleteConversation: (id) =>
-    api.delete(`/api/conversations/${id}`),
+  deleteConversation: (
+    id
+  ) =>
+    api.delete(
+      `/api/conversations/${id}`
+    ),
 
-  updateConversationTitle: (id, data) =>
+  updateConversationTitle: (
+    id,
+    data
+  ) =>
     api.patch(
       `/api/conversations/${id}/title`,
       data
@@ -200,28 +255,55 @@ export const conversationAPI = {
 
 export const leaveAPI = {
   getMyRequests: () =>
-    api.get('/api/leave/my-requests'),
+    api.get(
+      '/api/leave/my-requests'
+    ),
 
   getBalance: () =>
-    api.get('/api/leave/balance'),
+    api.get(
+      '/api/leave/balance'
+    ),
 
-  createRequest: (data) =>
-    api.post('/api/leave/request', data),
+  createRequest: (
+    data
+  ) =>
+    api.post(
+      '/api/leave/request',
+      data
+    ),
 
   getHistory: () =>
-    api.get('/api/leave/history'),
+    api.get(
+      '/api/leave/history'
+    ),
 
   getPendingRequests: () =>
-    api.get('/api/leave/pending'),
+    api.get(
+      '/api/leave/pending'
+    ),
 
   getAllRequests: () =>
-    api.get('/api/leave/all'),
+    api.get(
+      '/api/leave/all'
+    ),
 
-  approveRequest: (id, data) =>
-    api.put(`/api/leave/${id}/approve`, data),
+  approveRequest: (
+    id,
+    data
+  ) =>
+    api.put(
+      `/api/leave/${id}/approve`,
+      data
+    ),
 
-  rejectRequest: (id, data) =>
-    api.put(`/api/leave/${id}/reject`, data),
+  rejectRequest: (
+    id,
+    data
+  ) =>
+    api.put(
+      `/api/leave/${id}/reject`,
+      data
+    ),
 };
 
 // ============================================================
@@ -229,11 +311,31 @@ export const leaveAPI = {
 // ============================================================
 
 export const googleAPI = {
-  getAuthUrl: () =>
-    api.get('/api/google/auth/url'),
+  // --------------------------------------------
+  // OAuth
+  // --------------------------------------------
 
-  handleCallback: (data) =>
-    api.post('/api/google/auth/callback', data),
+  getAuthUrl: () =>
+    api.get(
+      '/api/google/auth/url'
+    ),
+
+  handleCallback: (
+    data
+  ) =>
+    api.post(
+      '/api/google/auth/callback',
+      data
+    ),
+
+  // --------------------------------------------
+  // Calendar
+  // --------------------------------------------
+
+  getCalendarStatus: () =>
+    api.get(
+      '/api/google/calendar/status'
+    ),
 
   checkCalendarConflicts: (
     startDate,
@@ -263,21 +365,29 @@ export const googleAPI = {
       }
     ),
 
-  createCalendarEvent: (data) =>
+  createCalendarEvent: (
+    data
+  ) =>
     api.post(
       '/api/google/calendar/events',
       data
     ),
 
+  // --------------------------------------------
+  // Gmail
+  // --------------------------------------------
+
   sendEmail: (data) =>
     api.post(
-      '/api/gmail/send',
+      '/api/google/gmail/send',
       data
     ),
 
-  getRecentEmails: (maxResults) =>
+  getRecentEmails: (
+    maxResults
+  ) =>
     api.get(
-      '/api/gmail/recent',
+      '/api/google/gmail/recent',
       {
         params: {
           maxResults,
@@ -285,11 +395,21 @@ export const googleAPI = {
       }
     ),
 
-  getEmailById: (messageId) =>
-    api.get(`/api/gmail/${messageId}`),
+  getEmailById: (
+    messageId
+  ) =>
+    api.get(
+      `/api/google/gmail/${messageId}`
+    ),
+
+  // --------------------------------------------
+  // Disconnect
+  // --------------------------------------------
 
   revokeTokens: () =>
-    api.delete('/api/google/auth/revoke'),
+    api.delete(
+      '/api/google/auth/revoke'
+    ),
 };
 
 export default api;

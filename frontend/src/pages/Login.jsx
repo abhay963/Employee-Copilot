@@ -8,7 +8,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { authAPI } from '../services/api';
+import { useUser } from '../context/UserContext';
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -20,6 +20,17 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
 
   const navigate = useNavigate();
+
+  /*
+   * IMPORTANT:
+   * Use the login function from UserContext.
+   *
+   * This updates:
+   * - React authentication state
+   * - localStorage user
+   * - localStorage token
+   */
+  const { login } = useUser();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -33,7 +44,6 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Clear previous browser validation state
     if (!formData.email.trim()) {
       toast.error('Please enter your email address.');
       return;
@@ -47,65 +57,80 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const response = await authAPI.login({
-        email: formData.email.trim().toLowerCase(),
-        password: formData.password
-      });
+      /*
+       * Authenticate through UserContext.
+       *
+       * UserContext.login() will:
+       * 1. Call backend
+       * 2. Store token
+       * 3. Store user
+       * 4. Update React user state
+       */
+      const response = await login(
+        formData.email.trim().toLowerCase(),
+        formData.password
+      );
 
-      // Validate backend response
+      console.log('Login response:', response);
+
+      /*
+       * Backend authentication failed
+       */
       if (
         !response ||
         !response.success ||
-        !response.token ||
-        !response.user
+        !response.user ||
+        !response.token
       ) {
         throw new Error(
-          response?.error || 'Login failed. Please try again.'
+          response?.error ||
+            'Login failed. Please check your credentials.'
         );
       }
 
-      // Store authenticated user information
-      localStorage.setItem(
-        'user',
-        JSON.stringify(response.user)
-      );
-
-      localStorage.setItem(
-        'token',
-        response.token
-      );
-
-      // Normalize role
+      /*
+       * Normalize role
+       */
       const role = response.user.role?.toLowerCase();
 
-      // Role-based navigation
+      console.log('Authenticated user:', response.user);
+      console.log('User role:', role);
+
+      /*
+       * =====================================================
+       * ROLE-BASED REDIRECTION
+       * =====================================================
+       */
+
       if (role === 'hr') {
         toast.success('Welcome back, HR!');
+
         navigate('/hr-dashboard', {
           replace: true
         });
+
         return;
       }
 
       if (role === 'employee') {
         toast.success('Welcome back!');
+
         navigate('/employee-dashboard', {
           replace: true
         });
+
         return;
       }
 
-      // Invalid role protection
-      localStorage.removeItem('user');
-      localStorage.removeItem('token');
-
+      /*
+       * Invalid role
+       */
       toast.error(
         'Your account has an invalid role. Please contact HR.'
       );
     } catch (err) {
       console.error('Login error:', err);
 
-      // Support different API error formats
       const message =
         err?.response?.data?.error ||
         err?.response?.data?.message ||
@@ -114,10 +139,6 @@ const Login = () => {
         'Login failed. Please check your credentials and try again.';
 
       toast.error(message);
-
-      // Make sure failed login does not leave stale auth data
-      localStorage.removeItem('user');
-      localStorage.removeItem('token');
     } finally {
       setLoading(false);
     }
@@ -246,7 +267,7 @@ const Login = () => {
               </div>
             </div>
 
-            {/* Submit Button */}
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading}

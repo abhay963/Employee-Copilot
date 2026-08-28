@@ -5,7 +5,7 @@ import EmployeeDashboard from './pages/EmployeeDashboard';
 import HRDashboard from './pages/HRDashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
-
+import GoogleCallback from './pages/GoogleCallback';
 function App() {
   const { user, loading, isEmployee, isHR } = useUser();
 
@@ -30,6 +30,11 @@ function App() {
         
         {/* Protected routes */}
         <Route path="/employee-dashboard" element={isEmployee ? <EmployeeDashboard /> : <Navigate to="/login" />} />
+
+        <Route
+  path="/auth/google/callback"
+  element={<GoogleCallback />}
+/>
         <Route path="/hr-dashboard" element={isHR ? <HRDashboard /> : <Navigate to="/login" />} />
         
         {/* Catch all - redirect to landing or login */}
