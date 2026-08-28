@@ -274,10 +274,7 @@ function Hero() {
 
       <div className="relative mx-auto grid min-h-[calc(100vh-7rem)] max-w-[1400px] items-center px-5 pb-20 lg:grid-cols-[0.88fr_1.12fr] lg:px-10">
         <div className="relative z-10 max-w-[720px] pt-10 lg:pt-0">
-          <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#7FCBFF]/15 bg-[#7FCBFF]/[0.035] px-3.5 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[#9BD8FF]/70">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#7FCBFF]" />
-            AI operating layer for work
-          </div>
+        
 
           <h1 className="max-w-[780px] text-[clamp(3.8rem,7.7vw,7.9rem)] font-medium leading-[0.86] tracking-[-0.065em]">
             Your entire
@@ -354,54 +351,7 @@ function Hero() {
   );
 }
 
-function Product() {
-  const cards = [
-    [FiMessageSquare, "Natural interface", "Talk to your work the way you talk to a teammate.", "ASK"],
-    [FiDatabase, "Company memory", "Ground every answer in the information your organization trusts.", "KNOW"],
-    [FiZap, "Real actions", "Move from an answer to a completed workflow without leaving the conversation.", "ACT"],
-  ];
 
-  return (
-    <section id="product" className="border-b border-white/[0.07] bg-[#040911] py-28 text-white sm:py-36">
-      <div className="mx-auto max-w-[1400px] px-5 lg:px-10">
-        <div className="grid gap-14 lg:grid-cols-[0.72fr_1.28fr] lg:items-end">
-          <div>
-            <SectionEyebrow>Inside the product</SectionEyebrow>
-            <h2 className="text-[clamp(2.8rem,5.5vw,5.3rem)] font-medium leading-[0.9] tracking-[-0.06em]">
-              One workspace.
-              <br />
-              <span className="text-white/25">Every answer.</span>
-            </h2>
-          </div>
-          <p className="max-w-2xl text-[17px] leading-8 text-white/40 lg:pb-1">
-            Instead of making employees learn another complicated application, Employee Copilot gives them a single interface for finding information, understanding context and getting work done.
-          </p>
-        </div>
-
-        <div className="mt-16 grid gap-3 lg:grid-cols-3">
-          {cards.map(([Icon, title, body, label], i) => (
-            <div key={title} className="group relative min-h-[360px] overflow-hidden rounded-2xl border border-white/[0.08] bg-[#07101A] p-7 transition hover:border-[#7FCBFF]/20">
-              <div className="absolute right-0 top-0 h-48 w-48 rounded-full bg-[#65BFFF]/[0.045] blur-3xl" />
-              <div className="flex items-center justify-between">
-                <div className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/[0.035] text-[#8DD2FF]">
-                  <Icon />
-                </div>
-                <span className="font-mono text-[9px] tracking-[0.2em] text-white/20">0{i + 1} / {label}</span>
-              </div>
-              <div className="mt-28">
-                <h3 className="text-2xl font-medium tracking-[-0.03em]">{title}</h3>
-                <p className="mt-3 max-w-sm text-[14px] leading-6 text-white/30">{body}</p>
-              </div>
-              <div className="absolute bottom-7 left-7 right-7 h-px bg-white/[0.07]">
-                <div className="h-full w-1/3 bg-[#7FCBFF]/50" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function Capabilities() {
   const agents = [
@@ -461,118 +411,313 @@ function HowItWorks() {
     ["04", "ACT", FiZap, "Connected tools turn the result into real work."],
   ];
 
-  return (
-    <section id="how" className="border-b border-white/[0.07] bg-[#040911] py-28 text-white sm:py-36">
-      <div className="mx-auto max-w-[1400px] px-5 lg:px-10">
-        <div className="grid gap-14 lg:grid-cols-[0.78fr_1.22fr]">
-          <div>
-            <SectionEyebrow>How it works</SectionEyebrow>
-            <h2 className="text-[clamp(2.8rem,5.5vw,5rem)] font-medium leading-[0.9] tracking-[-0.06em]">
-              Ask.
-              <br />
-              <span className="text-white/25">Understand.</span>
-              <br />
-              <span className="text-[#79C5FF]">Act.</span>
-            </h2>
-            <p className="mt-7 max-w-md text-[16px] leading-7 text-white/35">
-              The interface stays simple while the system underneath handles the complexity of context, retrieval, tools and multi-step workflows.
-            </p>
-          </div>
-
-          <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#07101A]">
-            {steps.map(([num, label, Icon, body], i) => (
-              <div key={label} className="grid gap-5 border-b border-white/[0.07] p-6 last:border-b-0 sm:grid-cols-[70px_1fr_1.5fr] sm:items-center">
-                <span className="font-mono text-[10px] tracking-[0.16em] text-[#7FCBFF]/45">{num}</span>
-                <div className="flex items-center gap-3">
-                  <div className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 text-[#83CFFF]">
-                    <Icon className="text-sm" />
-                  </div>
-                  <span className="font-mono text-[10px] font-medium tracking-[0.18em] text-white/50">{label}</span>
-                </div>
-                <p className="text-[14px] leading-6 text-white/32">{body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-10 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#03070D] p-5 sm:p-7">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#7FCBFF]">Workflow preview</div>
-              <div className="mt-1 text-sm font-medium text-white/70">Prepare me for my next meeting</div>
-            </div>
-            <div className="hidden items-center gap-2 font-mono text-[8px] uppercase tracking-[0.14em] text-white/20 sm:flex">
-              <FiCheck className="text-[#7FCBFF]" /> Ready
-            </div>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-4">
-            {["Calendar", "Recent email", "Company docs", "Briefing"].map((item, i) => (
-              <div key={item} className="relative rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-                <div className="font-mono text-[8px] uppercase tracking-[0.15em] text-white/20">0{i + 1}</div>
-                <div className="mt-5 text-sm text-white/60">{item}</div>
-                <div className="mt-2 h-px bg-white/[0.06]" />
-                <div className="mt-2 text-[10px] text-[#7FCBFF]/45">Context connected</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Knowledge() {
-  const docs = [
-    ["Company Handbook", "Policy", FiFileText],
-    ["Leave Policy", "HR", FiUsers],
-    ["Project Apollo", "Project", FiLayers],
-    ["Benefits Guide", "People", FiShield],
-    ["Engineering", "Team", FiSliders],
-    ["Finance", "Department", FiDatabase],
+  const nodes = [
+    { name: "Gmail", icon: SiGmail, position: "left-[4%] top-[12%]" },
+    { name: "Calendar", icon: SiGooglecalendar, position: "right-[4%] top-[12%]" },
+    { name: "Company Docs", icon: FiFileText, position: "left-[0%] top-[44%]" },
+    { name: "HR Data", icon: FiUsers, position: "right-[0%] top-[44%]" },
+    { name: "Search", icon: FiSearch, position: "left-[8%] bottom-[8%]" },
+    { name: "Workflow", icon: FiZap, position: "right-[8%] bottom-[8%]" },
   ];
 
   return (
-    <section className="border-b border-white/[0.07] bg-[#02060C] py-28 text-white sm:py-36">
-      <div className="mx-auto max-w-[1400px] px-5 lg:px-10">
-        <div className="grid gap-14 lg:grid-cols-[0.72fr_1.28fr] lg:items-center">
+    <section
+      id="how"
+      className="relative overflow-hidden border-b border-white/[0.07] bg-[#02060C] py-28 text-white sm:py-36"
+    >
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-1/2 top-1/2 h-[650px] w-[650px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#79C5FF]/[0.035] blur-[150px]" />
+
+        <div
+          className="absolute inset-0 opacity-[0.025]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px)",
+            backgroundSize: "72px 72px",
+            maskImage:
+              "radial-gradient(circle at center, black 0%, transparent 72%)",
+          }}
+        />
+      </div>
+
+      <div className="relative mx-auto max-w-[1400px] px-5 lg:px-10">
+
+        {/* HEADER */}
+        <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
           <div>
-            <SectionEyebrow>Company knowledge</SectionEyebrow>
-            <h2 className="text-[clamp(2.7rem,5.2vw,5rem)] font-medium leading-[0.9] tracking-[-0.06em]">
-              Your company
+            <SectionEyebrow>How it works</SectionEyebrow>
+
+            <h2 className="mt-5 text-[clamp(3.5rem,7vw,7rem)] font-medium leading-[0.82] tracking-[-0.075em]">
+              Ask.
               <br />
-              <span className="text-white/25">already knows</span>
+              <span className="text-white/[0.18]">Understand.</span>
               <br />
-              the answer.
+              <span className="bg-gradient-to-r from-[#79C5FF] via-[#B8E2FF] to-[#79C5FF] bg-clip-text text-transparent">
+                Act.
+              </span>
             </h2>
-            <p className="mt-7 max-w-md text-[16px] leading-7 text-white/35">
-              Bring institutional knowledge into the flow of work. Copilot can retrieve relevant sources and keep answers grounded in the information employees are allowed to use.
-            </p>
           </div>
 
-          <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#07101A] p-4 sm:p-6">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(100,190,255,.07),transparent_40%)]" />
-            <div className="relative grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {docs.map(([name, type, Icon]) => (
-                <div key={name} className="rounded-xl border border-white/[0.07] bg-[#040911]/80 p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 text-[#82CFFF]">
-                      <Icon className="text-sm" />
-                    </div>
-                    <span className="font-mono text-[8px] uppercase tracking-[0.14em] text-white/20">{type}</span>
-                  </div>
-                  <div className="mt-8 text-sm font-medium text-white/65">{name}</div>
-                  <div className="mt-2 flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-[#7FCBFF]/40">
-                    <FiCheck /> Indexed
-                  </div>
+          <div className="max-w-2xl lg:justify-self-end">
+            <div className="mb-6 flex items-center gap-3">
+              <span className="h-px w-14 bg-[#79C5FF]/50" />
+
+              <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#79C5FF]/55">
+                Intelligence orchestration
+              </span>
+            </div>
+
+            <p className="text-[19px] leading-8 text-white/40 sm:text-[21px] sm:leading-9">
+              One intelligent layer connects conversations, company knowledge,
+              employee context and tools — turning a simple request into
+              grounded action.
+            </p>
+          </div>
+        </div>
+
+        {/* NETWORK */}
+        <div className="relative mt-20 h-[620px] overflow-hidden rounded-[32px] border border-white/[0.08] bg-[#03080F] sm:h-[700px]">
+
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute left-1/2 top-1/2 h-[420px] w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#79C5FF]/[0.035] blur-[100px]" />
+          </div>
+
+          {/* CONNECTIONS */}
+          <svg
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            viewBox="0 0 1200 700"
+            preserveAspectRatio="none"
+          >
+            <defs>
+              <linearGradient
+                id="lineGradient"
+                x1="0%"
+                y1="0%"
+                x2="100%"
+                y2="100%"
+              >
+                <stop offset="0%" stopColor="#79C5FF" stopOpacity="0" />
+                <stop offset="50%" stopColor="#79C5FF" stopOpacity=".4" />
+                <stop offset="100%" stopColor="#79C5FF" stopOpacity="0" />
+              </linearGradient>
+
+              <filter id="particleGlow">
+                <feGaussianBlur stdDeviation="2.5" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            <path d="M105 120 C300 150 390 260 600 350" fill="none" stroke="url(#lineGradient)" strokeWidth="1.2" />
+            <path d="M1095 120 C900 150 810 260 600 350" fill="none" stroke="url(#lineGradient)" strokeWidth="1.2" />
+            <path d="M65 350 C270 350 370 350 600 350" fill="none" stroke="url(#lineGradient)" strokeWidth="1.2" />
+            <path d="M1135 350 C930 350 830 350 600 350" fill="none" stroke="url(#lineGradient)" strokeWidth="1.2" />
+            <path d="M150 600 C310 540 420 430 600 350" fill="none" stroke="url(#lineGradient)" strokeWidth="1.2" />
+            <path d="M1050 600 C890 540 780 430 600 350" fill="none" stroke="url(#lineGradient)" strokeWidth="1.2" />
+
+            <circle r="3" fill="#A8DFFF" filter="url(#particleGlow)">
+              <animateMotion dur="3.5s" repeatCount="indefinite" path="M105 120 C300 150 390 260 600 350" />
+            </circle>
+
+            <circle r="3" fill="#79C5FF" filter="url(#particleGlow)">
+              <animateMotion dur="4s" begin="1s" repeatCount="indefinite" path="M1095 120 C900 150 810 260 600 350" />
+            </circle>
+
+            <circle r="2.5" fill="#B8A5FF" filter="url(#particleGlow)">
+              <animateMotion dur="3.8s" begin=".5s" repeatCount="indefinite" path="M65 350 C270 350 370 350 600 350" />
+            </circle>
+
+            <circle r="3" fill="#79C5FF" filter="url(#particleGlow)">
+              <animateMotion dur="4.2s" begin="1.7s" repeatCount="indefinite" path="M1135 350 C930 350 830 350 600 350" />
+            </circle>
+
+            <circle r="2.5" fill="#A8DFFF" filter="url(#particleGlow)">
+              <animateMotion dur="4.5s" begin="1.2s" repeatCount="indefinite" path="M150 600 C310 540 420 430 600 350" />
+            </circle>
+
+            <circle r="3" fill="#B8A5FF" filter="url(#particleGlow)">
+              <animateMotion dur="4.5s" begin="2.4s" repeatCount="indefinite" path="M1050 600 C890 540 780 430 600 350" />
+            </circle>
+          </svg>
+
+          {/* RANDOM PARTICLES */}
+          <div className="pointer-events-none absolute inset-0">
+            {Array.from({ length: 35 }).map((_, i) => (
+              <span
+                key={i}
+                className="absolute h-[2px] w-[2px] rounded-full bg-[#79C5FF]/40 animate-[floatParticle_5s_ease-in-out_infinite]"
+                style={{
+                  left: `${6 + ((i * 31) % 88)}%`,
+                  top: `${6 + ((i * 47) % 88)}%`,
+                  animationDelay: `${(i % 9) * 0.55}s`,
+                  opacity: 0.2 + (i % 4) * 0.12,
+                }}
+              />
+            ))}
+          </div>
+
+          {/* CENTER LLM */}
+          <div className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2">
+
+            <div className="absolute -inset-28 rounded-full border border-white/[0.035] animate-[pulseRing_4s_ease-in-out_infinite]" />
+            <div className="absolute -inset-20 rounded-full border border-[#79C5FF]/[0.06] animate-[pulseRing_4s_ease-in-out_infinite_1s]" />
+            <div className="absolute -inset-10 rounded-full border border-[#79C5FF]/[0.1]" />
+            <div className="absolute -inset-14 animate-[spin_16s_linear_infinite] rounded-full border border-dashed border-[#79C5FF]/[0.12]" />
+
+            <div className="relative grid h-44 w-44 place-items-center rounded-full border border-[#79C5FF]/20 bg-[#07111B]/95 shadow-[0_0_100px_rgba(121,197,255,0.12)] backdrop-blur-xl sm:h-52 sm:w-52">
+
+              <div className="absolute inset-3 rounded-full border border-white/[0.04]" />
+
+              <div className="absolute inset-8 rounded-full bg-[#79C5FF]/[0.035] shadow-[inset_0_0_50px_rgba(121,197,255,0.08)]" />
+
+              <div className="relative text-center">
+                <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xl border border-[#79C5FF]/20 bg-[#79C5FF]/[0.07] shadow-[0_0_35px_rgba(121,197,255,0.14)]">
+                  <div className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#79C5FF] shadow-[0_0_18px_#79C5FF]" />
                 </div>
-              ))}
+
+                <div className="font-mono text-[12px] uppercase tracking-[0.24em] text-white/45">
+                  LLM
+                </div>
+
+                <div className="mt-2 text-[13px] text-white/25">
+                  Intelligence Core
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* NODES */}
+          {nodes.map(({ name, icon: Icon, position }) => (
+            <div
+              key={name}
+              className={`absolute ${position} z-30`}
+            >
+              <div className="group flex flex-col items-center gap-3">
+
+                <div className="relative">
+                  <div className="absolute -inset-4 rounded-2xl bg-[#79C5FF]/[0.03] opacity-0 blur-xl transition-all duration-500 group-hover:opacity-100" />
+
+                  <div className="relative grid h-14 w-14 place-items-center rounded-2xl border border-white/[0.1] bg-[#07101A]/95 text-white/45 shadow-[0_15px_40px_rgba(0,0,0,.3)] backdrop-blur-md transition-all duration-500 group-hover:-translate-y-1 group-hover:border-[#79C5FF]/30 group-hover:text-[#79C5FF] sm:h-16 sm:w-16">
+                    <Icon className="text-lg sm:text-xl" />
+                  </div>
+
+                  <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[#03080F] bg-[#79C5FF]/80" />
+                </div>
+
+                <div className="whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.16em] text-white/30 transition-colors group-hover:text-white/60">
+                  {name}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* STATUS */}
+          <div className="absolute left-7 top-7 z-30 flex items-center gap-3 rounded-full border border-white/[0.08] bg-white/[0.025] px-4 py-2 backdrop-blur-md">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#79C5FF]/50" />
+              <span className="relative h-2 w-2 rounded-full bg-[#79C5FF]" />
+            </span>
+
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">
+              Copilot online
+            </span>
+          </div>
+
+          {/* BOTTOM LABEL */}
+          <div className="absolute bottom-7 left-1/2 z-30 w-[calc(100%-48px)] -translate-x-1/2 text-center">
+            <div className="mx-auto max-w-md rounded-2xl border border-white/[0.07] bg-[#050B12]/85 px-6 py-4 backdrop-blur-xl">
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#79C5FF]/55">
+                Context → Intelligence → Action
+              </div>
             </div>
           </div>
         </div>
+
+        {/* STEPS */}
+        <div className="mt-6 grid gap-px overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.06] sm:grid-cols-2 lg:grid-cols-4">
+
+          {steps.map(([num, label, Icon, body]) => (
+            <div
+              key={label}
+              className="group relative bg-[#050A11] p-7 transition-all duration-500 hover:bg-[#07111A]"
+            >
+              <div className="mb-9 flex items-center justify-between">
+                <span className="font-mono text-[11px] tracking-[0.18em] text-[#79C5FF]/40">
+                  {num}
+                </span>
+
+                <div className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.07] bg-white/[0.02] text-[#79C5FF]/55 transition-all duration-500 group-hover:border-[#79C5FF]/20 group-hover:bg-[#79C5FF]/[0.05] group-hover:text-[#79C5FF]">
+                  <Icon className="text-sm" />
+                </div>
+              </div>
+
+              <div className="font-mono text-[11px] font-medium tracking-[0.2em] text-white/50 transition-colors group-hover:text-white/75">
+                {label}
+              </div>
+
+              <p className="mt-4 text-[14px] leading-6 text-white/30">
+                {body}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
+
+      <style>{`
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        @keyframes pulseRing {
+          0%, 100% {
+            transform: scale(0.96);
+            opacity: 0.3;
+          }
+
+          50% {
+            transform: scale(1.04);
+            opacity: 0.8;
+          }
+        }
+
+        @keyframes floatParticle {
+          0%, 100% {
+            transform: translate3d(0, 0, 0);
+          }
+
+          25% {
+            transform: translate3d(12px, -18px, 0);
+          }
+
+          50% {
+            transform: translate3d(-8px, -30px, 0);
+          }
+
+          75% {
+            transform: translate3d(18px, -10px, 0);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .network-line,
+          .particle,
+          [class*="animate-"] {
+            animation: none !important;
+          }
+        }
+      `}</style>
     </section>
   );
 }
+
+
 
 function Automation() {
   const steps = [
@@ -636,124 +781,243 @@ function Automation() {
   );
 }
 
-function Integrations() {
-  const items = [
-    [SiGmail, "Gmail", "Read, summarize and act on conversations"],
-    [SiGooglecalendar, "Google Calendar", "Understand availability and meetings"],
-    [FiFileText, "Company documents", "Ground answers in trusted knowledge"],
-    [FiUsers, "HR workflows", "Connect employee-aware processes"],
-    [SiPostgresql, "PostgreSQL", "Store structured application context"],
-    [SiGoogle, "Gemini", "Power reasoning and generation"],
-  ];
 
-  return (
-    <section id="integrations" className="border-b border-white/[0.07] bg-[#02060C] py-28 text-white sm:py-36">
-      <div className="mx-auto max-w-[1400px] px-5 lg:px-10">
-        <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
-          <div>
-            <SectionEyebrow>Integrations</SectionEyebrow>
-            <h2 className="text-[clamp(2.8rem,5.5vw,5.2rem)] font-medium leading-[0.9] tracking-[-0.06em]">
-              Your tools.
-              <br />
-              <span className="text-white/25">One context.</span>
-            </h2>
-          </div>
-          <p className="max-w-xl text-[16px] leading-7 text-white/35">
-            Employee Copilot sits above the systems your team already uses, connecting information and actions without forcing employees to constantly switch between applications.
-          </p>
-        </div>
-
-        <div className="mt-14 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map(([Icon, name, desc]) => (
-            <div key={name} className="flex min-h-[145px] flex-col justify-between rounded-2xl border border-white/[0.08] bg-[#07101A] p-5 transition hover:border-white/[0.14]">
-              <div className="flex items-center gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/[0.03] text-[#86D0FF]">
-                  <Icon />
-                </div>
-                <span className="text-sm font-semibold text-white/70">{name}</span>
-              </div>
-              <p className="max-w-xs text-[12px] leading-5 text-white/25">{desc}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function Scenarios() {
   const scenarios = [
-    ["Prepare me for my next meeting.", "Calendar, recent email, documents and attendee context become one concise briefing.", FiCalendar],
-    ["Find the leave policy.", "Search company knowledge and surface the relevant policy with grounded context.", FiSearch],
-    ["Summarize my unread work email.", "Group important conversations, identify actions and highlight what needs attention.", FiMail],
-    ["Schedule a review with the design team.", "Check availability, use team context and create the meeting when the right time is found.", FiClock],
+    [
+      "Prepare me for my next meeting.",
+      "Calendar, recent email, documents and attendee context become one concise briefing.",
+      FiCalendar,
+    ],
+    [
+      "Find the leave policy.",
+      "Search company knowledge and surface the relevant policy with grounded context.",
+      FiSearch,
+    ],
+    [
+      "Summarize my unread work email.",
+      "Group important conversations, identify actions and highlight what needs attention.",
+      FiMail,
+    ],
+    [
+      "Schedule a review with the design team.",
+      "Check availability, use team context and create the meeting when the right time is found.",
+      FiClock,
+    ],
   ];
 
   return (
-    <section className="border-b border-white/[0.07] bg-[#040911] py-28 text-white sm:py-36">
-      <div className="mx-auto max-w-[1400px] px-5 lg:px-10">
-        <div className="max-w-3xl">
-          <SectionEyebrow>Built for everyday work</SectionEyebrow>
-          <h2 className="text-[clamp(2.8rem,5.5vw,5.2rem)] font-medium leading-[0.9] tracking-[-0.06em]">
+    <section
+      className="relative overflow-hidden border-b border-white/[0.07] bg-[#03070D] py-28 text-white sm:py-36"
+    >
+      {/* Ambient background */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-[15%] top-[20%] h-[450px] w-[450px] rounded-full bg-[#79C5FF]/[0.025] blur-[130px] animate-[ambientMove_12s_ease-in-out_infinite]" />
+        <div className="absolute bottom-[10%] right-[10%] h-[400px] w-[400px] rounded-full bg-[#9B8CFF]/[0.02] blur-[130px] animate-[ambientMove_15s_ease-in-out_infinite_reverse]" />
+
+        <div
+          className="absolute inset-0 opacity-[0.025]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px)",
+            backgroundSize: "80px 80px",
+            maskImage:
+              "radial-gradient(circle at center, black, transparent 75%)",
+          }}
+        />
+      </div>
+
+      <div className="relative mx-auto max-w-[1400px] px-5 lg:px-10">
+
+        {/* HEADER */}
+        <div className="max-w-4xl">
+          <div className="animate-[fadeUp_.8s_ease-out_both]">
+            <SectionEyebrow>Built for everyday work</SectionEyebrow>
+          </div>
+
+          <h2 className="mt-5 text-[clamp(3.2rem,6vw,6.2rem)] font-medium leading-[0.84] tracking-[-0.07em] animate-[fadeUp_.9s_.1s_ease-out_both]">
             Useful from the
             <br />
-            <span className="text-[#79C5FF]">first question.</span>
+            <span className="bg-gradient-to-r from-[#79C5FF] via-[#B8E2FF] to-[#79C5FF] bg-clip-text text-transparent">
+              first question.
+            </span>
           </h2>
+
+          <p className="mt-7 max-w-2xl text-[17px] leading-8 text-white/30 animate-[fadeUp_.9s_.2s_ease-out_both]">
+            From finding information to completing real work, Copilot turns
+            everyday requests into intelligent workflows.
+          </p>
         </div>
 
-        <div className="mt-14 grid gap-3 lg:grid-cols-2">
+        {/* SCENARIO GRID */}
+        <div className="mt-16 grid gap-4 lg:grid-cols-2">
           {scenarios.map(([title, body, Icon], i) => (
-            <div key={title} className="group rounded-2xl border border-white/[0.08] bg-[#07101A] p-6 sm:p-7">
-              <div className="flex items-start justify-between gap-5">
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-[#82CFFF]">
-                  <Icon />
-                </div>
-                <span className="font-mono text-[9px] tracking-[0.18em] text-white/15">0{i + 1}</span>
+            <div
+              key={title}
+              className="group relative min-h-[340px] overflow-hidden rounded-[26px] border border-white/[0.08] bg-[#07101A]/90 p-7 opacity-0 backdrop-blur-xl transition-all duration-700 hover:-translate-y-2 hover:border-[#79C5FF]/20 hover:bg-[#08131E] sm:p-8"
+              style={{
+                animation: "scenarioIn .8s cubic-bezier(.16,1,.3,1) forwards",
+                animationDelay: `${250 + i * 120}ms`,
+              }}
+            >
+              {/* Card hover light */}
+              <div className="pointer-events-none absolute -right-20 -top-20 h-60 w-60 rounded-full bg-[#79C5FF]/[0.035] blur-[80px] opacity-0 transition-opacity duration-700 group-hover:opacity-100" />
+
+              {/* Animated border */}
+              <div className="pointer-events-none absolute inset-0 rounded-[26px] opacity-0 transition-opacity duration-500 group-hover:opacity-100">
+                <div className="absolute left-0 top-0 h-px w-1/2 bg-gradient-to-r from-transparent via-[#79C5FF]/50 to-transparent animate-[scan_2.5s_linear_infinite]" />
               </div>
-              <h3 className="mt-12 max-w-lg text-[21px] font-medium tracking-[-0.03em] text-white/80">“{title}”</h3>
-              <p className="mt-3 max-w-xl text-[14px] leading-6 text-white/28">{body}</p>
-              <div className="mt-8 flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-[#7FCBFF]/45">
-                Explore workflow <FiArrowRight />
+
+              {/* Header */}
+              <div className="relative flex items-start justify-between">
+                <div className="relative">
+                  <div className="absolute -inset-3 rounded-2xl bg-[#79C5FF]/[0.04] blur-xl opacity-0 transition-all duration-500 group-hover:opacity-100" />
+
+                  <div className="relative grid h-12 w-12 place-items-center rounded-xl border border-white/[0.09] bg-white/[0.025] text-[#82CFFF]/70 transition-all duration-500 group-hover:scale-110 group-hover:rotate-3 group-hover:border-[#79C5FF]/25 group-hover:bg-[#79C5FF]/[0.06] group-hover:text-[#79C5FF] group-hover:shadow-[0_0_30px_rgba(121,197,255,.12)]">
+                    <Icon className="text-[18px]" />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-[10px] tracking-[0.18em] text-white/15 transition-colors group-hover:text-[#79C5FF]/40">
+                    0{i + 1}
+                  </span>
+
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#79C5FF]/30" />
+                    <span className="relative h-2 w-2 rounded-full bg-[#79C5FF]/40 transition-colors group-hover:bg-[#79C5FF]" />
+                  </span>
+                </div>
+              </div>
+
+              {/* Question */}
+              <div className="relative mt-12">
+                <div className="mb-3 font-mono text-[9px] uppercase tracking-[0.2em] text-[#79C5FF]/35">
+                  Employee request
+                </div>
+
+                <h3 className="max-w-xl text-[24px] font-medium leading-[1.25] tracking-[-0.035em] text-white/75 transition-all duration-500 group-hover:translate-x-1 group-hover:text-white sm:text-[27px]">
+                  “{title}”
+                </h3>
+              </div>
+
+              {/* Description */}
+              <p className="relative mt-5 max-w-xl text-[15px] leading-7 text-white/28 transition-colors duration-500 group-hover:text-white/40">
+                {body}
+              </p>
+
+              {/* Bottom workflow */}
+              <div className="absolute bottom-7 left-7 right-7 sm:left-8 sm:right-8">
+                <div className="mb-4 h-px w-full bg-white/[0.06]">
+                  <div className="h-full w-0 bg-gradient-to-r from-[#79C5FF]/60 to-transparent transition-all duration-1000 group-hover:w-full" />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.15em] text-[#7FCBFF]/40 transition-all duration-500 group-hover:text-[#7FCBFF]/70">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#79C5FF]/50 group-hover:animate-pulse" />
+                    Intelligent workflow
+                  </div>
+
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/[0.07] text-white/20 transition-all duration-500 group-hover:translate-x-1 group-hover:border-[#79C5FF]/20 group-hover:text-[#79C5FF]">
+                    <FiArrowRight className="text-xs" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Floating particles */}
+              <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-700 group-hover:opacity-100">
+                <span className="absolute left-[25%] top-[30%] h-1 w-1 rounded-full bg-[#79C5FF]/50 animate-[particle_3s_ease-in-out_infinite]" />
+                <span className="absolute left-[65%] top-[45%] h-1 w-1 rounded-full bg-[#79C5FF]/30 animate-[particle_4s_.5s_ease-in-out_infinite]" />
+                <span className="absolute left-[80%] top-[25%] h-1 w-1 rounded-full bg-[#A98BFF]/40 animate-[particle_3.5s_1s_ease-in-out_infinite]" />
               </div>
             </div>
           ))}
         </div>
+
+        {/* Bottom signal */}
+        <div className="mt-8 flex items-center justify-center gap-4">
+          <span className="h-px w-16 bg-gradient-to-r from-transparent to-white/[0.08]" />
+
+          <div className="flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.02] px-4 py-2 backdrop-blur-md">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#79C5FF]" />
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/25">
+              Every request becomes context
+            </span>
+          </div>
+
+          <span className="h-px w-16 bg-gradient-to-l from-transparent to-white/[0.08]" />
+        </div>
       </div>
+
+      <style>{`
+        @keyframes fadeUp {
+          from {
+            opacity: 0;
+            transform: translateY(28px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes scenarioIn {
+          from {
+            opacity: 0;
+            transform: translateY(35px) scale(.97);
+            filter: blur(5px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+          }
+        }
+
+        @keyframes scan {
+          0% {
+            transform: translateX(-120%);
+          }
+          100% {
+            transform: translateX(250%);
+          }
+        }
+
+        @keyframes particle {
+          0%, 100% {
+            transform: translate(0, 0);
+            opacity: .2;
+          }
+          50% {
+            transform: translate(25px, -30px);
+            opacity: .8;
+          }
+        }
+
+        @keyframes ambientMove {
+          0%, 100% {
+            transform: translate(0, 0);
+          }
+          50% {
+            transform: translate(60px, -40px);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          *,
+          *::before,
+          *::after {
+            animation: none !important;
+            transition: none !important;
+          }
+        }
+      `}</style>
     </section>
   );
 }
 
-function Security() {
-  return (
-    <section id="security" className="border-b border-white/[0.07] bg-[#02060C] py-24 text-white sm:py-32">
-      <div className="mx-auto max-w-[1400px] px-5 lg:px-10">
-        <div className="grid gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
-          <div>
-            <SectionEyebrow>Security by design</SectionEyebrow>
-            <h2 className="text-[clamp(2.7rem,5vw,4.8rem)] font-medium leading-[0.9] tracking-[-0.06em]">
-              Helpful,
-              <br />
-              <span className="text-white/25">without overreach.</span>
-            </h2>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {[
-              [FiLock, "Permission-aware", "Respect access boundaries when retrieving information."],
-              [FiShield, "Grounded", "Keep answers tied to trusted organizational sources."],
-              [FiSliders, "Controlled", "Make tools, actions and integrations explicit."],
-            ].map(([Icon, title, body]) => (
-              <div key={title} className="rounded-2xl border border-white/[0.08] bg-[#07101A] p-5">
-                <Icon className="text-[#82CFFF]" />
-                <div className="mt-9 text-sm font-semibold text-white/70">{title}</div>
-                <p className="mt-2 text-[12px] leading-5 text-white/25">{body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
+
 
 function FinalCTA() {
   const navigate = useNavigate();
@@ -916,14 +1180,14 @@ export default function Landing() {
       <Navbar />
       <main>
         <Hero />
-        <Product />
+       
         <Capabilities />
         <HowItWorks />
-        <Knowledge />
+   
         <Automation />
-        <Integrations />
+       
         <Scenarios />
-        <Security />
+      
         <FinalCTA />
       </main>
       <Footer />
