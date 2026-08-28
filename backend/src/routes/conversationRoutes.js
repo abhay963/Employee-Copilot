@@ -5,7 +5,8 @@ import {
   getConversationById,
   sendMessage,
   deleteConversation,
-  updateConversationTitle
+  updateConversationTitle,
+  executePendingAction
 } from '../controllers/conversationController.js';
 import { authenticate } from '../middleware/auth.js';
 
@@ -28,6 +29,9 @@ router.post('/:id/message', sendMessage);
 
 // Update conversation title
 router.patch('/:id/title', updateConversationTitle);
+
+// Execute pending action (Human-in-the-Loop approval)
+router.post('/:id/actions', executePendingAction);
 
 // Delete conversation
 router.delete('/:id', deleteConversation);

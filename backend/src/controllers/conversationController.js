@@ -122,3 +122,29 @@ export const updateConversationTitle = async (req, res) => {
     res.status(500).json({ error: 'Failed to update conversation title' });
   }
 };
+
+export const executePendingAction = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    const { actionId, actionData } = req.body;
+
+    if (!actionId) {
+      return res.status(400).json({ error: 'Action ID is required' });
+    }
+
+    const result = await conversationService.executePendingAction(id, userId, userRole, actionId, actionData);
+    
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    console.error('Error executing pending action:', error);
+    if (error.message === 'Conversation not found' || error.message === 'Access denied') {
+      return res.status(404).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to execute action' });
+  }
+};

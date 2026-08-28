@@ -232,6 +232,15 @@ export const conversationAPI = {
       data
     ),
 
+  executeAction: (
+    id,
+    data
+  ) =>
+    api.post(
+      `/api/conversations/${id}/actions`,
+      data
+    ),
+
   deleteConversation: (
     id
   ) =>

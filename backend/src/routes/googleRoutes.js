@@ -77,23 +77,36 @@ router.get(
           error
         );
 
+        // Handle specific Google OAuth errors with user-friendly messages
+        let errorMessage = 'oauth_error';
+        let errorDescription = error;
+
+        if (error === 'access_denied') {
+          errorDescription = 'You denied access to your Google Calendar. Please try again and accept the permissions.';
+        } else if (error === 'invalid_request') {
+          errorDescription = 'Invalid OAuth request. Please try again.';
+        } else if (error === 'unauthorized_client') {
+          errorDescription = 'The application is not authorized. Please contact the administrator.';
+        } else if (error === 'response_type_error') {
+          errorDescription = 'Invalid response type. Please contact the administrator.';
+        }
+
         return res.redirect(
-          'http://localhost:5173/calendar?google_error=' +
-            encodeURIComponent(error)
+          `http://localhost:5173/calendar?google_error=${encodeURIComponent(errorMessage)}&error_description=${encodeURIComponent(errorDescription)}`
         );
       }
 
       // Missing authorization code
       if (!code) {
         return res.redirect(
-          'http://localhost:5173/calendar?google_error=missing_code'
+          'http://localhost:5173/calendar?google_error=missing_code&error_description=Authorization code is missing from the response.'
         );
       }
 
       // Missing state
       if (!state) {
         return res.redirect(
-          'http://localhost:5173/calendar?google_error=missing_state'
+          'http://localhost:5173/calendar?google_error=missing_state&error_description=OAuth state parameter is missing. Please try again.'
         );
       }
 
@@ -118,8 +131,20 @@ router.get(
         error
       );
 
+      // Handle specific error cases
+      let errorMessage = 'callback_failed';
+      let errorDescription = 'Failed to complete Google Calendar authorization. Please try again.';
+
+      if (error.message && error.message.includes('access blocked')) {
+        errorMessage = 'access_blocked';
+        errorDescription = 'Your Google account is not configured as a test user for this application. If you are the developer, please add your email to the Google Cloud Console test users list. Otherwise, please contact the administrator.';
+      } else if (error.message && error.message.includes('redirect_uri_mismatch')) {
+        errorMessage = 'redirect_uri_mismatch';
+        errorDescription = 'The redirect URI does not match. Please contact the administrator.';
+      }
+
       return res.redirect(
-        'http://localhost:5173/calendar?google_error=callback_failed'
+        `http://localhost:5173/calendar?google_error=${encodeURIComponent(errorMessage)}&error_description=${encodeURIComponent(errorDescription)}`
       );
     }
   }

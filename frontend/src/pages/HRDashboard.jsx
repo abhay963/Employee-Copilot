@@ -6,7 +6,9 @@ import {
   MessageSquare,
   Users,
   LogOut,
-  Calendar
+  Calendar,
+  User,
+  Clock
 } from 'lucide-react';
 
 import { useUser } from '../context/UserContext';
@@ -21,6 +23,7 @@ import Documents from '../components/Documents';
 import ConversationList from '../components/ConversationList';
 import LeaveManagement from '../components/LeaveManagement';
 import EmployeeCalendar from '../components/EmployeeCalendar';
+import Profile from '../components/Profile';
 
 const HRDashboard = () => {
   const { user, isHR, logout } = useUser();
@@ -188,6 +191,48 @@ const HRDashboard = () => {
     } catch (error) {
       console.error(
         'Error sending message:',
+        error
+      );
+
+      throw error;
+    }
+  };
+
+  // ============================================================
+  // EXECUTE ACTION
+  // ============================================================
+
+  const handleExecuteAction = async (
+    conversationId,
+    data
+  ) => {
+    try {
+      const response =
+        await conversationAPI.executeAction(
+          conversationId,
+          data
+        );
+
+      if (
+        response?.success &&
+        response?.conversation
+      ) {
+        setActiveConversation(
+          response.conversation
+        );
+
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id ===
+            response.conversation.id
+              ? response.conversation
+              : conversation
+          )
+        );
+      }
+    } catch (error) {
+      console.error(
+        'Error executing action:',
         error
       );
 
@@ -371,15 +416,13 @@ const HRDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-
       {/* ======================================================
           HEADER
       ====================================================== */}
 
-      <header className="bg-white border-b">
+      <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-
             {/* BRAND */}
 
             <div className="flex items-center gap-3">
@@ -401,27 +444,28 @@ const HRDashboard = () => {
               </div>
             </div>
 
-            {/* LOGOUT */}
+            {/* ACTIONS */}
 
-            <button
-              onClick={logout}
-              className="
-                flex items-center gap-2
-                px-4 py-2
-                text-gray-600
-                hover:text-gray-900
-                hover:bg-gray-100
-                rounded-lg
-                transition
-              "
-            >
-              <LogOut size={18} />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={logout}
+                className="
+                  flex items-center gap-2
+                  px-4 py-2
+                  text-gray-600
+                  hover:text-gray-900
+                  hover:bg-gray-100
+                  rounded-lg
+                  transition
+                "
+              >
+                <LogOut size={18} />
 
-              <span>
-                Logout
-              </span>
-            </button>
-
+                <span>
+                  Logout
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -430,7 +474,7 @@ const HRDashboard = () => {
           NAVIGATION
       ====================================================== */}
 
-      <div className="bg-white border-b">
+      <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex gap-4 overflow-x-auto">
 
@@ -549,9 +593,33 @@ const HRDashboard = () => {
                 }
               `}
             >
-              <Calendar size={18} />
+              <Clock size={18} />
 
               Leave
+            </button>
+
+            {/* PROFILE */}
+
+            <button
+              onClick={() =>
+                setActiveTab('profile')
+              }
+              className={`
+                flex items-center gap-2
+                px-4 py-3
+                font-medium
+                whitespace-nowrap
+                transition-colors
+                ${
+                  activeTab === 'profile'
+                    ? 'text-purple-500 border-b-2 border-purple-500'
+                    : 'text-gray-600 hover:text-gray-900'
+                }
+              `}
+            >
+              <User size={18} />
+
+              Profile
             </button>
 
           </div>
@@ -600,6 +668,9 @@ const HRDashboard = () => {
                 onSendMessage={
                   handleSendMessage
                 }
+                onExecuteAction={
+                  handleExecuteAction
+                }
                 onDeleteConversation={
                   handleDeleteConversation
                 }
@@ -630,10 +701,10 @@ const HRDashboard = () => {
         ==================================================== */}
 
         {activeTab === 'users' && (
-          <div className="bg-white rounded-lg shadow">
+          <div className="bg-white rounded-lg shadow border border-gray-100">
 
-            <div className="p-6 border-b">
-              <h2 className="text-lg font-semibold">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">
                 All Employees
               </h2>
 
@@ -650,21 +721,21 @@ const HRDashboard = () => {
                   <table className="w-full">
 
                     <thead>
-                      <tr className="border-b">
+                      <tr className="border-b border-gray-200">
 
-                        <th className="text-left py-3 px-4 font-semibold">
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
                           Name
                         </th>
 
-                        <th className="text-left py-3 px-4 font-semibold">
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
                           Email
                         </th>
 
-                        <th className="text-left py-3 px-4 font-semibold">
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
                           Role
                         </th>
 
-                        <th className="text-left py-3 px-4 font-semibold">
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
                           Department
                         </th>
 
@@ -676,14 +747,14 @@ const HRDashboard = () => {
                       {allUsers.map((employee) => (
                         <tr
                           key={employee.id}
-                          className="border-b hover:bg-gray-50"
+                          className="border-b border-gray-200 hover:bg-gray-50 transition"
                         >
 
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-4 text-gray-900">
                             {employee.name}
                           </td>
 
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-4 text-gray-600">
                             {employee.email}
                           </td>
 
@@ -694,6 +765,7 @@ const HRDashboard = () => {
                                 px-2 py-1
                                 rounded
                                 text-xs
+                                font-medium
                                 ${
                                   employee.role === 'hr'
                                     ? 'bg-purple-100 text-purple-700'
@@ -706,7 +778,7 @@ const HRDashboard = () => {
 
                           </td>
 
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-4 text-gray-700">
                             {employee.department}
                           </td>
 
@@ -759,9 +831,20 @@ const HRDashboard = () => {
           </div>
         )}
 
+        {/* ====================================================
+            PROFILE
+        ==================================================== */}
+
+        {activeTab === 'profile' && (
+          <div className="min-h-[calc(100vh-200px)]">
+            <Profile />
+          </div>
+        )}
+
       </main>
     </div>
   );
 };
 
 export default HRDashboard;
+

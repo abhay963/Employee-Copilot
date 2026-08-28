@@ -13,6 +13,7 @@ import {
 import { FiCommand } from 'react-icons/fi';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import ActionCard from './ActionCard';
 
 const generateTempId = () => {
   return `temp-${Date.now()}-${Math.random()
@@ -519,11 +520,14 @@ const EmptyState = ({ onSuggestion }) => {
 const Copilot = ({
   conversation,
   onSendMessage,
+  onExecuteAction,
   onDeleteConversation,
 }) => {
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [localMessages, setLocalMessages] = useState([]);
+  const [pendingAction, setPendingAction] = useState(null);
+  const [executingAction, setExecutingAction] = useState(false);
 
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -717,6 +721,22 @@ const Copilot = ({
         [];
 
       /*
+       * Handle pending action (Human-in-the-Loop)
+       */
+      const actionMetadata =
+        response?.actionMetadata ||
+        response?.data?.actionMetadata;
+
+      if (actionMetadata && response?.requiresConfirmation) {
+        setPendingAction({
+          ...actionMetadata,
+          originalMessage: currentQuestion,
+        });
+      } else {
+        setPendingAction(null);
+      }
+
+      /*
        * If backend returned the complete conversation,
        * use it directly.
        */
@@ -845,6 +865,72 @@ const Copilot = ({
         error
       );
     }
+  };
+
+  const handleConfirmAction = async () => {
+    if (!pendingAction || !conversation || executingAction) {
+      return;
+    }
+
+    setExecutingAction(true);
+
+    try {
+      const response = await onExecuteAction(
+        conversation.id,
+        {
+          actionId: pendingAction.actionId,
+          actionData: {
+            ...pendingAction,
+            originalMessage: pendingAction.originalMessage,
+          },
+        }
+      );
+
+      console.log('Action execution response:', response);
+
+      if (response?.assistantMessage) {
+        setLocalMessages((previous) => [
+          ...previous,
+          response.assistantMessage,
+        ]);
+
+        setPendingAction(null);
+      }
+    } catch (error) {
+      console.error('Error executing action:', error);
+      
+      // Add error message to chat
+      const errorMessage = {
+        id: generateTempId(),
+        role: 'assistant',
+        content: 'I apologize, but I encountered an error executing this action. Please try again.',
+        created_at: new Date().toISOString(),
+      };
+
+      setLocalMessages((previous) => [
+        ...previous,
+        errorMessage,
+      ]);
+    } finally {
+      setExecutingAction(false);
+    }
+  };
+
+  const handleCancelAction = () => {
+    setPendingAction(null);
+    
+    // Add cancellation message
+    const cancelMessage = {
+      id: generateTempId(),
+      role: 'assistant',
+      content: 'Action cancelled. Let me know if you need help with anything else.',
+      created_at: new Date().toISOString(),
+    };
+
+    setLocalMessages((previous) => [
+      ...previous,
+      cancelMessage,
+    ]);
   };
 
   /*
@@ -1001,6 +1087,15 @@ const Copilot = ({
                   />
                 ))}
               </AnimatePresence>
+
+              {pendingAction && (
+                <ActionCard
+                  actionMetadata={pendingAction}
+                  onConfirm={handleConfirmAction}
+                  onCancel={handleCancelAction}
+                  isLoading={executingAction}
+                />
+              )}
 
               {loading && <TypingIndicator />}
 

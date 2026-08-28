@@ -105,6 +105,72 @@ class ConversationService {
     }
   }
 
+  // Execute pending action after user approval
+  async executePendingAction(conversationId, userId, userRole, actionId, actionData) {
+    try {
+      // Verify conversation ownership
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || conversation.user_id !== userId) {
+        throw new Error('Conversation not found or access denied');
+      }
+
+      // Get the last user message to understand the context
+      const messages = await Message.findByConversationId(conversationId);
+      const lastUserMessage = messages.filter(m => m.role === 'user').pop();
+      
+      const originalMessage = lastUserMessage?.content || actionData?.originalMessage || '';
+
+      // Temporarily set the pending action in state for execution
+      const tempState = {
+        pendingAction: {
+          ...actionData,
+          actionId: actionId
+        }
+      };
+
+      // Import the necessary functions to execute the action
+      const { createCalendarEvent, submitLeaveRequest } = await import('../ai/langGraphWorkflow.js');
+      
+      let result;
+      if (actionId.startsWith('calendar_create_')) {
+        result = await createCalendarEvent({
+          userId,
+          pendingAction: actionData,
+          context: {}
+        });
+      } else if (actionId.startsWith('leave_request_')) {
+        result = await submitLeaveRequest({
+          userId,
+          pendingAction: actionData,
+          context: {}
+        });
+      } else {
+        throw new Error('Unknown action type');
+      }
+
+      // Save assistant message with the execution result
+      const assistantMessage = await Message.create({
+        conversation_id: conversationId,
+        role: 'assistant',
+        content: result.toolResult,
+        sources: []
+      });
+
+      // Update conversation timestamp
+      await Conversation.updateTimestamp(conversationId);
+
+      return {
+        assistantMessage,
+        conversation: await Conversation.findById(conversationId),
+        requiresConfirmation: false,
+        pendingAction: null
+      };
+    } catch (error) {
+      console.error('Error executing pending action:', error);
+      throw error;
+    }
+  }
+
   // Delete a conversation
   async deleteConversation(conversationId, userId) {
     try {

@@ -1,10 +1,12 @@
+
 import { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   MessageSquare,
   LogOut,
   Calendar,
-  User
+  User,
+  Clock
 } from 'lucide-react';
 
 import { useUser } from '../context/UserContext';
@@ -22,7 +24,8 @@ const EmployeeDashboard = () => {
   const [activeTab, setActiveTab] = useState('copilot');
 
   const [conversations, setConversations] = useState([]);
-  const [activeConversation, setActiveConversation] = useState(null);
+  const [activeConversation, setActiveConversation] =
+    useState(null);
 
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +48,8 @@ const EmployeeDashboard = () => {
       // Employees only load their conversations.
       // They do NOT load or manage company documents.
 
-      const response = await conversationAPI.getConversations();
+      const response =
+        await conversationAPI.getConversations();
 
       if (
         response?.success &&
@@ -78,7 +82,7 @@ const EmployeeDashboard = () => {
       ) {
         setConversations((prev) => [
           response.conversation,
-          ...prev,
+          ...prev
         ]);
 
         setActiveConversation(
@@ -157,6 +161,48 @@ const EmployeeDashboard = () => {
     } catch (error) {
       console.error(
         'Error sending message:',
+        error
+      );
+
+      throw error;
+    }
+  };
+
+  // ============================================================
+  // EXECUTE ACTION
+  // ============================================================
+
+  const handleExecuteAction = async (
+    conversationId,
+    data
+  ) => {
+    try {
+      const response =
+        await conversationAPI.executeAction(
+          conversationId,
+          data
+        );
+
+      if (
+        response?.success &&
+        response?.conversation
+      ) {
+        setActiveConversation(
+          response.conversation
+        );
+
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id ===
+            response.conversation.id
+              ? response.conversation
+              : conversation
+          )
+        );
+      }
+    } catch (error) {
+      console.error(
+        'Error executing action:',
         error
       );
 
@@ -249,13 +295,11 @@ const EmployeeDashboard = () => {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
         <div className="text-center">
-
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto" />
 
           <p className="mt-4 text-gray-600">
             Loading Employee Copilot...
           </p>
-
         </div>
       </div>
     );
@@ -272,7 +316,7 @@ const EmployeeDashboard = () => {
           HEADER
       ====================================================== */}
 
-      <header className="bg-white border-b">
+      <header className="bg-white border-b border-gray-200">
 
         <div className="max-w-7xl mx-auto px-4 py-4">
 
@@ -305,28 +349,32 @@ const EmployeeDashboard = () => {
 
             </div>
 
-            {/* LOGOUT */}
+            {/* ACTIONS */}
 
-            <button
-              onClick={logout}
-              className="
-                flex items-center gap-2
-                px-4 py-2
-                text-gray-600
-                hover:text-gray-900
-                hover:bg-gray-100
-                rounded-lg
-                transition
-              "
-            >
+            <div className="flex items-center gap-2">
 
-              <LogOut size={18} />
+              <button
+                onClick={logout}
+                className="
+                  flex items-center gap-2
+                  px-4 py-2
+                  text-gray-600
+                  hover:text-gray-900
+                  hover:bg-gray-100
+                  rounded-lg
+                  transition
+                "
+              >
 
-              <span>
-                Logout
-              </span>
+                <LogOut size={18} />
 
-            </button>
+                <span>
+                  Logout
+                </span>
+
+              </button>
+
+            </div>
 
           </div>
 
@@ -336,7 +384,7 @@ const EmployeeDashboard = () => {
 
       {/* ======================================================
           NAVIGATION
-          
+
           Employee has:
           - Copilot
           - Calendar
@@ -348,7 +396,7 @@ const EmployeeDashboard = () => {
           - Upload
       ====================================================== */}
 
-      <div className="bg-white border-b">
+      <div className="bg-white border-b border-gray-200">
 
         <div className="max-w-7xl mx-auto px-4">
 
@@ -432,7 +480,7 @@ const EmployeeDashboard = () => {
               `}
             >
 
-              <Calendar size={18} />
+              <Clock size={18} />
 
               Leave
 
@@ -521,6 +569,9 @@ const EmployeeDashboard = () => {
                 }
                 onSendMessage={
                   handleSendMessage
+                }
+                onExecuteAction={
+                  handleExecuteAction
                 }
                 onDeleteConversation={
                   handleDeleteConversation

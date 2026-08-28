@@ -1,43 +1,120 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Lock,
   Mail,
   AlertCircle,
   Eye,
-  EyeOff
-} from 'lucide-react';
-import { toast } from 'react-hot-toast';
-import { useUser } from '../context/UserContext';
+  EyeOff,
+  Menu,
+  X,
+  ArrowRight,
+  ArrowUpRight,
+  Layers,
+} from "lucide-react";
+import { toast } from "react-hot-toast";
+import { useUser } from "../context/UserContext";
+
+const cn = (...classes) => classes.filter(Boolean).join(" ");
+
+function Logo() {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="grid h-9 w-9 place-items-center rounded-xl border border-white/15 bg-white/[0.05] text-[#8BD1FF] transition-transform duration-500 hover:scale-105 hover:border-[#7FCBFF]/30">
+        <Layers className="h-[18px] w-[18px]" />
+      </div>
+      <div className="text-[15px] font-semibold tracking-[-0.02em] text-white">
+        Employee <span className="text-[#78C5FF]">Copilot</span>
+      </div>
+    </div>
+  );
+}
+
+function Navbar() {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <header className="fixed left-0 right-0 top-0 z-50 px-3 pt-3 sm:px-5">
+      <div className="mx-auto flex h-[62px] max-w-[1400px] items-center justify-between rounded-2xl border border-white/[0.10] bg-[#03070D]/90 px-4 shadow-[0_15px_60px_rgba(0,0,0,.35)] backdrop-blur-xl sm:px-6 animate-slide-down">
+        <button type="button" onClick={() => navigate("/")}>
+          <Logo />
+        </button>
+
+        <nav className="hidden items-center gap-2 lg:flex">
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="rounded-lg px-4 py-2.5 text-[13px] font-medium text-white/55 transition-all duration-300 hover:bg-white/[0.05] hover:text-white"
+          >
+            Home
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/register")}
+            className="rounded-xl bg-[#EDF7FF] px-5 py-2.5 text-[13px] font-semibold text-[#07101A] transition-all duration-300 hover:bg-white hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(121,197,255,0.25)]"
+          >
+            Get started <ArrowUpRight className="ml-1 inline h-3.5 w-3.5" />
+          </button>
+        </nav>
+
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-white/70 lg:hidden"
+          aria-label="Toggle menu"
+        >
+          {open ? <X size={18} /> : <Menu size={18} />}
+        </button>
+      </div>
+
+      {open && (
+        <div className="mx-auto mt-2 max-w-[1400px] rounded-2xl border border-white/10 bg-[#03070D]/95 p-3 backdrop-blur-xl lg:hidden animate-fade-in">
+          <button
+            type="button"
+            onClick={() => {
+              navigate("/");
+              setOpen(false);
+            }}
+            className="flex w-full items-center justify-between border-b border-white/[0.06] px-3 py-4 text-left text-sm text-white/70"
+          >
+            Home
+            <ArrowRight className="h-4 w-4 text-white/30" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              navigate("/register");
+              setOpen(false);
+            }}
+            className="flex w-full items-center justify-between px-3 py-4 text-left text-sm text-white/70"
+          >
+            Sign up
+            <ArrowRight className="h-4 w-4 text-white/30" />
+          </button>
+        </div>
+      )}
+    </header>
+  );
+}
 
 const Login = () => {
   const [formData, setFormData] = useState({
-    email: '',
-    password: ''
+    email: "",
+    password: "",
   });
 
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const navigate = useNavigate();
-
-  /*
-   * IMPORTANT:
-   * Use the login function from UserContext.
-   *
-   * This updates:
-   * - React authentication state
-   * - localStorage user
-   * - localStorage token
-   */
   const { login } = useUser();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-
     setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -45,37 +122,25 @@ const Login = () => {
     e.preventDefault();
 
     if (!formData.email.trim()) {
-      toast.error('Please enter your email address.');
+      toast.error("Please enter your email address.");
       return;
     }
 
     if (!formData.password) {
-      toast.error('Please enter your password.');
+      toast.error("Please enter your password.");
       return;
     }
 
     setLoading(true);
 
     try {
-      /*
-       * Authenticate through UserContext.
-       *
-       * UserContext.login() will:
-       * 1. Call backend
-       * 2. Store token
-       * 3. Store user
-       * 4. Update React user state
-       */
       const response = await login(
         formData.email.trim().toLowerCase(),
         formData.password
       );
 
-      console.log('Login response:', response);
+      console.log("Login response:", response);
 
-      /*
-       * Backend authentication failed
-       */
       if (
         !response ||
         !response.success ||
@@ -83,60 +148,37 @@ const Login = () => {
         !response.token
       ) {
         throw new Error(
-          response?.error ||
-            'Login failed. Please check your credentials.'
+          response?.error || "Login failed. Please check your credentials."
         );
       }
 
-      /*
-       * Normalize role
-       */
       const role = response.user.role?.toLowerCase();
 
-      console.log('Authenticated user:', response.user);
-      console.log('User role:', role);
+      console.log("Authenticated user:", response.user);
+      console.log("User role:", role);
 
-      /*
-       * =====================================================
-       * ROLE-BASED REDIRECTION
-       * =====================================================
-       */
-
-      if (role === 'hr') {
-        toast.success('Welcome back, HR!');
-
-        navigate('/hr-dashboard', {
-          replace: true
-        });
-
+      if (role === "hr") {
+        toast.success("Welcome back, HR!");
+        navigate("/hr-dashboard", { replace: true });
         return;
       }
 
-      if (role === 'employee') {
-        toast.success('Welcome back!');
-
-        navigate('/employee-dashboard', {
-          replace: true
-        });
-
+      if (role === "employee") {
+        toast.success("Welcome back!");
+        navigate("/employee-dashboard", { replace: true });
         return;
       }
 
-      /*
-       * Invalid role
-       */
-      toast.error(
-        'Your account has an invalid role. Please contact HR.'
-      );
+      toast.error("Your account has an invalid role. Please contact HR.");
     } catch (err) {
-      console.error('Login error:', err);
+      console.error("Login error:", err);
 
       const message =
         err?.response?.data?.error ||
         err?.response?.data?.message ||
         err?.error ||
         err?.message ||
-        'Login failed. Please check your credentials and try again.';
+        "Login failed. Please check your credentials and try again.";
 
       toast.error(message);
     } finally {
@@ -144,179 +186,195 @@ const Login = () => {
     }
   };
 
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.innerHTML = `
+      @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap');
+      
+      html { scroll-behavior: smooth; background: #02060C; }
+      body {
+        margin: 0;
+        background: #02060C;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      button { -webkit-tap-highlight-color: transparent; }
+      ::selection { background: rgba(121,197,255,.22); color: white; }
+
+      @keyframes fade-in {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      @keyframes fade-up {
+        from { opacity: 0; transform: translateY(24px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes slide-down {
+        from { opacity: 0; transform: translateY(-20px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes pulse-glow {
+        0%, 100% { box-shadow: 0 0 40px rgba(99,180,255,.12); }
+        50%      { box-shadow: 0 0 70px rgba(99,180,255,.22); }
+      }
+
+      .animate-fade-in    { animation: fade-in 0.7s ease-out both; }
+      .animate-fade-up    { animation: fade-up 0.85s cubic-bezier(0.16,1,0.3,1) both; }
+      .animate-slide-down { animation: slide-down 0.65s cubic-bezier(0.16,1,0.3,1) both; }
+      .animate-card       { animation: fade-up 0.9s 0.15s cubic-bezier(0.16,1,0.3,1) both; }
+      .animate-pulse-glow { animation: pulse-glow 4s ease-in-out infinite; }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+    <div className="relative min-h-screen overflow-hidden bg-[#02060C] text-white">
+      {/* Background accents */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(91,164,255,.07),transparent_28%),radial-gradient(circle_at_20%_80%,rgba(116,91,255,.04),transparent_25%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[#07101A]/50 to-transparent" />
 
-          {/* Header */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-              <Lock className="w-8 h-8 text-blue-600" />
-            </div>
+      <Navbar />
 
-            <h1 className="text-2xl font-bold text-gray-900">
-              Welcome Back
-            </h1>
+      {/* Main */}
+      <div className="relative flex min-h-screen items-center justify-center px-4 pb-16 pt-28 sm:px-6">
+        <div className="w-full max-w-[440px] animate-card">
+          {/* Card */}
+          <div className="relative overflow-hidden rounded-2xl border border-white/[0.10] bg-[#07101A]/90 p-7 shadow-[0_25px_80px_rgba(0,0,0,.45)] backdrop-blur-xl sm:p-9 animate-pulse-glow">
+            {/* Soft glow blob */}
+            <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#65BFFF]/[0.06] blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-20 -left-12 h-40 w-40 rounded-full bg-[#A98BFF]/[0.05] blur-3xl" />
 
-            <p className="text-gray-600 mt-2">
-              Sign in to your Employee Copilot account
-            </p>
-          </div>
-
-          {/* Login Form */}
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-6"
-          >
-
-            {/* Email */}
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                Email Address
-              </label>
-
-              <div className="relative">
-                <Mail
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
-                />
-
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={formData.email}
-                  onChange={handleChange}
-                  disabled={loading}
-                  placeholder="you@company.com"
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg
-                  focus:ring-2 focus:ring-blue-500
-                  focus:border-transparent
-                  outline-none transition
-                  disabled:bg-gray-100
-                  disabled:cursor-not-allowed"
-                />
+            {/* Header */}
+            <div className="relative mb-9 text-center">
+              <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-[#7FCBFF]/15 bg-[#7FCBFF]/[0.06] text-[#8DD2FF]">
+                <Lock className="h-6 w-6" />
               </div>
+
+              <h1 className="text-[28px] font-medium tracking-[-0.04em] text-white">
+                Welcome back
+              </h1>
+              <p className="mt-2 text-[14px] leading-6 text-white/40">
+                Sign in to your Employee Copilot account
+              </p>
             </div>
 
-            {/* Password */}
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-2"
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="relative space-y-5">
+              {/* Email */}
+              <div>
+                <label
+                  htmlFor="email"
+                  className="mb-2 block font-mono text-[10px] uppercase tracking-[0.16em] text-white/35"
+                >
+                  Email address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-white/25" />
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={formData.email}
+                    onChange={handleChange}
+                    disabled={loading}
+                    placeholder="you@company.com"
+                    className="w-full rounded-xl border border-white/[0.10] bg-white/[0.03] py-3.5 pl-11 pr-4 text-[14px] text-white outline-none transition-all duration-300 placeholder:text-white/25 focus:border-[#7FCBFF]/35 focus:bg-white/[0.05] focus:ring-2 focus:ring-[#7FCBFF]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div>
+                <label
+                  htmlFor="password"
+                  className="mb-2 block font-mono text-[10px] uppercase tracking-[0.16em] text-white/35"
+                >
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-white/25" />
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    value={formData.password}
+                    onChange={handleChange}
+                    disabled={loading}
+                    placeholder="••••••••"
+                    className="w-full rounded-xl border border-white/[0.10] bg-white/[0.03] py-3.5 pl-11 pr-12 text-[14px] text-white outline-none transition-all duration-300 placeholder:text-white/25 focus:border-[#7FCBFF]/35 focus:bg-white/[0.05] focus:ring-2 focus:ring-[#7FCBFF]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    disabled={loading}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/30 transition-colors hover:text-white/60 disabled:cursor-not-allowed"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-[18px] w-[18px]" />
+                    ) : (
+                      <Eye className="h-[18px] w-[18px]" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="group mt-2 flex w-full items-center justify-center gap-2.5 rounded-xl bg-[#EAF6FF] py-3.5 text-[15px] font-semibold text-[#06101A] shadow-[0_12px_40px_rgba(110,190,255,.12)] transition-all duration-300 hover:bg-white hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(121,197,255,0.3)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
               >
-                Password
-              </label>
+                {loading ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#06101A]/30 border-t-[#06101A]" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    Sign in
+                    <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+                  </>
+                )}
+              </button>
+            </form>
 
-              <div className="relative">
-                <Lock
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
-                />
-
-                <input
-                  id="password"
-                  name="password"
-                  type={
-                    showPassword
-                      ? 'text'
-                      : 'password'
-                  }
-                  autoComplete="current-password"
-                  required
-                  value={formData.password}
-                  onChange={handleChange}
-                  disabled={loading}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg
-                  focus:ring-2 focus:ring-blue-500
-                  focus:border-transparent
-                  outline-none transition
-                  disabled:bg-gray-100
-                  disabled:cursor-not-allowed"
-                />
-
-                {/* Show / Hide Password */}
+            {/* Register link */}
+            <div className="relative mt-7 text-center">
+              <p className="text-[14px] text-white/40">
+                Don&apos;t have an account?{" "}
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowPassword(
-                      (previous) => !previous
-                    )
-                  }
+                  onClick={() => navigate("/register")}
                   disabled={loading}
-                  aria-label={
-                    showPassword
-                      ? 'Hide password'
-                      : 'Show password'
-                  }
-                  className="absolute right-3 top-1/2 -translate-y-1/2
-                  text-gray-400 hover:text-gray-600
-                  disabled:cursor-not-allowed"
+                  className="font-medium text-[#7FCBFF] transition-colors hover:text-[#A5DFFF] disabled:opacity-50"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
+                  Sign up
                 </button>
-              </div>
+              </p>
             </div>
 
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg
-              font-medium
-              hover:bg-blue-700
-              focus:ring-2 focus:ring-blue-500
-              focus:ring-offset-2
-              disabled:opacity-50
-              disabled:cursor-not-allowed
-              transition"
-            >
-              {loading
-                ? 'Signing in...'
-                : 'Sign In'}
-            </button>
-          </form>
-
-          {/* Register */}
-          <div className="mt-6 text-center">
-            <p className="text-gray-600">
-              Don't have an account?{' '}
-
-              <button
-                type="button"
-                onClick={() =>
-                  navigate('/register')
-                }
-                disabled={loading}
-                className="text-blue-600
-                hover:text-blue-700
-                font-medium
-                disabled:opacity-50"
-              >
-                Sign up
-              </button>
-            </p>
+            {/* Security note */}
+            <div className="relative mt-7 flex items-start gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#7FCBFF]/50" />
+              <p className="text-[11px] leading-5 text-white/30">
+                Your account role determines which Employee Copilot features you can access.
+              </p>
+            </div>
           </div>
 
-          {/* Security Information */}
-          <div className="mt-6 flex items-start gap-2 text-xs text-gray-500">
-            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-
-            <p>
-              Your account role determines which
-              Employee Copilot features you can access.
-            </p>
+          {/* Bottom mono tags */}
+          <div className="mt-6 flex flex-wrap justify-center gap-x-5 gap-y-1 font-mono text-[9px] uppercase tracking-[0.16em] text-white/20">
+            <span>Permission aware</span>
+            <span>Grounded answers</span>
+            <span>Secure access</span>
           </div>
-
         </div>
       </div>
     </div>
