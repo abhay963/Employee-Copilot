@@ -6,7 +6,7 @@ import {
   LogOut,
   Calendar,
   User,
-  Clock
+  Clock,
 } from 'lucide-react';
 
 import { useUser } from '../context/UserContext';
@@ -24,8 +24,7 @@ const EmployeeDashboard = () => {
   const [activeTab, setActiveTab] = useState('copilot');
 
   const [conversations, setConversations] = useState([]);
-  const [activeConversation, setActiveConversation] =
-    useState(null);
+  const [activeConversation, setActiveConversation] = useState(null);
 
   const [loading, setLoading] = useState(true);
 
@@ -46,10 +45,9 @@ const EmployeeDashboard = () => {
       setLoading(true);
 
       // Employees only load their conversations.
-      // They do NOT load or manage company documents.
+      // Employees do NOT load or manage company documents.
 
-      const response =
-        await conversationAPI.getConversations();
+      const response = await conversationAPI.getConversations();
 
       if (
         response?.success &&
@@ -82,18 +80,23 @@ const EmployeeDashboard = () => {
       ) {
         setConversations((prev) => [
           response.conversation,
-          ...prev
+          ...prev,
         ]);
 
         setActiveConversation(
           response.conversation
         );
       }
+
+      // Return response in case Copilot needs it.
+      return response;
     } catch (error) {
       console.error(
         'Error creating conversation:',
         error
       );
+
+      throw error;
     }
   };
 
@@ -118,11 +121,15 @@ const EmployeeDashboard = () => {
           response.conversation
         );
       }
+
+      return response;
     } catch (error) {
       console.error(
         'Error loading conversation:',
         error
       );
+
+      throw error;
     }
   };
 
@@ -141,14 +148,29 @@ const EmployeeDashboard = () => {
           data
         );
 
+      console.log(
+        'Employee Dashboard sendMessage response:',
+        response
+      );
+
       if (
         response?.success &&
         response?.conversation
       ) {
+        /*
+         * IMPORTANT:
+         *
+         * Update the active conversation immediately.
+         * This keeps the dashboard state synchronized.
+         */
         setActiveConversation(
           response.conversation
         );
 
+        /*
+         * Update the conversation list immediately
+         * without requiring a refresh.
+         */
         setConversations((prev) =>
           prev.map((conversation) =>
             conversation.id ===
@@ -158,6 +180,22 @@ const EmployeeDashboard = () => {
           )
         );
       }
+
+      /*
+       * IMPORTANT:
+       *
+       * Copilot.jsx awaits this callback:
+       *
+       * const response = await onSendMessage(...)
+       *
+       * Therefore EmployeeDashboard MUST return
+       * the API response.
+       *
+       * Without this return, Copilot receives
+       * undefined and cannot immediately update
+       * the AI message stream.
+       */
+      return response;
     } catch (error) {
       console.error(
         'Error sending message:',
@@ -183,6 +221,11 @@ const EmployeeDashboard = () => {
           data
         );
 
+      console.log(
+        'Employee Dashboard executeAction response:',
+        response
+      );
+
       if (
         response?.success &&
         response?.conversation
@@ -200,6 +243,12 @@ const EmployeeDashboard = () => {
           )
         );
       }
+
+      /*
+       * Copilot also awaits this callback,
+       * so return the response.
+       */
+      return response;
     } catch (error) {
       console.error(
         'Error executing action:',
@@ -240,6 +289,8 @@ const EmployeeDashboard = () => {
         'Error deleting conversation:',
         error
       );
+
+      throw error;
     }
   };
 
@@ -279,11 +330,15 @@ const EmployeeDashboard = () => {
           );
         }
       }
+
+      return response;
     } catch (error) {
       console.error(
         'Error editing conversation:',
         error
       );
+
+      throw error;
     }
   };
 
@@ -317,9 +372,7 @@ const EmployeeDashboard = () => {
       ====================================================== */}
 
       <header className="bg-white border-b border-gray-200">
-
         <div className="max-w-7xl mx-auto px-4 py-4">
-
           <div className="flex items-center justify-between">
 
             {/* BRAND */}
@@ -327,16 +380,13 @@ const EmployeeDashboard = () => {
             <div className="flex items-center gap-3">
 
               <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-
                 <LayoutDashboard
                   size={22}
                   className="text-blue-600"
                 />
-
               </div>
 
               <div>
-
                 <h1 className="text-xl font-bold text-gray-900">
                   Employee Copilot
                 </h1>
@@ -344,7 +394,6 @@ const EmployeeDashboard = () => {
                 <p className="text-sm text-gray-600">
                   Welcome, {user?.name || 'Employee'}
                 </p>
-
               </div>
 
             </div>
@@ -365,21 +414,17 @@ const EmployeeDashboard = () => {
                   transition
                 "
               >
-
                 <LogOut size={18} />
 
                 <span>
                   Logout
                 </span>
-
               </button>
 
             </div>
 
           </div>
-
         </div>
-
       </header>
 
       {/* ======================================================
@@ -423,11 +468,9 @@ const EmployeeDashboard = () => {
                 }
               `}
             >
-
               <MessageSquare size={18} />
 
               Copilot
-
             </button>
 
             {/* =================================================
@@ -451,11 +494,9 @@ const EmployeeDashboard = () => {
                 }
               `}
             >
-
               <Calendar size={18} />
 
               Calendar
-
             </button>
 
             {/* =================================================
@@ -479,11 +520,9 @@ const EmployeeDashboard = () => {
                 }
               `}
             >
-
               <Clock size={18} />
 
               Leave
-
             </button>
 
             {/* =================================================
@@ -507,11 +546,9 @@ const EmployeeDashboard = () => {
                 }
               `}
             >
-
               <User size={18} />
 
               Profile
-
             </button>
 
           </div>

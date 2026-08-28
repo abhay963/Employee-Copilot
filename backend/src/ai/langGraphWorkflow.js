@@ -251,10 +251,6 @@ function getCalendarDateRange(userMessage) {
   const today =
     new Date();
 
-  // ----------------------------------------------------------
-  // TODAY
-  // ----------------------------------------------------------
-
   if (
     message.includes('today') ||
     message.includes('meeting today') ||
@@ -267,10 +263,6 @@ function getCalendarDateRange(userMessage) {
       label: 'today',
     };
   }
-
-  // ----------------------------------------------------------
-  // TOMORROW
-  // ----------------------------------------------------------
 
   if (
     message.includes('tomorrow')
@@ -292,10 +284,6 @@ function getCalendarDateRange(userMessage) {
       label: 'tomorrow',
     };
   }
-
-  // ----------------------------------------------------------
-  // THIS WEEK
-  // ----------------------------------------------------------
 
   if (
     message.includes('this week') ||
@@ -332,10 +320,6 @@ function getCalendarDateRange(userMessage) {
     };
   }
 
-  // ----------------------------------------------------------
-  // NEXT WEEK
-  // ----------------------------------------------------------
-
   if (
     message.includes('next week')
   ) {
@@ -371,10 +355,6 @@ function getCalendarDateRange(userMessage) {
     };
   }
 
-  // ----------------------------------------------------------
-  // UPCOMING
-  // ----------------------------------------------------------
-
   if (
     message.includes('upcoming') ||
     message.includes('next meetings') ||
@@ -399,10 +379,6 @@ function getCalendarDateRange(userMessage) {
     };
   }
 
-  // ----------------------------------------------------------
-  // DEFAULT = TODAY
-  // ----------------------------------------------------------
-
   return {
     startDate:
       getStartOfDay(today),
@@ -422,9 +398,6 @@ function formatCalendarEvent(event) {
   const title =
     event.summary ||
     'Untitled event';
-
-  // Google Calendar can have dateTime
-  // or date for all-day events.
 
   if (
     event.start?.date
@@ -565,7 +538,6 @@ async function queryCalendarEvents(
     const userMessage =
       lastMessage.content;
 
-    // Determine date range.
     const {
       startDate,
       endDate,
@@ -581,7 +553,6 @@ async function queryCalendarEvents(
       endDate
     );
 
-    // Get events from Google Calendar.
     const events =
       await googleCalendarService.getEvents(
         userId,
@@ -589,7 +560,6 @@ async function queryCalendarEvents(
         endDate
       );
 
-    // Ignore cancelled events.
     const activeEvents =
       events.filter(
         (event) =>
@@ -600,10 +570,6 @@ async function queryCalendarEvents(
       activeEvents.map(
         formatCalendarEvent
       );
-
-    // --------------------------------------------------------
-    // NO EVENTS
-    // --------------------------------------------------------
 
     if (
       formattedEvents.length === 0
@@ -645,6 +611,7 @@ async function queryCalendarEvents(
           ...state.context,
 
           calendarEvents: [],
+
           calendarRange: {
             startDate,
             endDate,
@@ -653,10 +620,6 @@ async function queryCalendarEvents(
         },
       };
     }
-
-    // --------------------------------------------------------
-    // EVENTS FOUND
-    // --------------------------------------------------------
 
     const eventLines =
       formattedEvents.map(
@@ -832,7 +795,10 @@ async function validateLeaveRequest(
     } =
       pendingAction;
 
-    // Check leave balance.
+    // --------------------------------------------------------
+    // CHECK LEAVE BALANCE
+    // --------------------------------------------------------
+
     const hasBalance =
       await LeaveBalance.checkAvailability(
         state.userId,
@@ -854,7 +820,10 @@ async function validateLeaveRequest(
       };
     }
 
-    // Check overlapping leave.
+    // --------------------------------------------------------
+    // CHECK OVERLAPPING LEAVE
+    // --------------------------------------------------------
+
     const overlapping =
       await LeaveRequest.checkOverlappingLeave(
         state.userId,
@@ -878,7 +847,10 @@ async function validateLeaveRequest(
       };
     }
 
-    // Check Google Calendar conflicts.
+    // --------------------------------------------------------
+    // CHECK GOOGLE CALENDAR CONFLICTS
+    // --------------------------------------------------------
+
     let calendarConflicts =
       null;
 
@@ -1003,6 +975,64 @@ export async function submitLeaveRequest(
     } =
       pendingAction;
 
+    // --------------------------------------------------------
+    // REVALIDATE BEFORE SUBMISSION
+    // --------------------------------------------------------
+
+    const hasBalance =
+      await LeaveBalance.checkAvailability(
+        userId,
+        leave_type,
+        number_of_days
+      );
+
+    if (!hasBalance) {
+      return {
+        ...state,
+
+        toolResult:
+          `Insufficient ${leave_type} leave balance. The request was not submitted.`,
+
+        currentTool: null,
+
+        requiresConfirmation:
+          false,
+
+        pendingAction:
+          null,
+      };
+    }
+
+    const overlapping =
+      await LeaveRequest.checkOverlappingLeave(
+        userId,
+        start_date,
+        end_date
+      );
+
+    if (
+      overlapping.length > 0
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          'This leave request overlaps with an existing leave request. The request was not submitted.',
+
+        currentTool: null,
+
+        requiresConfirmation:
+          false,
+
+        pendingAction:
+          null,
+      };
+    }
+
+    // --------------------------------------------------------
+    // CREATE DATABASE RECORD
+    // --------------------------------------------------------
+
     const leaveRequest =
       await LeaveRequest.create({
         user_id: userId,
@@ -1022,6 +1052,7 @@ export async function submitLeaveRequest(
         `Type: ${leave_type}\n` +
         `Dates: ${start_date} to ${end_date}\n` +
         `Days: ${number_of_days}\n` +
+        `Reason: ${reason || 'Not specified'}\n` +
         `Status: Pending HR approval`,
 
       currentTool: null,
@@ -1029,7 +1060,8 @@ export async function submitLeaveRequest(
       requiresConfirmation:
         false,
 
-      pendingAction: null,
+      pendingAction:
+        null,
     };
   } catch (error) {
     console.error(
@@ -1154,16 +1186,10 @@ Examples:
 "Do I have a meeting today?"
 => calendar_events
 
-"What meetings do I have tomorrow?"
-=> calendar_events
-
 "What's on my calendar?"
 => calendar_events
 
 "Show my upcoming meetings"
-=> calendar_events
-
-"Do I have anything scheduled this week?"
 => calendar_events
 
 "Schedule a meeting tomorrow at 3 PM"
@@ -1293,7 +1319,7 @@ async function extractCalendarEventDetails(
 Extract calendar event creation details from the user's message.
 
 If information is missing, return null for that field.
-For date/time, extract specific times if mentioned (e.g., "3 PM", "2:30 PM").
+For date/time, extract specific times if mentioned.
 For dates, convert relative dates like "tomorrow", "next Monday" to actual dates.
 
 Respond ONLY with valid JSON:
@@ -1304,9 +1330,9 @@ Respond ONLY with valid JSON:
   "start_time": "HH:MM" in 24-hour format or null,
   "end_time": "HH:MM" in 24-hour format or null,
   "duration_minutes": estimated duration in minutes or null,
-  "description": "meeting description or null,
+  "description": "meeting description or null",
   "attendees": ["email@example.com"] or null,
-  "location": "location or null
+  "location": "location or null"
 }
 
 User message:
@@ -1354,60 +1380,156 @@ function parseRelativeDate(
 ) {
   const message =
     userMessage.toLowerCase();
-  const today = new Date();
 
-  if (message.includes('today')) {
-    return today.toISOString().split('T')[0];
+  const today =
+    new Date();
+
+  if (
+    message.includes('today')
+  ) {
+    return today
+      .toISOString()
+      .split('T')[0];
   }
 
-  if (message.includes('tomorrow')) {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+  if (
+    message.includes('tomorrow')
+  ) {
+    const tomorrow =
+      new Date(today);
+
+    tomorrow.setDate(
+      tomorrow.getDate() + 1
+    );
+
+    return tomorrow
+      .toISOString()
+      .split('T')[0];
   }
 
-  if (message.includes('next monday')) {
-    const nextMonday = new Date(today);
-    const day = nextMonday.getDay();
-    const daysUntilMonday = day === 0 ? 1 : (8 - day) % 7;
-    nextMonday.setDate(nextMonday.getDate() + daysUntilMonday);
-    return nextMonday.toISOString().split('T')[0];
+  if (
+    message.includes('next monday')
+  ) {
+    const nextMonday =
+      new Date(today);
+
+    const day =
+      nextMonday.getDay();
+
+    const daysUntilMonday =
+      day === 0
+        ? 1
+        : (8 - day) % 7;
+
+    nextMonday.setDate(
+      nextMonday.getDate() +
+        daysUntilMonday
+    );
+
+    return nextMonday
+      .toISOString()
+      .split('T')[0];
   }
 
-  if (message.includes('next tuesday')) {
-    const nextTuesday = new Date(today);
-    const day = nextTuesday.getDay();
-    const daysUntilTuesday = day === 0 ? 2 : (9 - day) % 7;
-    nextTuesday.setDate(nextTuesday.getDate() + daysUntilTuesday);
-    return nextTuesday.toISOString().split('T')[0];
+  if (
+    message.includes('next tuesday')
+  ) {
+    const nextTuesday =
+      new Date(today);
+
+    const day =
+      nextTuesday.getDay();
+
+    const daysUntilTuesday =
+      day === 0
+        ? 2
+        : (9 - day) % 7;
+
+    nextTuesday.setDate(
+      nextTuesday.getDate() +
+        daysUntilTuesday
+    );
+
+    return nextTuesday
+      .toISOString()
+      .split('T')[0];
   }
 
-  if (message.includes('next wednesday')) {
-    const nextWednesday = new Date(today);
-    const day = nextWednesday.getDay();
-    const daysUntilWednesday = day === 0 ? 3 : (10 - day) % 7;
-    nextWednesday.setDate(nextWednesday.getDate() + daysUntilWednesday);
-    return nextWednesday.toISOString().split('T')[0];
+  if (
+    message.includes('next wednesday')
+  ) {
+    const nextWednesday =
+      new Date(today);
+
+    const day =
+      nextWednesday.getDay();
+
+    const daysUntilWednesday =
+      day === 0
+        ? 3
+        : (10 - day) % 7;
+
+    nextWednesday.setDate(
+      nextWednesday.getDate() +
+        daysUntilWednesday
+    );
+
+    return nextWednesday
+      .toISOString()
+      .split('T')[0];
   }
 
-  if (message.includes('next thursday')) {
-    const nextThursday = new Date(today);
-    const day = nextThursday.getDay();
-    const daysUntilThursday = day === 0 ? 4 : (11 - day) % 7;
-    nextThursday.setDate(nextThursday.getDate() + daysUntilThursday);
-    return nextThursday.toISOString().split('T')[0];
+  if (
+    message.includes('next thursday')
+  ) {
+    const nextThursday =
+      new Date(today);
+
+    const day =
+      nextThursday.getDay();
+
+    const daysUntilThursday =
+      day === 0
+        ? 4
+        : (11 - day) % 7;
+
+    nextThursday.setDate(
+      nextThursday.getDate() +
+        daysUntilThursday
+    );
+
+    return nextThursday
+      .toISOString()
+      .split('T')[0];
   }
 
-  if (message.includes('next friday')) {
-    const nextFriday = new Date(today);
-    const day = nextFriday.getDay();
-    const daysUntilFriday = day === 0 ? 5 : (12 - day) % 7;
-    nextFriday.setDate(nextFriday.getDate() + daysUntilFriday);
-    return nextFriday.toISOString().split('T')[0];
+  if (
+    message.includes('next friday')
+  ) {
+    const nextFriday =
+      new Date(today);
+
+    const day =
+      nextFriday.getDay();
+
+    const daysUntilFriday =
+      day === 0
+        ? 5
+        : (12 - day) % 7;
+
+    nextFriday.setDate(
+      nextFriday.getDate() +
+        daysUntilFriday
+    );
+
+    return nextFriday
+      .toISOString()
+      .split('T')[0];
   }
 
-  // Default to today if no relative date found
-  return today.toISOString().split('T')[0];
+  return today
+    .toISOString()
+    .split('T')[0];
 }
 
 // ============================================================
@@ -1417,36 +1539,77 @@ function parseRelativeDate(
 function parseTime(
   timeString
 ) {
-  if (!timeString) return null;
-
-  const timeMatch = timeString.match(/(\d{1,2}):(\d{2})\s*(am|pm)?/i);
-  if (timeMatch) {
-    let hours = parseInt(timeMatch[1]);
-    const minutes = parseInt(timeMatch[2]);
-    const meridiem = timeMatch[3]?.toLowerCase();
-
-    if (meridiem === 'pm' && hours !== 12) {
-      hours += 12;
-    } else if (meridiem === 'am' && hours === 12) {
-      hours = 0;
-    }
-
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  if (!timeString) {
+    return null;
   }
 
-  // Try parsing formats like "3 PM", "3:30 PM"
-  const simpleMatch = timeString.match(/(\d{1,2})\s*(am|pm)/i);
-  if (simpleMatch) {
-    let hours = parseInt(simpleMatch[1]);
-    const meridiem = simpleMatch[2].toLowerCase();
+  const timeMatch =
+    timeString.match(
+      /(\d{1,2}):(\d{2})\s*(am|pm)?/i
+    );
 
-    if (meridiem === 'pm' && hours !== 12) {
+  if (timeMatch) {
+    let hours =
+      parseInt(
+        timeMatch[1]
+      );
+
+    const minutes =
+      parseInt(
+        timeMatch[2]
+      );
+
+    const meridiem =
+      timeMatch[3]?.toLowerCase();
+
+    if (
+      meridiem === 'pm' &&
+      hours !== 12
+    ) {
       hours += 12;
-    } else if (meridiem === 'am' && hours === 12) {
+    } else if (
+      meridiem === 'am' &&
+      hours === 12
+    ) {
       hours = 0;
     }
 
-    return `${hours.toString().padStart(2, '0')}:00`;
+    return `${hours
+      .toString()
+      .padStart(2, '0')}:${minutes
+      .toString()
+      .padStart(2, '0')}`;
+  }
+
+  const simpleMatch =
+    timeString.match(
+      /(\d{1,2})\s*(am|pm)/i
+    );
+
+  if (simpleMatch) {
+    let hours =
+      parseInt(
+        simpleMatch[1]
+      );
+
+    const meridiem =
+      simpleMatch[2].toLowerCase();
+
+    if (
+      meridiem === 'pm' &&
+      hours !== 12
+    ) {
+      hours += 12;
+    } else if (
+      meridiem === 'am' &&
+      hours === 12
+    ) {
+      hours = 0;
+    }
+
+    return `${hours
+      .toString()
+      .padStart(2, '0')}:00`;
   }
 
   return null;
@@ -1488,7 +1651,6 @@ async function validateCalendarEvent(
     } =
       pendingAction;
 
-    // Check required fields
     if (!title) {
       return {
         ...state,
@@ -1537,21 +1699,52 @@ async function validateCalendarEvent(
       };
     }
 
-    // Calculate end time if not provided
-    let finalEndTime = end_time;
-    if (!finalEndTime && duration_minutes) {
-      const startDateTime = new Date(`${date}T${start_time}:00`);
-      const endDateTime = new Date(startDateTime.getTime() + duration_minutes * 60000);
-      finalEndTime = endDateTime.toTimeString().slice(0, 5);
-    } else if (!finalEndTime && !duration_minutes) {
-      // Default to 1 hour
-      const startDateTime = new Date(`${date}T${start_time}:00`);
-      const endDateTime = new Date(startDateTime.getTime() + 60 * 60000);
-      finalEndTime = endDateTime.toTimeString().slice(0, 5);
+    let finalEndTime =
+      end_time;
+
+    if (
+      !finalEndTime &&
+      duration_minutes
+    ) {
+      const startDateTime =
+        new Date(
+          `${date}T${start_time}:00`
+        );
+
+      const endDateTime =
+        new Date(
+          startDateTime.getTime() +
+            duration_minutes *
+              60000
+        );
+
+      finalEndTime =
+        endDateTime
+          .toTimeString()
+          .slice(0, 5);
+    } else if (
+      !finalEndTime &&
+      !duration_minutes
+    ) {
+      const startDateTime =
+        new Date(
+          `${date}T${start_time}:00`
+        );
+
+      const endDateTime =
+        new Date(
+          startDateTime.getTime() +
+            60 * 60000
+        );
+
+      finalEndTime =
+        endDateTime
+          .toTimeString()
+          .slice(0, 5);
     }
 
-    // Check for calendar conflicts
-    let calendarConflicts = null;
+    let calendarConflicts =
+      null;
 
     try {
       const conflictCheck =
@@ -1590,7 +1783,8 @@ async function validateCalendarEvent(
           requiresConfirmation:
             true,
 
-          hasConflicts: true,
+          hasConflicts:
+            true,
 
           context: {
             ...state.context,
@@ -1608,8 +1802,8 @@ async function validateCalendarEvent(
       );
     }
 
-    // Update pending action with calculated end time
-    state.pendingAction.end_time = finalEndTime;
+    state.pendingAction.end_time =
+      finalEndTime;
 
     return {
       ...state,
@@ -1622,7 +1816,8 @@ async function validateCalendarEvent(
       requiresConfirmation:
         true,
 
-      hasConflicts: false,
+      hasConflicts:
+        false,
     };
   } catch (error) {
     console.error(
@@ -1682,28 +1877,40 @@ export async function createCalendarEvent(
     } =
       pendingAction;
 
-    // Construct Google Calendar event object
     const eventData = {
       summary: title,
+
       start: {
-        dateTime: `${date}T${start_time}:00`,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        dateTime:
+          `${date}T${start_time}:00`,
+
+        timeZone:
+          Intl.DateTimeFormat()
+            .resolvedOptions()
+            .timeZone,
       },
+
       end: {
-        dateTime: `${date}T${end_time}:00`,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        dateTime:
+          `${date}T${end_time}:00`,
+
+        timeZone:
+          Intl.DateTimeFormat()
+            .resolvedOptions()
+            .timeZone,
       },
     };
 
     if (description) {
-      eventData.description = description;
+      eventData.description =
+        description;
     }
 
     if (location) {
-      eventData.location = location;
+      eventData.location =
+        location;
     }
 
-    // Create the event
     const event =
       await googleCalendarService.createEvent(
         userId,
@@ -1714,19 +1921,23 @@ export async function createCalendarEvent(
       ...state,
 
       toolResult:
-        `Done — I scheduled "${title}" for ${new Date(date).toLocaleDateString()} from ${start_time} to ${end_time}.`,
+        `Done — I scheduled "${title}" for ${new Date(
+          date
+        ).toLocaleDateString()} from ${start_time} to ${end_time}.`,
 
       currentTool: null,
 
       requiresConfirmation:
         false,
 
-      pendingAction: null,
+      pendingAction:
+        null,
 
       context: {
         ...state.context,
 
-        createdEvent: event,
+        createdEvent:
+          event,
       },
     };
   } catch (error) {
@@ -1737,9 +1948,9 @@ export async function createCalendarEvent(
 
     if (
       error.code ===
-      'GOOGLE_NOT_CONNECTED' ||
+        'GOOGLE_NOT_CONNECTED' ||
       error.message ===
-      'GOOGLE_NOT_CONNECTED'
+        'GOOGLE_NOT_CONNECTED'
     ) {
       return {
         ...state,
@@ -1750,7 +1961,7 @@ export async function createCalendarEvent(
         currentTool: null,
 
         requiresConfirmation:
-        false,
+          false,
       };
     }
 
@@ -1777,7 +1988,8 @@ export async function runLangGraphWorkflow(
   userId,
   userRole,
   actionId = null,
-  isConfirmed = false
+  isConfirmed = false,
+  actionData = null
 ) {
   try {
     // --------------------------------------------------------
@@ -1797,7 +2009,8 @@ export async function runLangGraphWorkflow(
       messages: [
         {
           role: 'user',
-          content: sanitizedInput,
+          content:
+            sanitizedInput,
         },
       ],
 
@@ -1805,14 +2018,26 @@ export async function runLangGraphWorkflow(
 
       userRole,
 
-      currentTool: null,
+      currentTool:
+        null,
 
-      toolResult: null,
+      toolResult:
+        null,
 
       requiresConfirmation:
         false,
 
-      pendingAction: null,
+      /*
+       * IMPORTANT:
+       *
+       * When executing a confirmed action, actionData contains
+       * the original pending action.
+       *
+       * This prevents the second request ("yes") from going
+       * through RAG.
+       */
+      pendingAction:
+        actionData || null,
 
       context: {},
     };
@@ -1821,24 +2046,75 @@ export async function runLangGraphWorkflow(
     // 3. HANDLE CONFIRMED ACTION EXECUTION
     // --------------------------------------------------------
 
-    if (isConfirmed && actionId) {
-      // Directly execute the confirmed action
-      if (actionId.startsWith('calendar_create_')) {
-        state = await createCalendarEvent(state);
-      } else if (actionId.startsWith('leave_request_')) {
-        state = await submitLeaveRequest(state);
+    if (
+      isConfirmed &&
+      actionId
+    ) {
+      console.log(
+        'Executing confirmed action:',
+        {
+          actionId,
+          actionData,
+        }
+      );
+
+      /*
+       * IMPORTANT:
+       *
+       * Do NOT classify the confirmation message.
+       * Do NOT send "yes" to RAG.
+       *
+       * Directly execute the previously validated action.
+       */
+
+      if (
+        actionId.startsWith(
+          'calendar_create_'
+        )
+      ) {
+        state =
+          await createCalendarEvent(
+            state
+          );
+      } else if (
+        actionId.startsWith(
+          'leave_request_'
+        )
+      ) {
+        state =
+          await submitLeaveRequest(
+            state
+          );
       } else {
-        state.toolResult = 'I apologize, but I could not recognize the action to execute.';
+        state.toolResult =
+          'I apologize, but I could not recognize the action to execute.';
       }
 
-      const validatedOutput = validateAIOutput(state.toolResult);
+      const validatedOutput =
+        validateAIOutput(
+          state.toolResult
+        );
 
       return {
-        response: validatedOutput,
-        sources: state.context?.ragResult?.sources || [],
-        requiresConfirmation: false,
-        pendingAction: null,
-        error: null,
+        response:
+          validatedOutput,
+
+        sources:
+          state.context
+            ?.ragResult
+            ?.sources || [],
+
+        requiresConfirmation:
+          false,
+
+        pendingAction:
+          null,
+
+        actionMetadata:
+          null,
+
+        error:
+          null,
       };
     }
 
@@ -1861,9 +2137,10 @@ export async function runLangGraphWorkflow(
     // --------------------------------------------------------
 
     switch (intent) {
-      // ------------------------------------------------------
+
+      // ======================================================
       // LEAVE BALANCE
-      // ------------------------------------------------------
+      // ======================================================
 
       case 'leave_balance':
         state =
@@ -1872,9 +2149,9 @@ export async function runLangGraphWorkflow(
           );
         break;
 
-      // ------------------------------------------------------
+      // ======================================================
       // LEAVE POLICY
-      // ------------------------------------------------------
+      // ======================================================
 
       case 'leave_policy':
         state =
@@ -1883,9 +2160,9 @@ export async function runLangGraphWorkflow(
           );
         break;
 
-      // ------------------------------------------------------
-      // CALENDAR EVENTS (READ-ONLY)
-      // ------------------------------------------------------
+      // ======================================================
+      // CALENDAR EVENTS
+      // ======================================================
 
       case 'calendar_events':
         state =
@@ -1894,17 +2171,17 @@ export async function runLangGraphWorkflow(
           );
         break;
 
-      // ------------------------------------------------------
-      // CALENDAR CREATE (ACTION WITH CONFIRMATION)
-      // ------------------------------------------------------
+      // ======================================================
+      // CALENDAR CREATE
+      // ======================================================
 
       case 'calendar_create': {
+
         const eventDetails =
           await extractCalendarEventDetails(
             sanitizedInput
           );
 
-        // Parse relative dates if needed
         if (
           eventDetails &&
           !eventDetails.date
@@ -1915,7 +2192,6 @@ export async function runLangGraphWorkflow(
             );
         }
 
-        // Parse times if needed
         if (
           eventDetails &&
           eventDetails.start_time
@@ -1950,9 +2226,14 @@ export async function runLangGraphWorkflow(
           state.currentTool =
             null;
         } else {
+
           state.pendingAction = {
-            type: 'calendar_create',
-            actionId: `calendar_create_${Date.now()}`,
+            type:
+              'calendar_create',
+
+            actionId:
+              `calendar_create_${Date.now()}`,
+
             ...eventDetails,
           };
 
@@ -1980,9 +2261,14 @@ export async function runLangGraphWorkflow(
               ).toLocaleDateString(
                 'en-US',
                 {
-                  weekday: 'long',
-                  month: 'short',
-                  day: 'numeric',
+                  weekday:
+                    'long',
+
+                  month:
+                    'short',
+
+                  day:
+                    'numeric',
                 }
               );
 
@@ -2020,7 +2306,6 @@ export async function runLangGraphWorkflow(
           } else if (
             state.missingField
           ) {
-            // Missing field already handled in validation
             state.toolResult +=
               `\n\nPlease provide the ${state.missingField} and I'll help you schedule the meeting.`;
           }
@@ -2029,11 +2314,12 @@ export async function runLangGraphWorkflow(
         break;
       }
 
-      // ------------------------------------------------------
+      // ======================================================
       // LEAVE REQUEST
-      // ------------------------------------------------------
+      // ======================================================
 
       case 'leave_request': {
+
         const leaveDetails =
           await extractLeaveDetails(
             sanitizedInput
@@ -2045,6 +2331,7 @@ export async function runLangGraphWorkflow(
           !leaveDetails.start_date ||
           !leaveDetails.end_date
         ) {
+
           state.toolResult =
             `To request leave, please provide:
 
@@ -2058,17 +2345,42 @@ Example:
 
           state.currentTool =
             null;
+
         } else {
+
           const numberOfDays =
             await LeaveRequest.calculateDays(
               leaveDetails.start_date,
               leaveDetails.end_date
             );
 
+          /*
+           * Create the pending action.
+           *
+           * THIS DATA MUST BE SENT TO THE FRONTEND.
+           * The frontend will later send it back through
+           * executeAction().
+           */
+
           state.pendingAction = {
-            type: 'leave_request',
-            actionId: `leave_request_${Date.now()}`,
-            ...leaveDetails,
+            type:
+              'leave_request',
+
+            actionId:
+              `leave_request_${Date.now()}`,
+
+            leave_type:
+              leaveDetails.leave_type,
+
+            start_date:
+              leaveDetails.start_date,
+
+            end_date:
+              leaveDetails.end_date,
+
+            reason:
+              leaveDetails.reason ||
+              null,
 
             number_of_days:
               numberOfDays,
@@ -2082,25 +2394,26 @@ Example:
           if (
             state.requiresConfirmation
           ) {
-            state.toolResult +=
-              `\n\nPlease confirm: Do you want to submit this leave request?\n` +
+
+            state.toolResult =
+              `Leave request validation passed. Ready to submit.\n\n` +
+              `Please review the leave request and confirm it below.\n\n` +
               `- Type: ${leaveDetails.leave_type}\n` +
               `- Dates: ${leaveDetails.start_date} to ${leaveDetails.end_date}\n` +
               `- Days: ${numberOfDays}\n` +
               `- Reason: ${
                 leaveDetails.reason ||
                 'Not specified'
-              }\n\n` +
-              `Reply "yes" to confirm or "no" to cancel.`;
+              }`;
           }
         }
 
         break;
       }
 
-      // ------------------------------------------------------
+      // ======================================================
       // GENERAL
-      // ------------------------------------------------------
+      // ======================================================
 
       case 'general':
       default:
@@ -2108,6 +2421,7 @@ Example:
           await generalRAGQuery(
             state
           );
+
         break;
     }
 
@@ -2121,7 +2435,7 @@ Example:
       );
 
     // --------------------------------------------------------
-    // 7. RETURN RESULT WITH STRUCTURED METADATA
+    // 7. RETURN RESULT
     // --------------------------------------------------------
 
     return {
@@ -2139,19 +2453,120 @@ Example:
       pendingAction:
         state.pendingAction,
 
-      actionMetadata: state.requiresConfirmation ? {
-        actionId: state.pendingAction?.actionId,
-        actionType: state.pendingAction?.type,
-        title: state.pendingAction?.title || state.pendingAction?.leave_type,
-        date: state.pendingAction?.date || state.pendingAction?.start_date,
-        time: state.pendingAction?.start_time,
-        hasConflicts: state.hasConflicts || false,
-        conflictDetails: state.context?.calendarConflicts || null,
-      } : null,
+      actionMetadata:
+        state.requiresConfirmation
+          ? {
+              actionId:
+                state.pendingAction
+                  ?.actionId,
 
-      error: null,
+              actionType:
+                state.pendingAction
+                  ?.type,
+
+              /*
+               * IMPORTANT:
+               *
+               * Send complete action data to frontend.
+               */
+              actionData:
+                state.pendingAction
+                  ? {
+                      type:
+                        state.pendingAction
+                          .type,
+
+                      leave_type:
+                        state.pendingAction
+                          .leave_type ||
+                        null,
+
+                      start_date:
+                        state.pendingAction
+                          .start_date ||
+                        null,
+
+                      end_date:
+                        state.pendingAction
+                          .end_date ||
+                        null,
+
+                      number_of_days:
+                        state.pendingAction
+                          .number_of_days ||
+                        null,
+
+                      reason:
+                        state.pendingAction
+                          .reason ||
+                        null,
+
+                      title:
+                        state.pendingAction
+                          .title ||
+                        null,
+
+                      date:
+                        state.pendingAction
+                          .date ||
+                        null,
+
+                      start_time:
+                        state.pendingAction
+                          .start_time ||
+                        null,
+
+                      end_time:
+                        state.pendingAction
+                          .end_time ||
+                        null,
+
+                      description:
+                        state.pendingAction
+                          .description ||
+                        null,
+
+                      location:
+                        state.pendingAction
+                          .location ||
+                        null,
+                    }
+                  : null,
+
+              title:
+                state.pendingAction
+                  ?.title ||
+                state.pendingAction
+                  ?.leave_type,
+
+              date:
+                state.pendingAction
+                  ?.date ||
+                state.pendingAction
+                  ?.start_date,
+
+              time:
+                state.pendingAction
+                  ?.start_time ||
+                null,
+
+              hasConflicts:
+                state.hasConflicts ||
+                false,
+
+              conflictDetails:
+                state.context
+                  ?.calendarConflicts ||
+                null,
+            }
+          : null,
+
+      error:
+        null,
     };
+
   } catch (error) {
+
     console.error(
       'Error in LangGraph workflow:',
       error
@@ -2166,9 +2581,11 @@ Example:
       requiresConfirmation:
         false,
 
-      pendingAction: null,
+      pendingAction:
+        null,
 
-      actionMetadata: null,
+      actionMetadata:
+        null,
 
       error:
         error.message,

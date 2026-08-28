@@ -1737,26 +1737,52 @@ const Copilot = ({
       // ACTION
       // ======================================================
 
+      const responseData =
+        response?.data || response;
+
       const actionMetadata =
-        response
-          ?.actionMetadata ||
-        response?.data
-          ?.actionMetadata;
+        responseData?.actionMetadata;
+
+      const requiresConfirmation =
+        Boolean(
+          responseData?.requiresConfirmation
+        );
 
       if (
         actionMetadata &&
-        response
-          ?.requiresConfirmation
+        requiresConfirmation
       ) {
+        /*
+         * Normalize the action before storing it.
+         *
+         * Backend returns:
+         * {
+         *   actionId,
+         *   actionType,
+         *   actionData: { ...actual action fields }
+         * }
+         *
+         * Action execution needs the actual action fields
+         * (type, leave_type, dates, etc.), not a nested
+         * actionMetadata object.
+         */
+        const actionData =
+          actionMetadata.actionData ||
+          actionMetadata;
+
         setPendingAction({
-          ...actionMetadata,
+          ...actionData,
+          actionId:
+            actionMetadata.actionId ||
+            actionData.actionId,
+          actionType:
+            actionMetadata.actionType ||
+            actionData.type,
           originalMessage:
             currentQuestion,
         });
       } else {
-        setPendingAction(
-          null
-        );
+        setPendingAction(null);
       }
 
       // ======================================================
@@ -1915,6 +1941,15 @@ const Copilot = ({
       );
 
       try {
+        /*
+         * Send the original validated action data back to
+         * the backend. Never send the confirmation text
+         * ("yes", "ok", etc.) through the normal chat flow.
+         */
+        const actionData =
+          pendingAction.actionData ||
+          pendingAction;
+
         const response =
           await onExecuteAction(
             conversation.id,
@@ -1922,7 +1957,7 @@ const Copilot = ({
               actionId:
                 pendingAction.actionId,
               actionData: {
-                ...pendingAction,
+                ...actionData,
                 originalMessage:
                   pendingAction.originalMessage,
               },
