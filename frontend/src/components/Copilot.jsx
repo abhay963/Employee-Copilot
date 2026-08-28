@@ -1,5 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+
+import {
+  motion,
+  AnimatePresence,
+} from 'framer-motion';
+
 import {
   Send,
   Loader2,
@@ -10,10 +20,17 @@ import {
   Copy,
   Check,
 } from 'lucide-react';
+
 import { FiCommand } from 'react-icons/fi';
+
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
 import ActionCard from './ActionCard';
+
+// ============================================================
+// HELPERS
+// ============================================================
 
 const generateTempId = () => {
   return `temp-${Date.now()}-${Math.random()
@@ -21,7 +38,11 @@ const generateTempId = () => {
     .slice(2, 9)}`;
 };
 
-const ChatMessage = ({ message }) => {
+// ============================================================
+// CHAT MESSAGE
+// ============================================================
+
+const ChatMessage = ({ message, isTyping = false }) => {
   const isUser = message.role === 'user';
 
   const [copied, setCopied] = useState(false);
@@ -31,13 +52,17 @@ const ChatMessage = ({ message }) => {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(content);
+
       setCopied(true);
 
       setTimeout(() => {
         setCopied(false);
       }, 1500);
     } catch (error) {
-      console.error('Failed to copy message:', error);
+      console.error(
+        'Failed to copy message:',
+        error
+      );
     }
   };
 
@@ -46,8 +71,8 @@ const ChatMessage = ({ message }) => {
       layout
       initial={{
         opacity: 0,
-        y: 12,
-        scale: 0.98,
+        y: 18,
+        scale: 0.97,
       }}
       animate={{
         opacity: 1,
@@ -55,96 +80,245 @@ const ChatMessage = ({ message }) => {
         scale: 1,
       }}
       transition={{
-        duration: 0.25,
-        ease: 'easeOut',
+        duration: 0.3,
+        ease: [0.22, 1, 0.36, 1],
       }}
       className={`group flex w-full ${
-        isUser ? 'justify-end' : 'justify-start'
+        isUser
+          ? 'justify-end'
+          : 'justify-start'
       }`}
     >
       <div
         className={`
           flex w-full max-w-[900px] items-start gap-3
-          ${isUser ? 'flex-row-reverse' : 'flex-row'}
+          ${
+            isUser
+              ? 'flex-row-reverse'
+              : 'flex-row'
+          }
         `}
       >
-        {/* Avatar */}
-        <div
+        {/* ====================================================
+            AVATAR
+        ==================================================== */}
+
+        <motion.div
+          initial={{
+            scale: 0.8,
+            opacity: 0,
+          }}
+          animate={{
+            scale: 1,
+            opacity: 1,
+          }}
+          transition={{
+            duration: 0.25,
+          }}
           className={`
-            mt-1 flex h-8 w-8 flex-shrink-0 items-center
-            justify-center rounded-full
+            mt-1 flex h-9 w-9 flex-shrink-0
+            items-center justify-center
+            rounded-full
             ${
               isUser
-                ? 'bg-gray-900 text-white'
-                : 'bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-sm shadow-blue-500/20'
+                ? `
+                  bg-[#111827]
+                  text-white
+                  shadow-md
+                  shadow-gray-900/10
+                `
+                : `
+                  bg-gradient-to-br
+                  from-blue-500
+                  via-indigo-500
+                  to-violet-600
+                  text-white
+                  shadow-md
+                  shadow-blue-500/20
+                `
             }
           `}
         >
-          {isUser ? <User size={15} /> : <Sparkles size={15} />}
-        </div>
+          {isUser ? (
+            <User size={15} strokeWidth={2.2} />
+          ) : (
+            <Sparkles
+              size={16}
+              strokeWidth={2.2}
+            />
+          )}
+        </motion.div>
 
-        {/* Message */}
+        {/* ====================================================
+            MESSAGE CONTENT
+        ==================================================== */}
+
         <div
           className={`
-            min-w-0 max-w-[calc(100%-48px)]
-            ${isUser ? 'items-end' : 'items-start'}
+            min-w-0 max-w-[calc(100%-52px)]
+            ${
+              isUser
+                ? 'items-end'
+                : 'items-start'
+            }
           `}
         >
-          {/* Name */}
+          {/* NAME */}
+
           <div
             className={`
               mb-1.5 flex items-center gap-2 px-1
-              ${isUser ? 'justify-end' : 'justify-start'}
+              ${
+                isUser
+                  ? 'justify-end'
+                  : 'justify-start'
+              }
             `}
           >
-            <span className="text-[11px] font-semibold text-gray-500">
-              {isUser ? 'You' : 'Employee Copilot'}
+            <span
+              className="
+                text-[11px]
+                font-semibold
+                text-gray-500
+              "
+            >
+              {isUser
+                ? 'You'
+                : 'Employee Copilot'}
             </span>
 
             {!isUser && (
-              <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-500">
+              <span
+                className="
+                  rounded-full
+                  border border-blue-100
+                  bg-blue-50
+                  px-1.5
+                  py-0.5
+                  text-[9px]
+                  font-semibold
+                  tracking-wide
+                  text-blue-600
+                "
+              >
                 AI
+              </span>
+            )}
+
+            {isTyping && !isUser && (
+              <span
+                className="
+                  text-[10px]
+                  font-medium
+                  text-blue-500
+                "
+              >
+                Generating
               </span>
             )}
           </div>
 
           <div className="relative">
-            {/* Bubble */}
-            <div
+            {/* ==================================================
+                MESSAGE BUBBLE
+            ================================================== */}
+
+            <motion.div
+              initial={{
+                opacity: 0,
+                y: 8,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              transition={{
+                duration: 0.25,
+              }}
               className={`
-                overflow-hidden rounded-2xl px-4 py-3
+                overflow-hidden
+                rounded-2xl
+                px-4
+                py-3.5
                 ${
                   isUser
-                    ? 'rounded-tr-md bg-gray-900 text-white shadow-sm'
-                    : 'rounded-tl-md border border-gray-200/80 bg-white text-gray-800 shadow-sm'
+                    ? `
+                      rounded-tr-md
+                      bg-[#111827]
+                      text-white
+                      shadow-lg
+                      shadow-gray-900/10
+                    `
+                    : `
+                      rounded-tl-md
+                      border
+                      border-gray-200
+                      bg-white
+                      text-gray-800
+                      shadow-sm
+                    `
                 }
               `}
             >
+              {/* ==================================================
+                  MARKDOWN
+              ================================================== */}
+
               <div
                 className={`
-                  text-[14px] leading-6
+                  text-[14px]
+                  leading-6
                   ${
                     isUser
-                      ? 'prose prose-sm prose-invert max-w-none'
-                      : 'prose prose-sm max-w-none'
+                      ? `
+                        text-white
+                        [&_*]:text-white
+                        [&_a]:text-blue-200
+                      `
+                      : `
+                        text-gray-800
+                        [&_*]:text-gray-800
+                      `
                   }
                 `}
               >
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
-                    a: ({ node, ...props }) => (
+                    /* ============================================
+                       LINKS
+                    ============================================ */
+
+                    a: ({
+                      node,
+                      ...props
+                    }) => (
                       <a
                         {...props}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={
-                          isUser
-                            ? 'font-medium underline'
-                            : 'font-medium text-blue-600 underline hover:text-blue-700'
-                        }
+                        className={`
+                          font-medium
+                          underline
+                          underline-offset-2
+                          ${
+                            isUser
+                              ? `
+                                text-blue-200
+                                hover:text-blue-100
+                              `
+                              : `
+                                text-blue-600
+                                hover:text-blue-700
+                              `
+                          }
+                        `}
                       />
                     ),
+
+                    /* ============================================
+                       CODE
+                    ============================================ */
 
                     code: ({
                       node,
@@ -156,15 +330,25 @@ const ChatMessage = ({ message }) => {
                       if (inline) {
                         return (
                           <code
+                            {...props}
                             className={`
-                              rounded-md px-1.5 py-0.5 font-mono text-[12px]
+                              rounded-md
+                              px-1.5
+                              py-0.5
+                              font-mono
+                              text-[12px]
                               ${
                                 isUser
-                                  ? 'bg-white/10 text-blue-100'
-                                  : 'bg-gray-100 text-gray-800'
+                                  ? `
+                                    bg-white/15
+                                    text-blue-100
+                                  `
+                                  : `
+                                    bg-gray-100
+                                    text-gray-800
+                                  `
                               }
                             `}
-                            {...props}
                           >
                             {children}
                           </code>
@@ -172,20 +356,59 @@ const ChatMessage = ({ message }) => {
                       }
 
                       return (
-                        <div className="my-3 overflow-hidden rounded-xl border border-gray-800 bg-[#111318]">
-                          <div className="flex items-center justify-between border-b border-gray-800 px-3 py-2">
-                            <div className="flex items-center gap-1.5">
+                        <div
+                          className="
+                            my-3
+                            overflow-hidden
+                            rounded-xl
+                            border
+                            border-gray-800
+                            bg-[#111318]
+                          "
+                        >
+                          <div
+                            className="
+                              flex
+                              items-center
+                              justify-between
+                              border-b
+                              border-gray-800
+                              px-3
+                              py-2
+                            "
+                          >
+                            <div
+                              className="
+                                flex
+                                items-center
+                                gap-1.5
+                              "
+                            >
                               <span className="h-2 w-2 rounded-full bg-red-400/80" />
                               <span className="h-2 w-2 rounded-full bg-yellow-400/80" />
                               <span className="h-2 w-2 rounded-full bg-green-400/80" />
                             </div>
 
-                            <span className="text-[10px] text-gray-500">
+                            <span
+                              className="
+                                text-[10px]
+                                font-medium
+                                text-gray-500
+                              "
+                            >
                               code
                             </span>
                           </div>
 
-                          <pre className="overflow-x-auto p-4 text-xs leading-5 text-gray-100">
+                          <pre
+                            className="
+                              overflow-x-auto
+                              p-4
+                              text-xs
+                              leading-5
+                              text-gray-100
+                            "
+                          >
                             <code
                               className={className}
                               {...props}
@@ -197,110 +420,300 @@ const ChatMessage = ({ message }) => {
                       );
                     },
 
-                    blockquote: ({ node, ...props }) => (
+                    /* ============================================
+                       BLOCKQUOTE
+                    ============================================ */
+
+                    blockquote: ({
+                      node,
+                      ...props
+                    }) => (
                       <blockquote
                         {...props}
                         className={`
-                          my-3 border-l-4 pl-4 italic
+                          my-3
+                          border-l-4
+                          pl-4
+                          italic
                           ${
                             isUser
-                              ? 'border-gray-500 text-gray-300'
-                              : 'border-blue-500 text-gray-600'
+                              ? `
+                                border-blue-300
+                                text-blue-100
+                              `
+                              : `
+                                border-blue-500
+                                text-gray-600
+                              `
                           }
                         `}
                       />
                     ),
 
-                    table: ({ node, ...props }) => (
-                      <div className="my-3 overflow-x-auto rounded-xl border border-gray-200">
+                    /* ============================================
+                       TABLE
+                    ============================================ */
+
+                    table: ({
+                      node,
+                      ...props
+                    }) => (
+                      <div
+                        className="
+                          my-3
+                          overflow-x-auto
+                          rounded-xl
+                          border
+                          border-gray-200
+                        "
+                      >
                         <table
                           {...props}
-                          className="min-w-full border-collapse text-sm"
+                          className="
+                            min-w-full
+                            border-collapse
+                            text-sm
+                          "
                         />
                       </div>
                     ),
 
-                    thead: ({ node, ...props }) => (
+                    thead: ({
+                      node,
+                      ...props
+                    }) => (
                       <thead
                         {...props}
-                        className="bg-gray-50"
+                        className="
+                          bg-gray-50
+                        "
                       />
                     ),
 
-                    th: ({ node, ...props }) => (
+                    th: ({
+                      node,
+                      ...props
+                    }) => (
                       <th
                         {...props}
-                        className="border-b border-gray-200 px-3 py-2 text-left text-xs font-semibold text-gray-700"
+                        className="
+                          border-b
+                          border-gray-200
+                          px-3
+                          py-2
+                          text-left
+                          text-xs
+                          font-semibold
+                          text-gray-700
+                        "
                       />
                     ),
 
-                    td: ({ node, ...props }) => (
+                    td: ({
+                      node,
+                      ...props
+                    }) => (
                       <td
                         {...props}
-                        className="border-b border-gray-100 px-3 py-2 text-xs"
+                        className="
+                          border-b
+                          border-gray-100
+                          px-3
+                          py-2
+                          text-xs
+                          text-gray-700
+                        "
                       />
                     ),
 
-                    ul: ({ node, ...props }) => (
+                    /* ============================================
+                       LISTS
+                    ============================================ */
+
+                    ul: ({
+                      node,
+                      ...props
+                    }) => (
                       <ul
                         {...props}
-                        className="my-2 list-disc pl-5"
+                        className="
+                          my-2
+                          list-disc
+                          pl-5
+                        "
                       />
                     ),
 
-                    ol: ({ node, ...props }) => (
+                    ol: ({
+                      node,
+                      ...props
+                    }) => (
                       <ol
                         {...props}
-                        className="my-2 list-decimal pl-5"
+                        className="
+                          my-2
+                          list-decimal
+                          pl-5
+                        "
                       />
                     ),
 
-                    li: ({ node, ...props }) => (
+                    li: ({
+                      node,
+                      ...props
+                    }) => (
                       <li
                         {...props}
-                        className="my-1"
+                        className="
+                          my-1
+                        "
                       />
                     ),
 
-                    p: ({ node, ...props }) => (
+                    /* ============================================
+                       PARAGRAPH
+                    ============================================ */
+
+                    p: ({
+                      node,
+                      ...props
+                    }) => (
                       <p
                         {...props}
-                        className="my-1.5 last:mb-0"
+                        className={`
+                          my-1.5
+                          last:mb-0
+                          ${
+                            isUser
+                              ? 'text-white'
+                              : 'text-gray-800'
+                          }
+                        `}
                       />
                     ),
 
-                    h1: ({ node, ...props }) => (
+                    /* ============================================
+                       HEADINGS
+                    ============================================ */
+
+                    h1: ({
+                      node,
+                      ...props
+                    }) => (
                       <h1
                         {...props}
-                        className="mb-2 mt-4 text-xl font-bold"
+                        className={`
+                          mb-2
+                          mt-4
+                          text-xl
+                          font-bold
+                          ${
+                            isUser
+                              ? 'text-white'
+                              : 'text-gray-900'
+                          }
+                        `}
                       />
                     ),
 
-                    h2: ({ node, ...props }) => (
+                    h2: ({
+                      node,
+                      ...props
+                    }) => (
                       <h2
                         {...props}
-                        className="mb-2 mt-4 text-lg font-bold"
+                        className={`
+                          mb-2
+                          mt-4
+                          text-lg
+                          font-bold
+                          ${
+                            isUser
+                              ? 'text-white'
+                              : 'text-gray-900'
+                          }
+                        `}
                       />
                     ),
 
-                    h3: ({ node, ...props }) => (
+                    h3: ({
+                      node,
+                      ...props
+                    }) => (
                       <h3
                         {...props}
-                        className="mb-1.5 mt-3 text-base font-bold"
+                        className={`
+                          mb-1.5
+                          mt-3
+                          text-base
+                          font-bold
+                          ${
+                            isUser
+                              ? 'text-white'
+                              : 'text-gray-900'
+                          }
+                        `}
+                      />
+                    ),
+
+                    strong: ({
+                      node,
+                      ...props
+                    }) => (
+                      <strong
+                        {...props}
+                        className={`
+                          font-semibold
+                          ${
+                            isUser
+                              ? 'text-white'
+                              : 'text-gray-900'
+                          }
+                        `}
                       />
                     ),
                   }}
                 >
                   {content}
                 </ReactMarkdown>
+
+                {/* ==================================================
+                    TYPEWRITER CURSOR
+                ================================================== */}
+
+                {isTyping &&
+                  content && (
+                    <motion.span
+                      animate={{
+                        opacity: [1, 0, 1],
+                      }}
+                      transition={{
+                        duration: 0.8,
+                        repeat: Infinity,
+                      }}
+                      className="
+                        ml-0.5
+                        inline-block
+                        h-4
+                        w-[2px]
+                        translate-y-[2px]
+                        bg-blue-500
+                      "
+                    />
+                  )}
               </div>
 
-              {/* Sources */}
+              {/* ==================================================
+                  SOURCES
+              ================================================== */}
+
               {message.sources &&
                 message.sources.length > 0 && (
                   <div
                     className={`
-                      mt-4 border-t pt-3
+                      mt-4
+                      border-t
+                      pt-3
                       ${
                         isUser
                           ? 'border-white/10'
@@ -310,83 +723,140 @@ const ChatMessage = ({ message }) => {
                   >
                     <div
                       className={`
-                        mb-2 flex items-center gap-1.5 text-[10px]
-                        font-semibold uppercase tracking-wider
+                        mb-2
+                        flex
+                        items-center
+                        gap-1.5
+                        text-[10px]
+                        font-semibold
+                        uppercase
+                        tracking-wider
                         ${
                           isUser
-                            ? 'text-gray-400'
+                            ? 'text-blue-100'
                             : 'text-gray-500'
                         }
                       `}
                     >
                       <FileText size={12} />
+
                       Sources
                     </div>
 
                     <div className="space-y-1.5">
-                      {message.sources.map((source, index) => (
-                        <div
-                          key={index}
-                          className={`
-                            flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs
-                            ${
-                              isUser
-                                ? 'bg-white/5 text-gray-300'
-                                : 'border border-gray-100 bg-gray-50 text-gray-600'
-                            }
-                          `}
-                        >
-                          <FileText
-                            size={12}
-                            className={
-                              isUser
-                                ? 'text-gray-500'
-                                : 'text-gray-400'
-                            }
-                          />
+                      {message.sources.map(
+                        (
+                          source,
+                          index
+                        ) => (
+                          <div
+                            key={index}
+                            className={`
+                              flex
+                              items-center
+                              gap-2
+                              rounded-lg
+                              px-2.5
+                              py-2
+                              text-xs
+                              ${
+                                isUser
+                                  ? `
+                                    bg-white/10
+                                    text-blue-50
+                                  `
+                                  : `
+                                    border
+                                    border-gray-100
+                                    bg-gray-50
+                                    text-gray-600
+                                  `
+                              }
+                            `}
+                          >
+                            <FileText
+                              size={12}
+                              className={
+                                isUser
+                                  ? 'text-blue-200'
+                                  : 'text-gray-400'
+                              }
+                            />
 
-                          <span className="min-w-0 flex-1 truncate">
-                            {source.documentTitle || 'Document'}
-                          </span>
-
-                          {source.chunkIndex !== undefined && (
-                            <span className="flex-shrink-0 text-[10px] text-gray-400">
-                              Chunk {source.chunkIndex + 1}
+                            <span
+                              className="
+                                min-w-0
+                                flex-1
+                                truncate
+                              "
+                            >
+                              {source.documentTitle ||
+                                'Document'}
                             </span>
-                          )}
-                        </div>
-                      ))}
+
+                            {source.chunkIndex !==
+                              undefined && (
+                              <span
+                                className="
+                                  flex-shrink-0
+                                  text-[10px]
+                                  text-gray-400
+                                "
+                              >
+                                Chunk{' '}
+                                {source.chunkIndex +
+                                  1}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      )}
                     </div>
                   </div>
                 )}
-            </div>
+            </motion.div>
 
-            {/* Copy */}
-            {!isUser && content && (
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="
-                  absolute -bottom-8 left-1 flex items-center gap-1
-                  rounded-md px-2 py-1 text-[10px] text-gray-400
-                  opacity-0 transition-all
-                  hover:bg-gray-100 hover:text-gray-600
-                  group-hover:opacity-100
-                "
-              >
-                {copied ? (
-                  <>
-                    <Check size={11} />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy size={11} />
-                    Copy
-                  </>
-                )}
-              </button>
-            )}
+            {/* ==================================================
+                COPY BUTTON
+            ================================================== */}
+
+            {!isUser &&
+              content && (
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="
+                    absolute
+                    -bottom-8
+                    left-1
+                    flex
+                    items-center
+                    gap-1
+                    rounded-md
+                    px-2
+                    py-1
+                    text-[10px]
+                    text-gray-400
+                    opacity-0
+                    transition-all
+                    hover:bg-gray-100
+                    hover:text-gray-600
+                    group-hover:opacity-100
+                  "
+                >
+                  {copied ? (
+                    <>
+                      <Check size={11} />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={11} />
+                      Copy
+                    </>
+                  )}
+                </button>
+              )}
           </div>
         </div>
       </div>
@@ -394,44 +864,199 @@ const ChatMessage = ({ message }) => {
   );
 };
 
+// ============================================================
+// THINKING INDICATOR
+// ============================================================
+
 const TypingIndicator = () => {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex items-start gap-3"
+      initial={{
+        opacity: 0,
+        y: 12,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      exit={{
+        opacity: 0,
+        y: -8,
+      }}
+      transition={{
+        duration: 0.25,
+      }}
+      className="
+        flex
+        items-start
+        gap-3
+      "
     >
-      <div
+      {/* AI AVATAR */}
+
+      <motion.div
+        animate={{
+          scale: [1, 1.04, 1],
+          boxShadow: [
+            '0 0 0 0 rgba(99,102,241,0.0)',
+            '0 0 0 6px rgba(99,102,241,0.08)',
+            '0 0 0 0 rgba(99,102,241,0.0)',
+          ],
+        }}
+        transition={{
+          duration: 1.8,
+          repeat: Infinity,
+        }}
         className="
-          flex h-8 w-8 flex-shrink-0 items-center justify-center
-          rounded-full bg-gradient-to-br from-blue-500
-          via-indigo-500 to-violet-600 text-white shadow-sm
+          flex
+          h-9
+          w-9
+          flex-shrink-0
+          items-center
+          justify-center
+          rounded-full
+          bg-gradient-to-br
+          from-blue-500
+          via-indigo-500
+          to-violet-600
+          text-white
         "
       >
-        <Sparkles size={15} />
-      </div>
+        <Sparkles size={16} />
+      </motion.div>
 
       <div>
-        <div className="mb-1.5 px-1 text-[11px] font-semibold text-gray-500">
-          Employee Copilot
-        </div>
+        {/* NAME */}
 
         <div
           className="
-            flex items-center gap-1.5 rounded-2xl rounded-tl-md
-            border border-gray-200 bg-white px-4 py-3 shadow-sm
+            mb-1.5
+            flex
+            items-center
+            gap-2
+            px-1
           "
         >
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.3s]" />
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.15s]" />
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" />
+          <span
+            className="
+              text-[11px]
+              font-semibold
+              text-gray-500
+            "
+          >
+            Employee Copilot
+          </span>
+
+          <span
+            className="
+              rounded-full
+              bg-blue-50
+              px-1.5
+              py-0.5
+              text-[9px]
+              font-semibold
+              text-blue-500
+            "
+          >
+            AI
+          </span>
+        </div>
+
+        {/* THINKING BUBBLE */}
+
+        <div
+          className="
+            flex
+            items-center
+            gap-2
+            rounded-2xl
+            rounded-tl-md
+            border
+            border-gray-200
+            bg-white
+            px-4
+            py-3.5
+            shadow-sm
+          "
+        >
+          <span
+            className="
+              text-xs
+              font-medium
+              text-gray-500
+            "
+          >
+            Thinking
+          </span>
+
+          <div className="flex items-center gap-1">
+            <motion.span
+              animate={{
+                y: [0, -4, 0],
+                opacity: [0.4, 1, 0.4],
+              }}
+              transition={{
+                duration: 0.9,
+                repeat: Infinity,
+                delay: 0,
+              }}
+              className="
+                h-1.5
+                w-1.5
+                rounded-full
+                bg-blue-500
+              "
+            />
+
+            <motion.span
+              animate={{
+                y: [0, -4, 0],
+                opacity: [0.4, 1, 0.4],
+              }}
+              transition={{
+                duration: 0.9,
+                repeat: Infinity,
+                delay: 0.15,
+              }}
+              className="
+                h-1.5
+                w-1.5
+                rounded-full
+                bg-indigo-500
+              "
+            />
+
+            <motion.span
+              animate={{
+                y: [0, -4, 0],
+                opacity: [0.4, 1, 0.4],
+              }}
+              transition={{
+                duration: 0.9,
+                repeat: Infinity,
+                delay: 0.3,
+              }}
+              className="
+                h-1.5
+                w-1.5
+                rounded-full
+                bg-violet-500
+              "
+            />
+          </div>
         </div>
       </div>
     </motion.div>
   );
 };
 
-const EmptyState = ({ onSuggestion }) => {
+// ============================================================
+// EMPTY STATE
+// ============================================================
+
+const EmptyState = ({
+  onSuggestion,
+}) => {
   const suggestions = [
     {
       title: 'Company policies',
@@ -449,73 +1074,178 @@ const EmptyState = ({ onSuggestion }) => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
       className="
-        flex min-h-[calc(100vh-220px)] items-center
-        justify-center px-4
+        flex
+        min-h-[calc(100vh-220px)]
+        items-center
+        justify-center
+        px-4
       "
     >
-      <div className="w-full max-w-2xl text-center">
+      <div
+        className="
+          w-full
+          max-w-2xl
+          text-center
+        "
+      >
         <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
+          initial={{
+            scale: 0.8,
+            opacity: 0,
+          }}
+          animate={{
+            scale: 1,
+            opacity: 1,
+          }}
           transition={{
             type: 'spring',
             stiffness: 200,
             damping: 15,
           }}
           className="
-            mx-auto mb-6 flex h-16 w-16 items-center justify-center
-            rounded-2xl bg-gradient-to-br from-blue-500
-            via-indigo-500 to-violet-600 text-white
-            shadow-xl shadow-blue-500/20
+            mx-auto
+            mb-6
+            flex
+            h-16
+            w-16
+            items-center
+            justify-center
+            rounded-2xl
+            bg-gradient-to-br
+            from-blue-500
+            via-indigo-500
+            to-violet-600
+            text-white
+            shadow-xl
+            shadow-blue-500/20
           "
         >
           <Sparkles size={28} />
         </motion.div>
 
-        <h3 className="text-2xl font-bold tracking-tight text-gray-900">
+        <h3
+          className="
+            text-2xl
+            font-bold
+            tracking-tight
+            text-gray-900
+          "
+        >
           How can I help?
         </h3>
 
-        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
-          Ask me about company policies, employees, leave,
-          documents, or anything in your organization's
-          knowledge base.
+        <p
+          className="
+            mx-auto
+            mt-2
+            max-w-md
+            text-sm
+            leading-6
+            text-gray-500
+          "
+        >
+          Ask me about company policies,
+          employees, leave, documents,
+          or anything in your
+          organization's knowledge base.
         </p>
 
-        <div className="mt-7 grid gap-2 sm:grid-cols-3">
-          {suggestions.map((suggestion, index) => (
-            <motion.button
-              key={suggestion.title}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.06 }}
-              whileHover={{ y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              type="button"
-              onClick={() => onSuggestion(suggestion.text)}
-              className="
-                rounded-xl border border-gray-200 bg-white p-3
-                text-left shadow-sm transition-shadow
-                hover:border-blue-200 hover:shadow-md
-              "
-            >
-              <p className="text-xs font-semibold text-gray-800">
-                {suggestion.title}
-              </p>
+        <div
+          className="
+            mt-7
+            grid
+            gap-2
+            sm:grid-cols-3
+          "
+        >
+          {suggestions.map(
+            (
+              suggestion,
+              index
+            ) => (
+              <motion.button
+                key={
+                  suggestion.title
+                }
+                initial={{
+                  opacity: 0,
+                  y: 8,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                transition={{
+                  delay:
+                    index * 0.06,
+                }}
+                whileHover={{
+                  y: -3,
+                }}
+                whileTap={{
+                  scale: 0.98,
+                }}
+                type="button"
+                onClick={() =>
+                  onSuggestion(
+                    suggestion.text
+                  )
+                }
+                className="
+                  rounded-xl
+                  border
+                  border-gray-200
+                  bg-white
+                  p-3
+                  text-left
+                  shadow-sm
+                  transition-all
+                  hover:border-blue-200
+                  hover:shadow-md
+                "
+              >
+                <p
+                  className="
+                    text-xs
+                    font-semibold
+                    text-gray-800
+                  "
+                >
+                  {suggestion.title}
+                </p>
 
-              <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-gray-400">
-                {suggestion.text}
-              </p>
-            </motion.button>
-          ))}
+                <p
+                  className="
+                    mt-1
+                    line-clamp-2
+                    text-[11px]
+                    leading-4
+                    text-gray-400
+                  "
+                >
+                  {suggestion.text}
+                </p>
+              </motion.button>
+            )
+          )}
         </div>
       </div>
     </motion.div>
   );
 };
+
+// ============================================================
+// COPILOT
+// ============================================================
 
 const Copilot = ({
   conversation,
@@ -523,81 +1253,195 @@ const Copilot = ({
   onExecuteAction,
   onDeleteConversation,
 }) => {
-  const [question, setQuestion] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [localMessages, setLocalMessages] = useState([]);
-  const [pendingAction, setPendingAction] = useState(null);
-  const [executingAction, setExecutingAction] = useState(false);
+  const [question, setQuestion] =
+    useState('');
 
-  const textareaRef = useRef(null);
-  const messagesEndRef = useRef(null);
-  const lastConversationIdRef = useRef(null);
+  const [loading, setLoading] =
+    useState(false);
 
-  /*
-   * Synchronize local messages with selected conversation.
-   */
+  const [localMessages, setLocalMessages] =
+    useState([]);
+
+  const [pendingAction, setPendingAction] =
+    useState(null);
+
+  const [executingAction, setExecutingAction] =
+    useState(false);
+
+  const textareaRef =
+    useRef(null);
+
+  const messagesEndRef =
+    useRef(null);
+
+  const lastConversationIdRef =
+    useRef(null);
+
+  // Used to prevent the parent's server update
+  // from killing the local typewriter animation.
+  const typingAssistantIdRef =
+    useRef(null);
+
+  // ============================================================
+  // SYNCHRONIZE CONVERSATION
+  // ============================================================
+
   useEffect(() => {
     if (!conversation) {
       setLocalMessages([]);
-      lastConversationIdRef.current = null;
+
+      lastConversationIdRef.current =
+        null;
+
+      typingAssistantIdRef.current =
+        null;
+
       return;
     }
 
     const conversationChanged =
-      lastConversationIdRef.current !== conversation.id;
+      lastConversationIdRef.current !==
+      conversation.id;
 
     if (conversationChanged) {
-      setLocalMessages(conversation.messages || []);
-      lastConversationIdRef.current = conversation.id;
+      setLocalMessages(
+        conversation.messages || []
+      );
+
+      lastConversationIdRef.current =
+        conversation.id;
+
+      typingAssistantIdRef.current =
+        null;
+
       return;
     }
 
-    setLocalMessages((currentMessages) => {
-      const serverMessages = conversation.messages || [];
+    setLocalMessages(
+      (currentMessages) => {
+        const serverMessages =
+          conversation.messages || [];
 
-      /*
-       * If there are no server messages yet, don't destroy
-       * messages that were just added optimistically.
-       */
-      if (serverMessages.length === 0) {
-        return currentMessages;
+        /*
+         * While the AI typewriter is running,
+         * preserve the local temporary assistant
+         * message instead of replacing it with
+         * the server's completed response.
+         */
+
+        if (
+          typingAssistantIdRef.current
+        ) {
+          const typingMessage =
+            currentMessages.find(
+              (message) =>
+                String(message.id) ===
+                String(
+                  typingAssistantIdRef.current
+                )
+            );
+
+          if (typingMessage) {
+            const serverIds =
+              new Set(
+                serverMessages.map(
+                  (message) =>
+                    String(message.id)
+                )
+              );
+
+            const localTemporaryMessages =
+              currentMessages.filter(
+                (message) =>
+                  String(message.id).startsWith(
+                    'temp-'
+                  ) &&
+                  !serverIds.has(
+                    String(message.id)
+                  ) &&
+                  String(message.id) !==
+                    String(
+                      typingAssistantIdRef.current
+                    )
+              );
+
+            return [
+              ...serverMessages.filter(
+                (message) =>
+                  String(message.id) !==
+                  String(
+                    typingAssistantIdRef.current
+                  )
+              ),
+              ...localTemporaryMessages,
+              typingMessage,
+            ];
+          }
+        }
+
+        if (
+          serverMessages.length === 0
+        ) {
+          return currentMessages;
+        }
+
+        const serverIds =
+          new Set(
+            serverMessages.map(
+              (message) =>
+                String(message.id)
+            )
+          );
+
+        const optimisticMessages =
+          currentMessages.filter(
+            (message) =>
+              String(message.id).startsWith(
+                'temp-'
+              ) &&
+              !serverIds.has(
+                String(message.id)
+              )
+          );
+
+        return [
+          ...serverMessages,
+          ...optimisticMessages,
+        ];
       }
-
-      const serverIds = new Set(
-        serverMessages.map((message) => String(message.id))
-      );
-
-      const optimisticMessages = currentMessages.filter(
-        (message) =>
-          String(message.id).startsWith('temp-') &&
-          !serverIds.has(String(message.id))
-      );
-
-      return [...serverMessages, ...optimisticMessages];
-    });
+    );
   }, [conversation]);
 
-  /*
-   * Scroll to newest message.
-   */
+  // ============================================================
+  // AUTO SCROLL
+  // ============================================================
+
   useEffect(() => {
     requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'end',
-      });
+      messagesEndRef.current?.scrollIntoView(
+        {
+          behavior: 'smooth',
+          block: 'end',
+        }
+      );
     });
-  }, [localMessages, loading]);
+  }, [
+    localMessages,
+    loading,
+  ]);
 
-  /*
-   * Auto-grow textarea.
-   */
+  // ============================================================
+  // TEXTAREA
+  // ============================================================
+
   const resizeTextarea = () => {
-    const textarea = textareaRef.current;
+    const textarea =
+      textareaRef.current;
 
     if (!textarea) return;
 
-    textarea.style.height = 'auto';
+    textarea.style.height =
+      'auto';
 
     textarea.style.height = `${Math.min(
       textarea.scrollHeight,
@@ -605,27 +1449,166 @@ const Copilot = ({
     )}px`;
   };
 
-  const handleQuestionChange = (event) => {
-    setQuestion(event.target.value);
+  const handleQuestionChange = (
+    event
+  ) => {
+    setQuestion(
+      event.target.value
+    );
+
     resizeTextarea();
   };
 
-  const handleKeyDown = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+  const handleKeyDown = (
+    event
+  ) => {
+    if (
+      event.key === 'Enter' &&
+      !event.shiftKey
+    ) {
       event.preventDefault();
 
-      if (!loading && question.trim()) {
+      if (
+        !loading &&
+        question.trim()
+      ) {
         handleSubmit(event);
       }
     }
   };
 
-  /*
-   * ============================================================
-   * SEND MESSAGE
-   * ============================================================
-   */
-  const handleSubmit = async (event) => {
+  // ============================================================
+  // TYPEWRITER
+  // ============================================================
+
+  const typeAssistantResponse = async ({
+    assistantId,
+    content,
+    sources,
+  }) => {
+    typingAssistantIdRef.current =
+      assistantId;
+
+    // Create empty assistant bubble immediately.
+    setLocalMessages(
+      (previous) => [
+        ...previous,
+        {
+          id: assistantId,
+          role: 'assistant',
+          content: '',
+          sources,
+          created_at:
+            new Date().toISOString(),
+          typing: true,
+        },
+      ]
+    );
+
+    /*
+     * Slight delay makes the transition from
+     * "Thinking..." to answer feel natural.
+     */
+    await new Promise(
+      (resolve) =>
+        setTimeout(resolve, 250)
+    );
+
+    /*
+     * Type faster for longer responses.
+     * This avoids extremely slow answers.
+     */
+    const totalCharacters =
+      content.length;
+
+    let interval = 12;
+
+    if (
+      totalCharacters > 2500
+    ) {
+      interval = 5;
+    } else if (
+      totalCharacters > 1200
+    ) {
+      interval = 7;
+    } else if (
+      totalCharacters > 600
+    ) {
+      interval = 9;
+    }
+
+    /*
+     * Type character by character.
+     */
+    for (
+      let index = 0;
+      index <= content.length;
+      index++
+    ) {
+      const visibleContent =
+        content.slice(
+          0,
+          index
+        );
+
+      setLocalMessages(
+        (previous) =>
+          previous.map(
+            (message) =>
+              String(message.id) ===
+              String(assistantId)
+                ? {
+                    ...message,
+                    content:
+                      visibleContent,
+                  }
+                : message
+          )
+      );
+
+      if (
+        index <
+        content.length
+      ) {
+        await new Promise(
+          (resolve) =>
+            setTimeout(
+              resolve,
+              interval
+            )
+        );
+      }
+    }
+
+    /*
+     * Mark typewriter as complete.
+     */
+    setLocalMessages(
+      (previous) =>
+        previous.map(
+          (message) =>
+            String(message.id) ===
+            String(assistantId)
+              ? {
+                  ...message,
+                  content,
+                  typing: false,
+                }
+              : message
+        )
+    );
+
+    typingAssistantIdRef.current =
+      null;
+  };
+
+  // ============================================================
+  // SEND MESSAGE
+  // ============================================================
+
+  const handleSubmit = async (
+    event
+  ) => {
     event?.preventDefault();
 
     if (
@@ -636,173 +1619,191 @@ const Copilot = ({
       return;
     }
 
-    const currentQuestion = question.trim();
+    const currentQuestion =
+      question.trim();
+
+    // ========================================================
+    // USER MESSAGE
+    // ========================================================
+
+    const optimisticUserMessage =
+      {
+        id: generateTempId(),
+        role: 'user',
+        content:
+          currentQuestion,
+        created_at:
+          new Date().toISOString(),
+        optimistic: true,
+      };
 
     /*
-     * Create optimistic user message.
+     * User message appears immediately.
      */
-    const optimisticUserMessage = {
-      id: generateTempId(),
-      role: 'user',
-      content: currentQuestion,
-      created_at: new Date().toISOString(),
-      optimistic: true,
-    };
-
-    /*
-     * Show user's message immediately.
-     */
-    setLocalMessages((previous) => [
-      ...previous,
-      optimisticUserMessage,
-    ]);
+    setLocalMessages(
+      (previous) => [
+        ...previous,
+        optimisticUserMessage,
+      ]
+    );
 
     setQuestion('');
 
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+    if (
+      textareaRef.current
+    ) {
+      textareaRef.current.style.height =
+        'auto';
     }
+
+    // ========================================================
+    // THINKING
+    // ========================================================
 
     setLoading(true);
 
     try {
-      /*
-       * Call parent/API.
-       */
-      const response = await onSendMessage(
-        conversation.id,
-        {
-          question: currentQuestion,
-        }
-      );
+      const response =
+        await onSendMessage(
+          conversation.id,
+          {
+            question:
+              currentQuestion,
+          }
+        );
 
       console.log(
         'Copilot sendMessage response:',
         response
       );
 
-      /*
-       * ========================================================
-       * IMPORTANT FIX
-       *
-       * Your backend returns:
-       *
-       * {
-       *   success: true,
-       *   response: "AI response...",
-       *   sources: [...]
-       * }
-       *
-       * Previous code was NOT reading response.response.
-       * ========================================================
-       */
+      // ======================================================
+      // RESPONSE
+      // ======================================================
 
       const assistantContent =
-        typeof response?.response === 'string'
+        typeof response?.response ===
+        'string'
           ? response.response
-          : typeof response?.data?.response === 'string'
-            ? response.data.response
-            : typeof response?.message?.content === 'string'
-              ? response.message.content
-              : typeof response?.data?.message?.content === 'string'
-                ? response.data.message.content
-                : typeof response?.assistantMessage?.content === 'string'
-                  ? response.assistantMessage.content
-                  : typeof response?.data?.assistantMessage?.content === 'string'
-                    ? response.data.assistantMessage.content
+          : typeof response?.data
+                ?.response ===
+              'string'
+            ? response.data
+                .response
+            : typeof response
+                  ?.message
+                  ?.content ===
+                'string'
+              ? response
+                  .message
+                  .content
+              : typeof response
+                    ?.data
+                    ?.message
+                    ?.content ===
+                  'string'
+                ? response.data
+                    .message
+                    .content
+                : typeof response
+                      ?.assistantMessage
+                      ?.content ===
+                    'string'
+                  ? response
+                      .assistantMessage
+                      .content
+                  : typeof response
+                        ?.data
+                        ?.assistantMessage
+                        ?.content ===
+                      'string'
+                    ? response.data
+                        .assistantMessage
+                        .content
                     : null;
 
-      /*
-       * Sources can come directly from the workflow response.
-       */
       const assistantSources =
         response?.sources ||
-        response?.data?.sources ||
+        response?.data
+          ?.sources ||
         [];
 
-      /*
-       * Handle pending action (Human-in-the-Loop)
-       */
+      console.log(
+        'Assistant content:',
+        assistantContent
+      );
+
+      // ======================================================
+      // ACTION
+      // ======================================================
+
       const actionMetadata =
-        response?.actionMetadata ||
-        response?.data?.actionMetadata;
-
-      if (actionMetadata && response?.requiresConfirmation) {
-        setPendingAction({
-          ...actionMetadata,
-          originalMessage: currentQuestion,
-        });
-      } else {
-        setPendingAction(null);
-      }
-
-      /*
-       * If backend returned the complete conversation,
-       * use it directly.
-       */
-      const returnedMessages =
-        response?.conversation?.messages ||
-        response?.data?.conversation?.messages;
+        response
+          ?.actionMetadata ||
+        response?.data
+          ?.actionMetadata;
 
       if (
-        Array.isArray(returnedMessages) &&
-        returnedMessages.length > 0
+        actionMetadata &&
+        response
+          ?.requiresConfirmation
       ) {
-        setLocalMessages(returnedMessages);
+        setPendingAction({
+          ...actionMetadata,
+          originalMessage:
+            currentQuestion,
+        });
+      } else {
+        setPendingAction(
+          null
+        );
       }
 
-      /*
-       * Otherwise construct the assistant message locally
-       * from the backend's `response` field.
-       */
-      else if (assistantContent) {
-        const assistantMessage = {
-          id: generateTempId(),
-          role: 'assistant',
-          content: assistantContent,
-          sources: assistantSources,
-          created_at: new Date().toISOString(),
-        };
+      // ======================================================
+      // SHOW USER MESSAGE AS SENT
+      // ======================================================
+
+      setLocalMessages(
+        (previous) =>
+          previous.map(
+            (message) =>
+              message.id ===
+              optimisticUserMessage.id
+                ? {
+                    ...message,
+                    optimistic:
+                      false,
+                  }
+                : message
+          )
+      );
+
+      // ======================================================
+      // AI RESPONSE
+      // ======================================================
+
+      if (assistantContent) {
+        const assistantId =
+          generateTempId();
 
         /*
-         * IMPORTANT:
-         *
-         * Keep the user's message.
-         * Add the AI message after it.
+         * Turn off the thinking indicator
+         * and start the AI response.
          */
-        setLocalMessages((previous) => [
-          ...previous.map((message) =>
-            message.id === optimisticUserMessage.id
-              ? {
-                  ...message,
-                  optimistic: false,
-                }
-              : message
-          ),
-          assistantMessage,
-        ]);
-      }
 
-      /*
-       * This means the parent may update conversation state
-       * asynchronously. We leave the optimistic user message
-       * visible rather than removing it.
-       */
-      else {
-        console.warn(
-          'No assistant response found in API response:',
-          response
+        await typeAssistantResponse(
+          {
+            assistantId,
+            content:
+              assistantContent,
+            sources:
+              assistantSources,
+          }
         );
-
-        setLocalMessages((previous) =>
-          previous.map((message) =>
-            message.id === optimisticUserMessage.id
-              ? {
-                  ...message,
-                  optimistic: false,
-                }
-              : message
-          )
+      } else {
+        console.warn(
+          'No assistant response found:',
+          response
         );
       }
     } catch (error) {
@@ -811,21 +1812,30 @@ const Copilot = ({
         error
       );
 
+      typingAssistantIdRef.current =
+        null;
+
       /*
-       * Remove optimistic user message only when
-       * the API request actually failed.
+       * Remove optimistic user message
+       * when request actually fails.
        */
-      setLocalMessages((previous) =>
-        previous.filter(
-          (message) =>
-            message.id !== optimisticUserMessage.id
-        )
+
+      setLocalMessages(
+        (previous) =>
+          previous.filter(
+            (message) =>
+              message.id !==
+              optimisticUserMessage.id
+          )
       );
 
       /*
-       * Restore question so user can retry.
+       * Restore question.
        */
-      setQuestion(currentQuestion);
+
+      setQuestion(
+        currentQuestion
+      );
 
       setTimeout(() => {
         resizeTextarea();
@@ -835,30 +1845,49 @@ const Copilot = ({
     }
   };
 
-  const handleSuggestion = (text) => {
+  // ============================================================
+  // SUGGESTION
+  // ============================================================
+
+  const handleSuggestion = (
+    text
+  ) => {
     setQuestion(text);
 
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      resizeTextarea();
-    });
+    requestAnimationFrame(
+      () => {
+        textareaRef.current?.focus();
+
+        resizeTextarea();
+      }
+    );
   };
 
+  // ============================================================
+  // DELETE
+  // ============================================================
+
   const handleDelete = async () => {
-    if (!conversation || loading) {
+    if (
+      !conversation ||
+      loading
+    ) {
       return;
     }
 
-    const confirmed = window.confirm(
-      'Are you sure you want to delete this conversation?'
-    );
+    const confirmed =
+      window.confirm(
+        'Are you sure you want to delete this conversation?'
+      );
 
     if (!confirmed) {
       return;
     }
 
     try {
-      await onDeleteConversation(conversation.id);
+      await onDeleteConversation(
+        conversation.id
+      );
     } catch (error) {
       console.error(
         'Error deleting conversation:',
@@ -867,163 +1896,301 @@ const Copilot = ({
     }
   };
 
-  const handleConfirmAction = async () => {
-    if (!pendingAction || !conversation || executingAction) {
-      return;
-    }
+  // ============================================================
+  // CONFIRM ACTION
+  // ============================================================
 
-    setExecutingAction(true);
+  const handleConfirmAction =
+    async () => {
+      if (
+        !pendingAction ||
+        !conversation ||
+        executingAction
+      ) {
+        return;
+      }
 
-    try {
-      const response = await onExecuteAction(
-        conversation.id,
-        {
-          actionId: pendingAction.actionId,
-          actionData: {
-            ...pendingAction,
-            originalMessage: pendingAction.originalMessage,
-          },
-        }
+      setExecutingAction(
+        true
       );
 
-      console.log('Action execution response:', response);
+      try {
+        const response =
+          await onExecuteAction(
+            conversation.id,
+            {
+              actionId:
+                pendingAction.actionId,
+              actionData: {
+                ...pendingAction,
+                originalMessage:
+                  pendingAction.originalMessage,
+              },
+            }
+          );
 
-      if (response?.assistantMessage) {
-        setLocalMessages((previous) => [
-          ...previous,
-          response.assistantMessage,
-        ]);
+        console.log(
+          'Action execution response:',
+          response
+        );
 
-        setPendingAction(null);
+        if (
+          response?.assistantMessage
+        ) {
+          setLocalMessages(
+            (previous) => [
+              ...previous,
+              response.assistantMessage,
+            ]
+          );
+
+          setPendingAction(
+            null
+          );
+        }
+      } catch (error) {
+        console.error(
+          'Error executing action:',
+          error
+        );
+
+        const errorMessage =
+          {
+            id: generateTempId(),
+            role: 'assistant',
+            content:
+              'I apologize, but I encountered an error executing this action. Please try again.',
+            created_at:
+              new Date().toISOString(),
+          };
+
+        setLocalMessages(
+          (previous) => [
+            ...previous,
+            errorMessage,
+          ]
+        );
+      } finally {
+        setExecutingAction(
+          false
+        );
       }
-    } catch (error) {
-      console.error('Error executing action:', error);
-      
-      // Add error message to chat
-      const errorMessage = {
-        id: generateTempId(),
-        role: 'assistant',
-        content: 'I apologize, but I encountered an error executing this action. Please try again.',
-        created_at: new Date().toISOString(),
-      };
-
-      setLocalMessages((previous) => [
-        ...previous,
-        errorMessage,
-      ]);
-    } finally {
-      setExecutingAction(false);
-    }
-  };
-
-  const handleCancelAction = () => {
-    setPendingAction(null);
-    
-    // Add cancellation message
-    const cancelMessage = {
-      id: generateTempId(),
-      role: 'assistant',
-      content: 'Action cancelled. Let me know if you need help with anything else.',
-      created_at: new Date().toISOString(),
     };
 
-    setLocalMessages((previous) => [
-      ...previous,
-      cancelMessage,
-    ]);
-  };
+  // ============================================================
+  // CANCEL ACTION
+  // ============================================================
 
-  /*
-   * Deduplicate messages.
-   */
-  const messages = useMemo(() => {
-    const seen = new Map();
+  const handleCancelAction =
+    () => {
+      setPendingAction(null);
 
-    for (const message of localMessages) {
-      const key = String(
-        message.id ||
-          `${message.role}-${message.created_at}-${message.content}`
+      const cancelMessage =
+        {
+          id: generateTempId(),
+          role: 'assistant',
+          content:
+            'Action cancelled. Let me know if you need help with anything else.',
+          created_at:
+            new Date().toISOString(),
+        };
+
+      setLocalMessages(
+        (previous) => [
+          ...previous,
+          cancelMessage,
+        ]
       );
+    };
 
-      seen.set(key, message);
-    }
+  // ============================================================
+  // DEDUPLICATE
+  // ============================================================
 
-    return Array.from(seen.values());
-  }, [localMessages]);
+  const messages = useMemo(
+    () => {
+      const seen =
+        new Map();
 
-  /*
-   * Empty state.
-   */
+      for (
+        const message of
+        localMessages
+      ) {
+        const key =
+          String(
+            message.id ||
+              `${message.role}-${message.created_at}-${message.content}`
+          );
+
+        seen.set(
+          key,
+          message
+        );
+      }
+
+      return Array.from(
+        seen.values()
+      );
+    },
+    [localMessages]
+  );
+
+  // ============================================================
+  // EMPTY CONVERSATION
+  // ============================================================
+
   if (!conversation) {
     return (
       <div
         className="
-          flex h-full items-center justify-center
-          bg-gradient-to-br from-gray-50 via-white to-blue-50/30
+          flex
+          h-full
+          items-center
+          justify-center
+          bg-gradient-to-br
+          from-gray-50
+          via-white
+          to-blue-50/30
         "
       >
         <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{
+            opacity: 0,
+            y: 15,
+          }}
+          animate={{
+            opacity: 1,
+            y: 0,
+          }}
           className="px-6 text-center"
         >
           <div
             className="
-              mx-auto mb-5 flex h-16 w-16 items-center
-              justify-center rounded-2xl
-              bg-gradient-to-br from-blue-500
-              via-indigo-500 to-violet-600 text-white
-              shadow-xl shadow-blue-500/20
+              mx-auto
+              mb-5
+              flex
+              h-16
+              w-16
+              items-center
+              justify-center
+              rounded-2xl
+              bg-gradient-to-br
+              from-blue-500
+              via-indigo-500
+              to-violet-600
+              text-white
+              shadow-xl
+              shadow-blue-500/20
             "
           >
             <Sparkles size={28} />
           </div>
 
-          <h2 className="text-xl font-bold tracking-tight text-gray-900">
+          <h2
+            className="
+              text-xl
+              font-bold
+              tracking-tight
+              text-gray-900
+            "
+          >
             Employee Copilot
           </h2>
 
-          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-gray-500">
-            Select a conversation or create a new one
-            to start chatting with your AI assistant.
+          <p
+            className="
+              mx-auto
+              mt-2
+              max-w-sm
+              text-sm
+              leading-6
+              text-gray-500
+            "
+          >
+            Select a conversation
+            or create a new one
+            to start chatting with
+            your AI assistant.
           </p>
         </motion.div>
       </div>
     );
   }
 
+  // ============================================================
+  // MAIN UI
+  // ============================================================
+
   return (
     <div
       className="
-        flex h-full min-h-0 flex-col
+        flex
+        h-full
+        min-h-0
+        flex-col
         bg-[#fafafa]
       "
     >
-      {/* HEADER */}
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
+
       <header
         className="
-          z-10 flex flex-shrink-0 items-center justify-between
-          border-b border-gray-200/80 bg-white/90 px-4 py-3
-          backdrop-blur-xl sm:px-6
+          z-10
+          flex
+          flex-shrink-0
+          items-center
+          justify-between
+          border-b
+          border-gray-200/80
+          bg-white/90
+          px-4
+          py-3
+          backdrop-blur-xl
+          sm:px-6
         "
       >
-        <div className="flex min-w-0 items-center gap-3">
+        <div
+          className="
+            flex
+            min-w-0
+            items-center
+            gap-3
+          "
+        >
           <div
             className="
-              relative flex h-10 w-10 flex-shrink-0
-              items-center justify-center rounded-xl
-              bg-gradient-to-br from-blue-500
-              via-indigo-500 to-violet-600 text-white
-              shadow-md shadow-blue-500/20
+              relative
+              flex
+              h-10
+              w-10
+              flex-shrink-0
+              items-center
+              justify-center
+              rounded-xl
+              bg-gradient-to-br
+              from-blue-500
+              via-indigo-500
+              to-violet-600
+              text-white
+              shadow-md
+              shadow-blue-500/20
             "
           >
             <Sparkles size={19} />
 
             <span
               className="
-                absolute -bottom-0.5 -right-0.5
-                h-2.5 w-2.5 rounded-full border-2
-                border-white bg-emerald-500
+                absolute
+                -bottom-0.5
+                -right-0.5
+                h-2.5
+                w-2.5
+                rounded-full
+                border-2
+                border-white
+                bg-emerald-500
               "
             />
           </div>
@@ -1031,21 +2198,51 @@ const Copilot = ({
           <div className="min-w-0">
             <h2
               className="
-                truncate text-sm font-bold tracking-tight
-                text-gray-900 sm:text-base
+                truncate
+                text-sm
+                font-bold
+                tracking-tight
+                text-gray-900
+                sm:text-base
               "
             >
-              {conversation.title || 'New Conversation'}
+              {conversation.title ||
+                'New Conversation'}
             </h2>
 
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="text-[11px] font-medium text-emerald-600">
+            <div
+              className="
+                mt-0.5
+                flex
+                items-center
+                gap-1.5
+              "
+            >
+              <span
+                className="
+                  text-[11px]
+                  font-medium
+                  text-emerald-600
+                "
+              >
                 Online
               </span>
 
-              <span className="h-1 w-1 rounded-full bg-gray-300" />
+              <span
+                className="
+                  h-1
+                  w-1
+                  rounded-full
+                  bg-gray-300
+                "
+              />
 
-              <span className="text-[11px] text-gray-400">
+              <span
+                className="
+                  text-[11px]
+                  text-gray-400
+                "
+              >
                 AI Assistant
               </span>
             </div>
@@ -1057,10 +2254,18 @@ const Copilot = ({
           onClick={handleDelete}
           disabled={loading}
           className="
-            flex h-9 w-9 items-center justify-center
-            rounded-lg text-gray-400 transition-all
-            hover:bg-red-50 hover:text-red-500
-            disabled:cursor-not-allowed disabled:opacity-40
+            flex
+            h-9
+            w-9
+            items-center
+            justify-center
+            rounded-lg
+            text-gray-400
+            transition-all
+            hover:bg-red-50
+            hover:text-red-500
+            disabled:cursor-not-allowed
+            disabled:opacity-40
           "
           title="Delete conversation"
           aria-label="Delete conversation"
@@ -1069,66 +2274,146 @@ const Copilot = ({
         </button>
       </header>
 
-      {/* MESSAGES */}
+      {/* ======================================================
+          MESSAGES
+      ====================================================== */}
+
       <main
         className="
-          min-h-0 flex-1 overflow-y-auto
+          min-h-0
+          flex-1
+          overflow-y-auto
           scroll-smooth
         "
       >
-        <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6">
+        <div
+          className="
+            mx-auto
+            w-full
+            max-w-4xl
+            px-4
+            py-8
+            sm:px-6
+          "
+        >
           {messages.length > 0 ? (
             <div className="space-y-7">
-              <AnimatePresence initial={false}>
-                {messages.map((message) => (
-                  <ChatMessage
-                    key={message.id}
-                    message={message}
-                  />
-                ))}
+              <AnimatePresence
+                initial={false}
+              >
+                {messages.map(
+                  (message) => (
+                    <ChatMessage
+                      key={
+                        message.id
+                      }
+                      message={
+                        message
+                      }
+                      isTyping={
+                        message.typing ===
+                        true
+                      }
+                    />
+                  )
+                )}
               </AnimatePresence>
+
+              {/* ==================================================
+                  THINKING
+              ================================================== */}
+
+              <AnimatePresence>
+                {loading && (
+                  <TypingIndicator />
+                )}
+              </AnimatePresence>
+
+              {/* ==================================================
+                  ACTION
+              ================================================== */}
 
               {pendingAction && (
                 <ActionCard
-                  actionMetadata={pendingAction}
-                  onConfirm={handleConfirmAction}
-                  onCancel={handleCancelAction}
-                  isLoading={executingAction}
+                  actionMetadata={
+                    pendingAction
+                  }
+                  onConfirm={
+                    handleConfirmAction
+                  }
+                  onCancel={
+                    handleCancelAction
+                  }
+                  isLoading={
+                    executingAction
+                  }
                 />
               )}
 
-              {loading && <TypingIndicator />}
-
               <div
-                ref={messagesEndRef}
+                ref={
+                  messagesEndRef
+                }
                 className="h-1"
               />
             </div>
           ) : (
             <>
               <EmptyState
-                onSuggestion={handleSuggestion}
+                onSuggestion={
+                  handleSuggestion
+                }
               />
 
-              <div ref={messagesEndRef} />
+              <div
+                ref={
+                  messagesEndRef
+                }
+              />
             </>
           )}
         </div>
       </main>
 
-      {/* INPUT */}
+      {/* ======================================================
+          INPUT
+      ====================================================== */}
+
       <footer
         className="
-          flex-shrink-0 border-t border-gray-200/80
-          bg-white/90 backdrop-blur-xl
+          flex-shrink-0
+          border-t
+          border-gray-200/80
+          bg-white/90
+          backdrop-blur-xl
         "
       >
-        <div className="mx-auto w-full max-w-4xl px-4 py-3 sm:px-6 sm:py-4">
-          <form onSubmit={handleSubmit}>
+        <div
+          className="
+            mx-auto
+            w-full
+            max-w-4xl
+            px-4
+            py-3
+            sm:px-6
+            sm:py-4
+          "
+        >
+          <form
+            onSubmit={
+              handleSubmit
+            }
+          >
             <div
               className="
-                relative rounded-2xl border border-gray-200
-                bg-gray-50 p-2 shadow-sm transition-all
+                relative
+                rounded-2xl
+                border
+                border-gray-200
+                bg-gray-50
+                p-2
+                shadow-sm
+                transition-all
                 duration-200
                 focus-within:border-blue-300
                 focus-within:bg-white
@@ -1138,53 +2423,135 @@ const Copilot = ({
                 focus-within:ring-blue-500/5
               "
             >
-              <div className="flex items-end gap-2">
-                {/* AI icon */}
-                <div
+              <div
+                className="
+                  flex
+                  items-end
+                  gap-2
+                "
+              >
+                {/* AI ICON */}
+
+                <motion.div
+                  animate={
+                    loading
+                      ? {
+                          rotate: [
+                            0,
+                            -5,
+                            5,
+                            0,
+                          ],
+                        }
+                      : {}
+                  }
+                  transition={{
+                    duration: 1.2,
+                    repeat: loading
+                      ? Infinity
+                      : 0,
+                  }}
                   className="
-                    mb-1 flex h-9 w-9 flex-shrink-0
-                    items-center justify-center rounded-xl
-                    bg-gradient-to-br from-blue-500
-                    to-violet-600 text-white
+                    mb-1
+                    flex
+                    h-9
+                    w-9
+                    flex-shrink-0
+                    items-center
+                    justify-center
+                    rounded-xl
+                    bg-gradient-to-br
+                    from-blue-500
+                    to-violet-600
+                    text-white
+                    shadow-sm
+                    shadow-blue-500/20
                   "
                 >
                   <Sparkles size={15} />
-                </div>
+                </motion.div>
 
-                {/* Textarea */}
+                {/* TEXTAREA */}
+
                 <textarea
-                  ref={textareaRef}
+                  ref={
+                    textareaRef
+                  }
                   rows={1}
-                  value={question}
-                  onChange={handleQuestionChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Message your AI copilot..."
-                  disabled={loading}
+                  value={
+                    question
+                  }
+                  onChange={
+                    handleQuestionChange
+                  }
+                  onKeyDown={
+                    handleKeyDown
+                  }
+                  placeholder={
+                    loading
+                      ? 'Employee Copilot is thinking...'
+                      : 'Message your AI copilot...'
+                  }
+                  disabled={
+                    loading
+                  }
                   autoComplete="off"
                   className="
-                    max-h-40 min-h-[40px] min-w-0 flex-1
-                    resize-none overflow-y-auto bg-transparent
-                    px-1 py-2.5 text-sm leading-5
-                    text-gray-900 outline-none
+                    max-h-40
+                    min-h-[40px]
+                    min-w-0
+                    flex-1
+                    resize-none
+                    overflow-y-auto
+                    bg-transparent
+                    px-1
+                    py-2.5
+                    text-sm
+                    leading-5
+                    text-gray-900
+                    outline-none
                     placeholder:text-gray-400
                     disabled:cursor-not-allowed
                     disabled:opacity-60
                   "
                 />
 
-                {/* Send */}
+                {/* SEND */}
+
                 <motion.button
-                  whileHover={{ scale: 1.04 }}
-                  whileTap={{ scale: 0.95 }}
+                  whileHover={
+                    !loading &&
+                    question.trim()
+                      ? {
+                          scale: 1.05,
+                        }
+                      : {}
+                  }
+                  whileTap={
+                    !loading &&
+                    question.trim()
+                      ? {
+                          scale: 0.94,
+                        }
+                      : {}
+                  }
                   type="submit"
                   disabled={
                     loading ||
                     !question.trim()
                   }
                   className="
-                    mb-1 flex h-9 w-9 flex-shrink-0
-                    items-center justify-center rounded-xl
-                    bg-gray-900 text-white shadow-sm
+                    mb-1
+                    flex
+                    h-9
+                    w-9
+                    flex-shrink-0
+                    items-center
+                    justify-center
+                    rounded-xl
+                    bg-gray-900
+                    text-white
+                    shadow-sm
                     transition-all
                     hover:bg-gray-800
                     disabled:cursor-not-allowed
@@ -1196,7 +2563,9 @@ const Copilot = ({
                   {loading ? (
                     <Loader2
                       size={16}
-                      className="animate-spin"
+                      className="
+                        animate-spin
+                      "
                     />
                   ) : (
                     <Send size={16} />
@@ -1204,37 +2573,93 @@ const Copilot = ({
                 </motion.button>
               </div>
 
-              {/* Bottom controls */}
-              <div className="mt-1 flex items-center justify-between px-1">
-                <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                  <span className="hidden items-center gap-1 sm:flex">
-                    <FiCommand size={10} />
-                    <span>Enter to send</span>
+              {/* BOTTOM CONTROLS */}
+
+              <div
+                className="
+                  mt-1
+                  flex
+                  items-center
+                  justify-between
+                  px-1
+                "
+              >
+                <div
+                  className="
+                    flex
+                    items-center
+                    gap-2
+                    text-[10px]
+                    text-gray-400
+                  "
+                >
+                  <span
+                    className="
+                      hidden
+                      items-center
+                      gap-1
+                      sm:flex
+                    "
+                  >
+                    <FiCommand
+                      size={10}
+                    />
+
+                    <span>
+                      Enter to send
+                    </span>
                   </span>
 
-                  <span className="hidden text-gray-300 sm:block">
+                  <span
+                    className="
+                      hidden
+                      text-gray-300
+                      sm:block
+                    "
+                  >
                     •
                   </span>
 
                   <span>
-                    Shift + Enter for new line
+                    Shift + Enter
+                    for new line
                   </span>
                 </div>
 
-                <span className="text-[10px] text-gray-300">
-                  {question.length > 0
+                <span
+                  className="
+                    text-[10px]
+                    text-gray-300
+                  "
+                >
+                  {question.length >
+                  0
                     ? `${question.length}`
                     : ''}
                 </span>
               </div>
             </div>
 
-            <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-gray-400">
-              <Sparkles size={9} />
+            <div
+              className="
+                mt-2
+                flex
+                items-center
+                justify-center
+                gap-1
+                text-[10px]
+                text-gray-400
+              "
+            >
+              <Sparkles
+                size={9}
+              />
 
               <span>
-                Employee Copilot may make mistakes.
-                Verify important information.
+                Employee Copilot
+                may make mistakes.
+                Verify important
+                information.
               </span>
             </div>
           </form>

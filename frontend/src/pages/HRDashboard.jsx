@@ -8,14 +8,14 @@ import {
   LogOut,
   Calendar,
   User,
-  Clock
+  Clock,
 } from 'lucide-react';
 
 import { useUser } from '../context/UserContext';
 import {
   documentAPI,
   conversationAPI,
-  userAPI
+  userAPI,
 } from '../services/api';
 
 import Copilot from '../components/Copilot';
@@ -57,11 +57,11 @@ const HRDashboard = () => {
       const [
         docsResponse,
         convsResponse,
-        usersResponse
+        usersResponse,
       ] = await Promise.all([
         documentAPI.getDocuments(),
         conversationAPI.getConversations(),
-        userAPI.getAllUsers()
+        userAPI.getAllUsers(),
       ]);
 
       if (docsResponse?.success) {
@@ -112,7 +112,7 @@ const HRDashboard = () => {
       ) {
         setConversations((prev) => [
           response.conversation,
-          ...prev
+          ...prev,
         ]);
 
         setActiveConversation(
@@ -171,14 +171,28 @@ const HRDashboard = () => {
           data
         );
 
+      console.log(
+        'HR Dashboard sendMessage response:',
+        response
+      );
+
       if (
         response?.success &&
         response?.conversation
       ) {
+        /*
+         * Update the active conversation immediately.
+         * Copilot also receives this API response directly
+         * because we return it below.
+         */
         setActiveConversation(
           response.conversation
         );
 
+        /*
+         * Update the conversation list immediately
+         * without requiring a refresh.
+         */
         setConversations((prev) =>
           prev.map((conversation) =>
             conversation.id ===
@@ -188,6 +202,20 @@ const HRDashboard = () => {
           )
         );
       }
+
+      /*
+       * IMPORTANT:
+       *
+       * Copilot.jsx does:
+       *
+       * const response = await onSendMessage(...)
+       *
+       * Therefore this handler MUST return the API response.
+       *
+       * Without this return, Copilot receives undefined and
+       * cannot immediately display the AI response.
+       */
+      return response;
     } catch (error) {
       console.error(
         'Error sending message:',
@@ -213,6 +241,11 @@ const HRDashboard = () => {
           data
         );
 
+      console.log(
+        'HR Dashboard executeAction response:',
+        response
+      );
+
       if (
         response?.success &&
         response?.conversation
@@ -230,6 +263,12 @@ const HRDashboard = () => {
           )
         );
       }
+
+      /*
+       * Copilot.jsx also awaits this callback and expects
+       * the returned assistantMessage/action response.
+       */
+      return response;
     } catch (error) {
       console.error(
         'Error executing action:',
@@ -336,7 +375,7 @@ const HRDashboard = () => {
       ) {
         setDocuments((prev) => [
           response.document,
-          ...prev
+          ...prev,
         ]);
       }
     } catch (error) {
