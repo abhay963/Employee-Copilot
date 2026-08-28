@@ -1,0 +1,48 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "init-db": "node src/db/init.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@google/genai": "^2.19.0",
+    "@langchain/community": "^1.1.29",
+    "@langchain/core": "^1.2.9",
+    "@langchain/google-genai": "^2.3.0",
+    "@langchain/langgraph": "^1.4.13",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.6",
+    "date-fns": "^3.6.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "googleapis": "^144.0.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.2",
+    "mammoth": "^1.12.1",
+    "multer": "^2.2.0",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.23.0",
+    "uuid": "^14.0.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.7",
+    "@babel/preset-env": "^7.29.7",
+    "@types/jest": "^30.0.0",
+    "babel-jest": "^30.4.1",
+    "jest": "^30.4.2",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.2.2"
+  }
+}
