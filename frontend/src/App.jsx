@@ -11,6 +11,7 @@ import { useUser } from './context/UserContext';
 import Landing from './pages/Landing';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 import HRDashboard from './pages/HRDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import GoogleCallback from './pages/GoogleCallback';
@@ -20,7 +21,8 @@ function App() {
     user,
     loading,
     isEmployee,
-    isHR
+    isHR,
+    isAdmin
   } = useUser();
 
   if (loading) {
@@ -55,7 +57,9 @@ function App() {
             ) : (
               <Navigate
                 to={
-                  isHR
+                  isAdmin
+                    ? '/admin-dashboard'
+                    : isHR
                     ? '/hr-dashboard'
                     : '/employee-dashboard'
                 }
@@ -72,7 +76,9 @@ function App() {
             ) : (
               <Navigate
                 to={
-                  isHR
+                  isAdmin
+                    ? '/admin-dashboard'
+                    : isHR
                     ? '/hr-dashboard'
                     : '/employee-dashboard'
                 }
@@ -89,7 +95,9 @@ function App() {
             ) : (
               <Navigate
                 to={
-                  isHR
+                  isAdmin
+                    ? '/admin-dashboard'
+                    : isHR
                     ? '/hr-dashboard'
                     : '/employee-dashboard'
                 }
@@ -138,6 +146,21 @@ function App() {
         />
 
         {/* =====================================================
+            PROTECTED ADMIN ROUTE
+        ====================================================== */}
+
+        <Route
+          path="/admin-dashboard"
+          element={
+            isAdmin ? (
+              <AdminDashboard />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+
+        {/* =====================================================
             CATCH ALL
         ====================================================== */}
 
@@ -147,7 +170,9 @@ function App() {
             <Navigate
               to={
                 user
-                  ? isHR
+                  ? isAdmin
+                    ? '/admin-dashboard'
+                    : isHR
                     ? '/hr-dashboard'
                     : '/employee-dashboard'
                   : '/'

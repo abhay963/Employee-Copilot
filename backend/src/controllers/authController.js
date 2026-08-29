@@ -1,10 +1,14 @@
 import { User } from '../models/User.js';
 import { generateToken } from '../middleware/auth.js';
 import { LeaveBalance } from '../models/LeaveBalance.js';
+import { ValidEmployeeId } from '../models/ValidEmployeeId.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const VALID_ROLES = ['employee', 'hr'];
+const VALID_ROLES = ['employee', 'hr', 'admin'];
+
+// Roles allowed during public signup (admin excluded)
+const PUBLIC_SIGNUP_ROLES = ['employee', 'hr'];
 
 const COMMON_PASSWORDS = [
   'password',
@@ -22,7 +26,7 @@ export const register = async (req, res) => {
       name,
       email,
       password,
-      role,
+      employee_id,
       department
     } = req.body;
 
@@ -30,7 +34,7 @@ export const register = async (req, res) => {
     // Basic validation
     // -----------------------------
 
-    if (!name || !email || !password || !role || !department) {
+    if (!name || !email || !password || !employee_id || !department) {
       return res.status(400).json({
         success: false,
         error: 'All fields are required'
@@ -39,8 +43,11 @@ export const register = async (req, res) => {
 
     const trimmedName = name.trim();
     const normalizedEmail = email.trim().toLowerCase();
-    const normalizedRole = role.trim().toLowerCase();
+    const trimmedEmployeeId = employee_id.trim();
     const trimmedDepartment = department.trim();
+    
+    // Always set role to 'employee' for public signup
+    const normalizedRole = 'employee';
 
     // -----------------------------
     // Name validation
@@ -140,17 +147,6 @@ export const register = async (req, res) => {
     }
 
     // -----------------------------
-    // Role validation
-    // -----------------------------
-
-    if (!VALID_ROLES.includes(normalizedRole)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid role. Must be "employee" or "hr"'
-      });
-    }
-
-    // -----------------------------
     // Department validation
     // -----------------------------
 
@@ -165,7 +161,18 @@ export const register = async (req, res) => {
     }
 
     // -----------------------------
-    // Check existing user
+    // Employee ID validation
+    // -----------------------------
+
+    if (trimmedEmployeeId.length < 3 || trimmedEmployeeId.length > 50) {
+      return res.status(400).json({
+        success: false,
+        error: 'Employee ID must be between 3 and 50 characters'
+      });
+    }
+
+    // -----------------------------
+    // Check existing user by email
     // -----------------------------
 
     const existingUser = await User.findByEmail(normalizedEmail);
@@ -178,16 +185,82 @@ export const register = async (req, res) => {
     }
 
     // -----------------------------
+    // Check existing user by employee_id
+    // -----------------------------
+
+    const existingEmployeeId = await User.findByEmployeeId(trimmedEmployeeId);
+
+    if (existingEmployeeId) {
+      return res.status(409).json({
+        success: false,
+        error: 'Employee ID already registered'
+      });
+    }
+
+    // -----------------------------
+    // Validate employee_id against valid_employee_ids
+    // -----------------------------
+
+    const validEmployeeId = await ValidEmployeeId.findByEmployeeId(trimmedEmployeeId);
+
+    if (!validEmployeeId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid Employee ID. Please contact your administrator.'
+      });
+    }
+
+    // Normalize employee ID to uppercase for consistency
+    const normalizedEmployeeIdForDb = trimmedEmployeeId.toUpperCase();
+
+    // -----------------------------
+    // Ensure admin role cannot be set during public signup
+    // -----------------------------
+
+    // Since we always set role to 'employee' for public signup, this is defensive
+    // to prevent any future changes or malicious requests
+    if (normalizedRole === 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Admin role cannot be assigned during public signup'
+      });
+    }
+
+    // -----------------------------
     // Create user
     // -----------------------------
 
-    const user = await User.create({
-      name: trimmedName,
-      email: normalizedEmail,
-      password,
-      role: normalizedRole,
-      department: trimmedDepartment
-    });
+    let user;
+    try {
+      user = await User.create({
+        name: trimmedName,
+        email: normalizedEmail,
+        password,
+        role: normalizedRole,
+        department: trimmedDepartment,
+        employee_id: normalizedEmployeeIdForDb
+      });
+    } catch (createError) {
+      if (createError.message === 'Employee ID already exists') {
+        return res.status(409).json({
+          success: false,
+          error: 'Employee ID already registered'
+        });
+      }
+      
+      // Handle PostgreSQL unique constraint
+      if (createError.code === '23505') {
+        const constraint = createError.constraint;
+        if (constraint && constraint.includes('employee_id')) {
+          return res.status(409).json({
+            success: false,
+            error: 'Employee ID already registered'
+          });
+        }
+      }
+      
+      throw createError;
+    }
 
     // -----------------------------
     // Create default leave balance
@@ -313,6 +386,17 @@ export const login = async (req, res) => {
       return res.status(401).json({
         success: false,
         error: 'Invalid email or password'
+      });
+    }
+
+    // -----------------------------
+    // Check if user is blocked
+    // -----------------------------
+
+    if (user.is_blocked) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your account has been blocked. Please contact your administrator.'
       });
     }
 

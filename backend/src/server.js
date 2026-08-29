@@ -9,6 +9,8 @@ import conversationRoutes from './routes/conversationRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import leaveRoutes from './routes/leaveRoutes.js';
 import googleRoutes from './routes/googleRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import validEmployeeIdRoutes from './routes/validEmployeeIdRoutes.js';
 
 const app = express();
 
@@ -29,6 +31,8 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/leave', leaveRoutes);
 app.use('/api/google', googleRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/admin/valid-employee-ids', validEmployeeIdRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

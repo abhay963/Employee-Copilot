@@ -7,9 +7,11 @@ CREATE TABLE IF NOT EXISTS users (
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255),
-    role VARCHAR(50) NOT NULL CHECK (role IN ('employee', 'hr')),
+    role VARCHAR(50) NOT NULL CHECK (role IN ('employee', 'hr', 'admin')),
+    employee_id VARCHAR(50) UNIQUE,
     department VARCHAR(255),
     manager_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    is_blocked BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -30,6 +32,43 @@ BEGIN
     ) THEN
         ALTER TABLE users ADD COLUMN manager_id UUID REFERENCES users(id) ON DELETE SET NULL;
     END IF;
+    
+    -- Add employee_id column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'employee_id'
+    ) THEN
+        ALTER TABLE users ADD COLUMN employee_id VARCHAR(50);
+    END IF;
+    
+    -- Add UNIQUE constraint on employee_id if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'users_employee_id_key'
+    ) THEN
+        ALTER TABLE users ADD CONSTRAINT users_employee_id_key UNIQUE (employee_id);
+    END IF;
+    
+    -- Add is_blocked column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'is_blocked'
+    ) THEN
+        ALTER TABLE users ADD COLUMN is_blocked BOOLEAN DEFAULT FALSE;
+    END IF;
+    
+    -- Update role check constraint to include admin
+    -- First drop the existing constraint if it exists
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'users_role_check'
+    ) THEN
+        ALTER TABLE users DROP CONSTRAINT users_role_check;
+    END IF;
+    
+    -- Add the updated constraint
+    ALTER TABLE users ADD CONSTRAINT users_role_check 
+        CHECK (role IN ('employee', 'hr', 'admin'));
 END $$;
 
 -- Documents table
@@ -172,5 +211,17 @@ CREATE TABLE IF NOT EXISTS google_calendar_oauth_tokens (
 );
 
 CREATE INDEX IF NOT EXISTS google_calendar_oauth_tokens_user_idx ON google_calendar_oauth_tokens(user_id);
+
+-- Valid Employee IDs table (for controlling who can register)
+CREATE TABLE IF NOT EXISTS valid_employee_ids (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id VARCHAR(50) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Add index for faster lookups
+CREATE INDEX IF NOT EXISTS valid_employee_ids_employee_id_idx ON valid_employee_ids(employee_id);
+CREATE INDEX IF NOT EXISTS valid_employee_ids_created_by_idx ON valid_employee_ids(created_by);
 
 

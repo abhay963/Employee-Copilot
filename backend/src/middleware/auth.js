@@ -50,13 +50,22 @@ export const authenticate = async (req, res, next) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
+    // Check if user is blocked
+    if (user.is_blocked) {
+      return res.status(403).json({ 
+        error: 'Your account has been blocked. Please contact your administrator.' 
+      });
+    }
+
     // Attach user to request
     req.user = {
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
-      department: user.department
+      department: user.department,
+      employee_id: user.employee_id,
+      is_blocked: user.is_blocked
     };
 
     next();
@@ -105,6 +114,23 @@ export const requireAuthenticated = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({
       error: 'User not authenticated'
+    });
+  }
+
+  next();
+};
+
+// Require Admin role
+export const requireAdmin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'User not authenticated'
+    });
+  }
+
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Admin access required'
     });
   }
 

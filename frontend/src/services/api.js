@@ -171,6 +171,53 @@ export const userAPI = {
 };
 
 // ============================================================
+// ADMIN API
+// ============================================================
+
+export const adminAPI = {
+  getUsers: () =>
+    api.get(
+      '/api/admin/users'
+    ),
+
+  blockUser: (id) =>
+    api.patch(
+      `/api/admin/users/${id}/block`
+    ),
+
+  unblockUser: (id) =>
+    api.patch(
+      `/api/admin/users/${id}/unblock`
+    ),
+
+  deleteUser: (id) =>
+    api.delete(
+      `/api/admin/users/${id}`
+    ),
+
+  getUserStats: () =>
+    api.get(
+      '/api/admin/stats'
+    ),
+
+  getValidEmployeeIds: () =>
+    api.get(
+      '/api/admin/valid-employee-ids'
+    ),
+
+  addValidEmployeeId: (employeeId) =>
+    api.post(
+      '/api/admin/valid-employee-ids',
+      { employee_id: employeeId }
+    ),
+
+  deleteValidEmployeeId: (id) =>
+    api.delete(
+      `/api/admin/valid-employee-ids/${id}`
+    ),
+};
+
+// ============================================================
 // DOCUMENT API
 // ============================================================
 

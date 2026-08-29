@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Building, Shield, Calendar, Edit } from 'lucide-react';
+import { User, Mail, Building, Shield, Calendar, Edit, Briefcase } from 'lucide-react';
 import { useUser } from '../context/UserContext';
 import { userAPI } from '../services/api';
 
@@ -177,6 +177,16 @@ const Profile = () => {
 
                 <div className="p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-3">
+                    <Briefcase className="w-5 h-5 text-violet-500" />
+                    <div>
+                      <p className="text-sm text-gray-600">Employee ID</p>
+                      <p className="font-medium font-mono">{user.employee_id || 'Not assigned'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
                     <Calendar className="w-5 h-5 text-green-500" />
                     <div>
                       <p className="text-sm text-gray-600">Member Since</p>
@@ -187,7 +197,7 @@ const Profile = () => {
                   </div>
                 </div>
 
-                <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="p-4 bg-gray-50 rounded-lg md:col-span-2">
                   <div className="flex items-center gap-3">
                     <Mail className="w-5 h-5 text-orange-500" />
                     <div>

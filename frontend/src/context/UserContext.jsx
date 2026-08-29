@@ -278,6 +278,9 @@ export const UserProvider = ({ children }) => {
   const isHR =
     normalizedRole === 'hr';
 
+  const isAdmin =
+    normalizedRole === 'admin';
+
   const value = {
     user,
     loading,
@@ -290,6 +293,7 @@ export const UserProvider = ({ children }) => {
 
     isEmployee,
     isHR,
+    isAdmin,
   };
 
   return (

@@ -284,6 +284,12 @@ const Login = () => {
       console.log("Authenticated user:", response.user);
       console.log("User role:", role);
 
+      if (role === "admin") {
+        toast.success("Welcome back, Admin!");
+        navigate("/admin-dashboard", { replace: true });
+        return;
+      }
+
       if (role === "hr") {
         toast.success("Welcome back, HR!");
         navigate("/hr-dashboard", { replace: true });

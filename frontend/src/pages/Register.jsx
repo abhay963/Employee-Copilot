@@ -7,7 +7,6 @@ import {
   User,
   Building,
   AlertCircle,
-  Shield,
   Briefcase,
   Eye,
   EyeOff,
@@ -233,7 +232,7 @@ const Register = () => {
     email: "",
     password: "",
     confirmPassword: "",
-    role: "employee",
+    employee_id: "",
     department: "",
   });
 
@@ -253,13 +252,6 @@ const Register = () => {
     }));
   };
 
-  const handleRoleChange = (role) => {
-    setFormData((prev) => ({
-      ...prev,
-      role,
-    }));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -270,6 +262,11 @@ const Register = () => {
 
     if (!formData.email.trim()) {
       toast.error("Please enter your email address.");
+      return;
+    }
+
+    if (!formData.employee_id.trim()) {
+      toast.error("Please enter your Employee ID.");
       return;
     }
 
@@ -318,11 +315,6 @@ const Register = () => {
       return;
     }
 
-    if (!["employee", "hr"].includes(formData.role)) {
-      toast.error("Please select a valid role.");
-      return;
-    }
-
     setLoading(true);
 
     try {
@@ -330,7 +322,7 @@ const Register = () => {
         name: formData.name.trim(),
         email: formData.email.trim().toLowerCase(),
         password: formData.password,
-        role: formData.role.toLowerCase(),
+        employee_id: formData.employee_id.trim(),
         department: formData.department.trim(),
       });
 
@@ -351,15 +343,6 @@ const Register = () => {
 
       console.log("Registered user:", response.user);
       console.log("Registered user role:", role);
-
-      if (role === "hr") {
-        toast.success(
-          "Account created successfully! Welcome to Employee Copilot."
-        );
-
-        navigate("/hr-dashboard", { replace: true });
-        return;
-      }
 
       if (role === "employee") {
         toast.success(
@@ -709,42 +692,30 @@ const Register = () => {
                 </div>
               </div>
 
-              {/* Role */}
+              {/* Employee ID */}
               <div>
-                <label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                  Role
+                <label
+                  htmlFor="employee_id"
+                  className="mb-2 block font-mono text-[10px] uppercase tracking-[0.16em] text-white/35"
+                >
+                  Employee ID
                 </label>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleRoleChange("employee")}
-                    disabled={loading}
-                    className={cn(
-                      "flex items-center justify-center gap-2 rounded-xl border-2 py-3.5 text-[13px] font-medium transition-all duration-300 disabled:cursor-not-allowed",
-                      formData.role === "employee"
-                        ? "border-[#7FCBFF]/50 bg-[#7FCBFF]/[0.08] text-[#A5DFFF]"
-                        : "border-white/[0.10] bg-white/[0.02] text-white/50 hover:border-white/20 hover:text-white/70"
-                    )}
-                  >
-                    <Briefcase className="h-4 w-4" />
-                    Employee
-                  </button>
+                <div className="relative">
+                  <Briefcase className="absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-white/25" />
 
-                  <button
-                    type="button"
-                    onClick={() => handleRoleChange("hr")}
+                  <input
+                    id="employee_id"
+                    name="employee_id"
+                    type="text"
+                    autoComplete="off"
+                    required
+                    value={formData.employee_id}
+                    onChange={handleChange}
                     disabled={loading}
-                    className={cn(
-                      "flex items-center justify-center gap-2 rounded-xl border-2 py-3.5 text-[13px] font-medium transition-all duration-300 disabled:cursor-not-allowed",
-                      formData.role === "hr"
-                        ? "border-[#A98BFF]/50 bg-[#A98BFF]/[0.08] text-[#C4B0FF]"
-                        : "border-white/[0.10] bg-white/[0.02] text-white/50 hover:border-white/20 hover:text-white/70"
-                    )}
-                  >
-                    <Shield className="h-4 w-4" />
-                    HR
-                  </button>
+                    placeholder="EMP001"
+                    className="w-full rounded-xl border border-white/[0.10] bg-white/[0.03] py-3.5 pl-11 pr-4 text-[14px] text-white outline-none transition-all duration-300 placeholder:text-white/25 focus:border-[#7FCBFF]/35 focus:bg-white/[0.05] focus:ring-2 focus:ring-[#7FCBFF]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
                 </div>
               </div>
 
