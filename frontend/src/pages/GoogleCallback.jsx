@@ -9,103 +9,133 @@ import {
 import { googleAPI } from '../services/api';
 
 const GoogleCallback = () => {
-  const [status, setStatus] =
-    useState('loading');
+  const [status, setStatus] = useState('loading');
 
-  const [message, setMessage] =
-    useState(
-      'Connecting your Google Calendar...'
-    );
+  const [message, setMessage] = useState(
+    'Connecting your Google account...'
+  );
 
   useEffect(() => {
-    const handleCallback =
-      async () => {
-        try {
-          const params =
-            new URLSearchParams(
-              window.location.search
-            );
+    let mounted = true;
 
-          const code =
-            params.get('code');
+    const handleCallback = async () => {
+      try {
+        const params = new URLSearchParams(
+          window.location.search
+        );
 
-          const state =
-            params.get('state');
+        const code = params.get('code');
+        const state = params.get('state');
+        const error = params.get('error');
 
-          const error =
-            params.get('error');
+        // ======================================================
+        // GOOGLE DENIED ACCESS
+        // ======================================================
 
-          // User denied Google access
-          if (error) {
-            setStatus('error');
-
-            setMessage(
-              'Google Calendar connection was cancelled.'
-            );
-
-            return;
-          }
-
-          if (!code || !state) {
-            setStatus('error');
-
-            setMessage(
-              'Invalid Google OAuth response.'
-            );
-
-            return;
-          }
-
-          await googleAPI.handleCallback(
-            {
-              code,
-              state,
-            }
-          );
-
-          setStatus('success');
-
-          setMessage(
-            'Google Calendar connected successfully!'
-          );
-
-          // Clean URL
-          window.history.replaceState(
-            {},
-            document.title,
-            '/auth/google/callback'
-          );
-
-          // Return to employee calendar
-          setTimeout(() => {
-            window.location.href =
-              '/employee-dashboard?tab=calendar';
-          }, 1200);
-        } catch (error) {
-          console.error(
-            'Google callback error:',
-            error
-          );
+        if (error) {
+          if (!mounted) return;
 
           setStatus('error');
-
           setMessage(
-            error?.error ||
-              error?.message ||
-              'Failed to connect Google Calendar.'
+            'Google Calendar connection was cancelled.'
           );
+
+          return;
         }
-      };
+
+        // ======================================================
+        // VALIDATE OAUTH RESPONSE
+        // ======================================================
+
+        if (!code || !state) {
+          if (!mounted) return;
+
+          setStatus('error');
+          setMessage(
+            'Invalid Google OAuth response. Missing authorization code or state.'
+          );
+
+          return;
+        }
+
+        // ======================================================
+        // SEND CALLBACK DATA TO BACKEND
+        // ======================================================
+
+        await googleAPI.handleCallback({
+          code,
+          state,
+        });
+
+        if (!mounted) return;
+
+        // ======================================================
+        // SUCCESS
+        // ======================================================
+
+        setStatus('success');
+
+        setMessage(
+          'Google Calendar connected successfully!'
+        );
+
+        // ======================================================
+        // CLEAN OAUTH PARAMETERS FROM URL
+        // ======================================================
+
+        window.history.replaceState(
+          {},
+          document.title,
+          '/auth/google/callback'
+        );
+
+        // ======================================================
+        // REDIRECT TO EMPLOYEE CALENDAR
+        // ======================================================
+
+        setTimeout(() => {
+          if (!mounted) return;
+
+          window.location.href =
+            '/employee-dashboard?tab=calendar';
+        }, 1200);
+      } catch (error) {
+        console.error(
+          'Google callback error:',
+          error
+        );
+
+        if (!mounted) return;
+
+        setStatus('error');
+
+        setMessage(
+          error?.error ||
+            error?.message ||
+            'Failed to connect Google Calendar. Please try again.'
+        );
+      }
+    };
 
     handleCallback();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
+
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl border border-gray-200 shadow-lg p-8 text-center">
 
-          {/* ICON */}
+          {/* ==================================================
+              STATUS ICON
+          ================================================== */}
 
           <div className="flex justify-center mb-6">
 
@@ -138,7 +168,9 @@ const GoogleCallback = () => {
 
           </div>
 
-          {/* TITLE */}
+          {/* ==================================================
+              TITLE
+          ================================================== */}
 
           <div className="flex items-center justify-center gap-2 mb-3">
             <CalendarDays
@@ -151,21 +183,28 @@ const GoogleCallback = () => {
             </h1>
           </div>
 
-          {/* MESSAGE */}
+          {/* ==================================================
+              MESSAGE
+          ================================================== */}
 
           <p className="text-gray-600">
             {message}
           </p>
 
-          {/* LOADING */}
+          {/* ==================================================
+              LOADING MESSAGE
+          ================================================== */}
 
           {status === 'loading' && (
             <p className="text-sm text-gray-400 mt-5">
-              Please wait...
+              Please wait while we securely connect your
+              Google account...
             </p>
           )}
 
-          {/* SUCCESS */}
+          {/* ==================================================
+              SUCCESS MESSAGE
+          ================================================== */}
 
           {status === 'success' && (
             <p className="text-sm text-gray-500 mt-5">
@@ -173,18 +212,36 @@ const GoogleCallback = () => {
             </p>
           )}
 
-          {/* ERROR */}
+          {/* ==================================================
+              ERROR ACTION
+          ================================================== */}
 
           {status === 'error' && (
-            <button
-              onClick={() => {
-                window.location.href =
-                  '/employee-dashboard?tab=calendar';
-              }}
-              className="mt-6 w-full px-4 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition"
-            >
-              Return to Calendar
-            </button>
+            <div className="mt-6 space-y-3">
+
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href =
+                    '/employee-dashboard?tab=calendar';
+                }}
+                className="w-full px-4 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition"
+              >
+                Return to Calendar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href =
+                    '/employee-dashboard?tab=calendar';
+                }}
+                className="w-full px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition"
+              >
+                Try Again
+              </button>
+
+            </div>
           )}
 
         </div>

@@ -1,8 +1,16 @@
 import axios from 'axios';
 
+// ============================================================
+// API BASE URL
+// ============================================================
+
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   'http://localhost:3001';
+
+// ============================================================
+// AXIOS INSTANCE
+// ============================================================
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -18,21 +26,16 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token =
-      localStorage.getItem('token');
+    const token = localStorage.getItem('token');
 
     if (token) {
-      config.headers =
-        config.headers || {};
-
-      config.headers.Authorization =
-        `Bearer ${token}`;
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
     }
 
     return config;
   },
-  (error) =>
-    Promise.reject(error)
+  (error) => Promise.reject(error)
 );
 
 // ============================================================
@@ -52,16 +55,13 @@ api.interceptors.response.use(
         error.response.data
       );
 
-      if (
-        error.response.status === 401
-      ) {
-        localStorage.removeItem(
-          'token'
-        );
+      // --------------------------------------------------------
+      // UNAUTHORIZED
+      // --------------------------------------------------------
 
-        localStorage.removeItem(
-          'user'
-        );
+      if (error.response.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
 
         const publicRoutes = [
           '/',
@@ -74,8 +74,7 @@ api.interceptors.response.use(
             window.location.pathname
           )
         ) {
-          window.location.href =
-            '/login';
+          window.location.href = '/login';
         }
       }
 
@@ -83,6 +82,10 @@ api.interceptors.response.use(
         error.response.data
       );
     }
+
+    // ----------------------------------------------------------
+    // NETWORK ERROR
+    // ----------------------------------------------------------
 
     if (error.request) {
       console.error(
@@ -92,11 +95,14 @@ api.interceptors.response.use(
 
       return Promise.reject({
         success: false,
-
         error:
           'Unable to connect to the server. Please make sure the backend is running.',
       });
     }
+
+    // ----------------------------------------------------------
+    // REQUEST ERROR
+    // ----------------------------------------------------------
 
     console.error(
       'Request Error:',
@@ -105,7 +111,6 @@ api.interceptors.response.use(
 
     return Promise.reject({
       success: false,
-
       error:
         error.message ||
         'Request failed.',
@@ -131,7 +136,9 @@ export const authAPI = {
     ),
 
   getMe: () =>
-    api.get('/api/auth/me'),
+    api.get(
+      '/api/auth/me'
+    ),
 };
 
 // ============================================================
@@ -140,10 +147,14 @@ export const authAPI = {
 
 export const userAPI = {
   getCurrentUser: () =>
-    api.get('/api/users/me'),
+    api.get(
+      '/api/users/me'
+    ),
 
   getAllUsers: () =>
-    api.get('/api/users/all'),
+    api.get(
+      '/api/users/all'
+    ),
 
   getUsersByRole: (role) =>
     api.get(
@@ -157,7 +168,9 @@ export const userAPI = {
 
 export const documentAPI = {
   getDocuments: () =>
-    api.get('/api/documents'),
+    api.get(
+      '/api/documents'
+    ),
 
   getDocumentById: (id) =>
     api.get(
@@ -190,9 +203,7 @@ export const documentAPI = {
       `/api/documents/${id}`
     ),
 
-  getDocumentsByType: (
-    type
-  ) =>
+  getDocumentsByType: (type) =>
     api.get(
       `/api/documents/type/${type}`
     ),
@@ -203,9 +214,7 @@ export const documentAPI = {
 // ============================================================
 
 export const conversationAPI = {
-  createConversation: (
-    data
-  ) =>
+  createConversation: (data) =>
     api.post(
       '/api/conversations',
       data
@@ -216,9 +225,7 @@ export const conversationAPI = {
       '/api/conversations'
     ),
 
-  getConversationById: (
-    id
-  ) =>
+  getConversationById: (id) =>
     api.get(
       `/api/conversations/${id}`
     ),
@@ -232,6 +239,242 @@ export const conversationAPI = {
       data
     ),
 
+  // ==========================================================
+  // STREAMING MESSAGE
+  // ==========================================================
+
+  sendMessageStream: async (
+    id,
+    data,
+    onChunk,
+    onComplete,
+    onError
+  ) => {
+    const token =
+      localStorage.getItem('token');
+
+    const response =
+      await fetch(
+        `${API_BASE_URL}/api/conversations/${id}/message?stream=true`,
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type':
+              'application/json',
+
+            ...(token
+              ? {
+                  Authorization:
+                    `Bearer ${token}`,
+                }
+              : {}),
+          },
+
+          body: JSON.stringify(data),
+        }
+      );
+
+    if (!response.ok) {
+      let errorMessage =
+        `HTTP error! status: ${response.status}`;
+
+      try {
+        const errorData =
+          await response.json();
+
+        errorMessage =
+          errorData?.error ||
+          errorData?.message ||
+          errorMessage;
+      } catch {
+        // Ignore JSON parsing failure.
+      }
+
+      const error =
+        new Error(errorMessage);
+
+      if (onError) {
+        onError(error);
+      }
+
+      throw error;
+    }
+
+    if (!response.body) {
+      const error =
+        new Error(
+          'Streaming response body is not available.'
+        );
+
+      if (onError) {
+        onError(error);
+      }
+
+      throw error;
+    }
+
+    const reader =
+      response.body.getReader();
+
+    const decoder =
+      new TextDecoder();
+
+    let buffer = '';
+
+    try {
+      while (true) {
+        const {
+          done,
+          value,
+        } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(
+          value,
+          {
+            stream: true,
+          }
+        );
+
+        const events =
+          buffer.split('\n\n');
+
+        buffer =
+          events.pop() || '';
+
+        for (const event of events) {
+          const lines =
+            event.split('\n');
+
+          for (const line of lines) {
+            if (
+              !line.startsWith(
+                'data: '
+              )
+            ) {
+              continue;
+            }
+
+            try {
+              const eventData =
+                JSON.parse(
+                  line.slice(6)
+                );
+
+              // ----------------------------------------------
+              // USER MESSAGE
+              // ----------------------------------------------
+
+              if (
+                eventData.type ===
+                'user_message'
+              ) {
+                // No action required.
+              }
+
+              // ----------------------------------------------
+              // TOOL STATUS
+              // ----------------------------------------------
+
+              else if (
+                eventData.type ===
+                'tool_status'
+              ) {
+                if (onChunk) {
+                  onChunk({
+                    type:
+                      'tool_status',
+
+                    status:
+                      eventData.status,
+
+                    message:
+                      eventData.message,
+                  });
+                }
+              }
+
+              // ----------------------------------------------
+              // ASSISTANT CHUNK
+              // ----------------------------------------------
+
+              else if (
+                eventData.type ===
+                'assistant_chunk'
+              ) {
+                if (onChunk) {
+                  onChunk({
+                    type: 'text',
+
+                    chunk:
+                      eventData.chunk,
+                  });
+                }
+              }
+
+              // ----------------------------------------------
+              // ASSISTANT COMPLETE
+              // ----------------------------------------------
+
+              else if (
+                eventData.type ===
+                'assistant_complete'
+              ) {
+                if (onComplete) {
+                  onComplete(
+                    eventData
+                  );
+                }
+              }
+
+              // ----------------------------------------------
+              // ERROR
+              // ----------------------------------------------
+
+              else if (
+                eventData.type ===
+                'error'
+              ) {
+                const error =
+                  new Error(
+                    eventData.error ||
+                      'Streaming request failed.'
+                  );
+
+                if (onError) {
+                  onError(error);
+                }
+              }
+
+              // ----------------------------------------------
+              // DONE
+              // ----------------------------------------------
+
+              else if (
+                eventData.type ===
+                'done'
+              ) {
+                return;
+              }
+            } catch (parseError) {
+              console.error(
+                'Error parsing SSE data:',
+                parseError,
+                event
+              );
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  },
+
   executeAction: (
     id,
     data
@@ -241,9 +484,7 @@ export const conversationAPI = {
       data
     ),
 
-  deleteConversation: (
-    id
-  ) =>
+  deleteConversation: (id) =>
     api.delete(
       `/api/conversations/${id}`
     ),
@@ -273,9 +514,7 @@ export const leaveAPI = {
       '/api/leave/balance'
     ),
 
-  createRequest: (
-    data
-  ) =>
+  createRequest: (data) =>
     api.post(
       '/api/leave/request',
       data
@@ -320,26 +559,53 @@ export const leaveAPI = {
 // ============================================================
 
 export const googleAPI = {
-  // --------------------------------------------
-  // OAuth
-  // --------------------------------------------
+  // ==========================================================
+  // GOOGLE OAUTH
+  // ==========================================================
 
   getAuthUrl: () =>
     api.get(
       '/api/google/auth/url'
     ),
 
-  handleCallback: (
-    data
-  ) =>
+  // Calendar-specific OAuth URL.
+  // EmployeeCalendar.jsx uses this name.
+  getCalendarAuthUrl: () =>
+    api.get(
+      '/api/google/auth/url'
+    ),
+
+  // ==========================================================
+  // GOOGLE AUTH STATUS
+  // ==========================================================
+
+  getAuthStatus: () =>
+    api.get(
+      '/api/google/auth/status'
+    ),
+
+  // ==========================================================
+  // GOOGLE OAUTH CALLBACK
+  // ==========================================================
+
+  handleCallback: (data) =>
     api.post(
       '/api/google/auth/callback',
       data
     ),
 
-  // --------------------------------------------
-  // Calendar
-  // --------------------------------------------
+  // ==========================================================
+  // REVOKE GOOGLE CONNECTION
+  // ==========================================================
+
+  revokeTokens: () =>
+    api.delete(
+      '/api/google/auth/revoke'
+    ),
+
+  // ==========================================================
+  // GOOGLE CALENDAR
+  // ==========================================================
 
   getCalendarStatus: () =>
     api.get(
@@ -374,17 +640,15 @@ export const googleAPI = {
       }
     ),
 
-  createCalendarEvent: (
-    data
-  ) =>
+  createCalendarEvent: (data) =>
     api.post(
       '/api/google/calendar/events',
       data
     ),
 
-  // --------------------------------------------
-  // Gmail
-  // --------------------------------------------
+  // ==========================================================
+  // GMAIL
+  // ==========================================================
 
   sendEmail: (data) =>
     api.post(
@@ -393,7 +657,7 @@ export const googleAPI = {
     ),
 
   getRecentEmails: (
-    maxResults
+    maxResults = 10
   ) =>
     api.get(
       '/api/google/gmail/recent',
@@ -410,15 +674,10 @@ export const googleAPI = {
     api.get(
       `/api/google/gmail/${messageId}`
     ),
-
-  // --------------------------------------------
-  // Disconnect
-  // --------------------------------------------
-
-  revokeTokens: () =>
-    api.delete(
-      '/api/google/auth/revoke'
-    ),
 };
+
+// ============================================================
+// DEFAULT EXPORT
+// ============================================================
 
 export default api;

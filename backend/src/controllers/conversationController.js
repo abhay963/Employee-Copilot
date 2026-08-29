@@ -63,12 +63,25 @@ export const sendMessage = async (req, res) => {
       return res.status(400).json({ error: 'Question is required' });
     }
 
-    const result = await conversationService.sendMessage(id, userId, userRole, question);
-    
-    res.json({
-      success: true,
-      ...result
-    });
+    // Check if streaming is requested
+    const stream = req.query.stream === 'true';
+
+    if (stream) {
+      // Set up SSE streaming
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      await conversationService.sendMessageStream(id, userId, userRole, question, res);
+    } else {
+      // Non-streaming response (original behavior)
+      const result = await conversationService.sendMessage(id, userId, userRole, question);
+
+      res.json({
+        success: true,
+        ...result
+      });
+    }
   } catch (error) {
     console.error('Error sending message:', error);
     if (error.message === 'Conversation not found' || error.message === 'Access denied') {

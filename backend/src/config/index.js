@@ -5,6 +5,7 @@ dotenv.config();
 export const config = {
   // Server
   port: Number(process.env.PORT) || 3001,
+
   nodeEnv:
     process.env.NODE_ENV || 'development',
 
@@ -73,13 +74,19 @@ export const config = {
 
   googleRedirectUri:
     process.env.GOOGLE_REDIRECT_URI ||
-    'http://localhost:5173/auth/google/callback',
+    'http://localhost:3001/api/google/callback',
+
+  // Tavily Search
+  tavilyApiKey:
+    process.env.TAVILY_API_KEY,
 };
 
 export const validateConfig = () => {
   const required = [
     'DATABASE_URL',
     'GEMINI_API_KEY',
+    'GOOGLE_CLIENT_ID',
+    'GOOGLE_CLIENT_SECRET',
   ];
 
   const missing =

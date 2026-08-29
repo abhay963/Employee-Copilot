@@ -42,7 +42,11 @@ const generateTempId = () => {
 // CHAT MESSAGE
 // ============================================================
 
-const ChatMessage = ({ message, isTyping = false }) => {
+const ChatMessage = ({
+  message,
+  isTyping = false,
+  messageRef = null,
+}) => {
   const isUser = message.role === 'user';
 
   const [copied, setCopied] = useState(false);
@@ -83,6 +87,7 @@ const ChatMessage = ({ message, isTyping = false }) => {
         duration: 0.3,
         ease: [0.22, 1, 0.36, 1],
       }}
+      ref={messageRef}
       className={`group flex w-full ${
         isUser
           ? 'justify-end'
@@ -1274,6 +1279,12 @@ const Copilot = ({
   const messagesEndRef =
     useRef(null);
 
+  const lastUserMessageRef =
+    useRef(null);
+
+  const pendingUserScrollRef =
+    useRef(false);
+
   const lastConversationIdRef =
     useRef(null);
 
@@ -1413,22 +1424,41 @@ const Copilot = ({
   }, [conversation]);
 
   // ============================================================
-  // AUTO SCROLL
+  // SMART CHAT SCROLL
   // ============================================================
 
   useEffect(() => {
-    requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView(
-        {
+    // When the user sends a new message, move that message
+    // toward the top of the chat viewport. This pushes older
+    // messages upward and gives the new conversation turn
+    // enough room below it for the AI response.
+    if (pendingUserScrollRef.current) {
+      requestAnimationFrame(() => {
+        lastUserMessageRef.current?.scrollIntoView({
           behavior: 'smooth',
-          block: 'end',
-        }
-      );
+          block: 'start',
+        });
+        pendingUserScrollRef.current = false;
+      });
+      return;
+    }
+  }, [localMessages]);
+
+  // Scroll a newly opened conversation to its latest content.
+  useEffect(() => {
+    if (!conversation) return;
+
+    if (lastConversationIdRef.current === conversation.id) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: 'auto',
+        block: 'end',
+      });
     });
-  }, [
-    localMessages,
-    loading,
-  ]);
+  }, [conversation]);
 
   // ============================================================
   // TEXTAREA
@@ -1640,6 +1670,8 @@ const Copilot = ({
     /*
      * User message appears immediately.
      */
+    pendingUserScrollRef.current = true;
+
     setLocalMessages(
       (previous) => [
         ...previous,
@@ -2348,6 +2380,13 @@ const Copilot = ({
                       isTyping={
                         message.typing ===
                         true
+                      }
+                      messageRef={
+                        message.role === 'user' &&
+                        message.id ===
+                          messages[messages.length - 1]?.id
+                          ? lastUserMessageRef
+                          : null
                       }
                     />
                   )

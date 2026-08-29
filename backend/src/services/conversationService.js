@@ -3,219 +3,800 @@ import { Message } from '../models/Message.js';
 import { runLangGraphWorkflow } from '../ai/langGraphWorkflow.js';
 
 class ConversationService {
-  // Create a new conversation
+  // ============================================================
+  // CREATE CONVERSATION
+  // ============================================================
+
   async createConversation(userId, title = null) {
     try {
+      if (!userId) {
+        throw new Error('User ID is required');
+      }
+
       const conversation = await Conversation.create({
         user_id: userId,
-        title: title || 'New Conversation'
+        title: title || 'New Conversation',
       });
+
       return conversation;
     } catch (error) {
-      console.error('Error creating conversation:', error);
-      throw new Error('Failed to create conversation');
+      console.error(
+        '[ConversationService] Error creating conversation:',
+        error
+      );
+
+      throw new Error(
+        'Failed to create conversation'
+      );
     }
   }
 
-  // Get conversation by ID with messages
-  async getConversationWithMessages(conversationId, userId) {
+  // ============================================================
+  // GET CONVERSATION WITH MESSAGES
+  // ============================================================
+
+  async getConversationWithMessages(
+    conversationId,
+    userId
+  ) {
     try {
-      const conversation = await Conversation.findById(conversationId);
-      
+      const conversation =
+        await Conversation.findById(
+          conversationId
+        );
+
       if (!conversation) {
-        throw new Error('Conversation not found');
+        throw new Error(
+          'Conversation not found'
+        );
       }
 
-      // Check ownership
-      if (conversation.user_id !== userId) {
-        throw new Error('Access denied');
+      if (
+        String(conversation.user_id) !==
+        String(userId)
+      ) {
+        throw new Error(
+          'Access denied'
+        );
       }
 
-      const messages = await Message.findByConversationId(conversationId);
-      
+      const messages =
+        await Message.findByConversationId(
+          conversationId
+        );
+
       return {
         ...conversation,
-        messages
+        messages,
       };
     } catch (error) {
-      console.error('Error getting conversation:', error);
+      console.error(
+        '[ConversationService] Error getting conversation:',
+        error
+      );
+
       throw error;
     }
   }
 
-  // Get all conversations for a user
+  // ============================================================
+  // GET USER CONVERSATIONS
+  // ============================================================
+
   async getUserConversations(userId) {
     try {
-      const conversations = await Conversation.findByUserId(userId);
-      return conversations;
+      if (!userId) {
+        throw new Error(
+          'User ID is required'
+        );
+      }
+
+      return await Conversation.findByUserId(
+        userId
+      );
     } catch (error) {
-      console.error('Error getting user conversations:', error);
-      throw new Error('Failed to get conversations');
+      console.error(
+        '[ConversationService] Error getting conversations:',
+        error
+      );
+
+      throw new Error(
+        'Failed to get conversations'
+      );
     }
   }
 
-  // Send a message and get AI response
-  async sendMessage(conversationId, userId, userRole, question) {
+  // ============================================================
+  // VALIDATE CONVERSATION OWNERSHIP
+  // ============================================================
+
+  async validateConversation(
+    conversationId,
+    userId
+  ) {
+    const conversation =
+      await Conversation.findById(
+        conversationId
+      );
+
+    if (!conversation) {
+      throw new Error(
+        'Conversation not found'
+      );
+    }
+
+    if (
+      String(conversation.user_id) !==
+      String(userId)
+    ) {
+      throw new Error(
+        'Conversation access denied'
+      );
+    }
+
+    return conversation;
+  }
+
+  // ============================================================
+  // CREATE CONVERSATION TITLE
+  // ============================================================
+
+  async updateTitleIfFirstMessage(
+    conversationId,
+    question
+  ) {
+    const messages =
+      await Message.findByConversationId(
+        conversationId
+      );
+
+    if (messages.length !== 1) {
+      return;
+    }
+
+    const cleanQuestion =
+      String(question || '').trim();
+
+    if (!cleanQuestion) {
+      return;
+    }
+
+    const title =
+      cleanQuestion.length > 50
+        ? `${cleanQuestion.substring(0, 50)}...`
+        : cleanQuestion;
+
+    await Conversation.update(
+      conversationId,
+      { title }
+    );
+  }
+
+  // ============================================================
+  // SEND MESSAGE
+  // ============================================================
+
+  async sendMessage(
+    conversationId,
+    userId,
+    userRole,
+    question
+  ) {
     try {
+      // --------------------------------------------------------
+      // Validate input
+      // --------------------------------------------------------
+
+      if (!question || !String(question).trim()) {
+        throw new Error(
+          'Question is required'
+        );
+      }
+
+      const cleanQuestion =
+        String(question).trim();
+
+      // --------------------------------------------------------
       // Verify conversation ownership
-      const conversation = await Conversation.findById(conversationId);
-      if (!conversation || conversation.user_id !== userId) {
-        throw new Error('Conversation not found or access denied');
-      }
+      // --------------------------------------------------------
 
+      await this.validateConversation(
+        conversationId,
+        userId
+      );
+
+      // --------------------------------------------------------
       // Save user message
-      const userMessage = await Message.create({
-        conversation_id: conversationId,
-        role: 'user',
-        content: question,
-        sources: []
-      });
+      // --------------------------------------------------------
 
-      // Check if this is the first message to set title
-      const existingMessages = await Message.findByConversationId(conversationId);
-      if (existingMessages.length === 1) {
-        const title = question.substring(0, 50) + (question.length > 50 ? '...' : '');
-        await Conversation.update(conversationId, { title });
-      }
+      const userMessage =
+        await Message.create({
+          conversation_id:
+            conversationId,
 
-      // Run LangGraph workflow to get answer
-      const { response, sources, error, requiresConfirmation, pendingAction } = await runLangGraphWorkflow(question, userId, userRole);
+          role: 'user',
 
-      // Save assistant message
-      const assistantMessage = await Message.create({
-        conversation_id: conversationId,
-        role: 'assistant',
-        content: response,
-        sources: sources
-      });
+          content: cleanQuestion,
 
-      // Update conversation timestamp
-      await Conversation.updateTimestamp(conversationId);
+          sources: [],
+        });
+
+      // --------------------------------------------------------
+      // Update title
+      // --------------------------------------------------------
+
+      await this.updateTitleIfFirstMessage(
+        conversationId,
+        cleanQuestion
+      );
+
+      // --------------------------------------------------------
+      // Run AI workflow
+      // --------------------------------------------------------
+
+      const result =
+        await runLangGraphWorkflow(
+          cleanQuestion,
+          userId,
+          userRole
+        );
+
+      const {
+        response = '',
+        sources = [],
+        error = null,
+        requiresConfirmation = false,
+        pendingAction = null,
+      } = result || {};
+
+      // --------------------------------------------------------
+      // Save assistant response
+      // --------------------------------------------------------
+
+      const assistantMessage =
+        await Message.create({
+          conversation_id:
+            conversationId,
+
+          role: 'assistant',
+
+          content:
+            response ||
+            'I was unable to generate a response.',
+
+          sources:
+            Array.isArray(sources)
+              ? sources
+              : [],
+        });
+
+      // --------------------------------------------------------
+      // Update timestamp
+      // --------------------------------------------------------
+
+      await Conversation.updateTimestamp(
+        conversationId
+      );
 
       return {
         userMessage,
+
         assistantMessage,
-        conversation: await Conversation.findById(conversationId),
+
+        conversation:
+          await Conversation.findById(
+            conversationId
+          ),
+
         requiresConfirmation,
-        pendingAction
+
+        pendingAction,
+
+        error,
       };
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error(
+        '[ConversationService] Error sending message:',
+        error
+      );
+
       throw error;
     }
   }
 
-  // Execute pending action after user approval
-  async executePendingAction(conversationId, userId, userRole, actionId, actionData) {
+  // ============================================================
+  // STREAMING MESSAGE
+  // ============================================================
+  //
+  // IMPORTANT:
+  //
+  // This method keeps the existing API contract.
+  //
+  // It DOES NOT fake character streaming anymore.
+  //
+  // Real token streaming must happen inside the LangGraph
+  // workflow and be forwarded here.
+  //
+  // The workflow integration is the next major file we will
+  // replace.
+  //
+  // ============================================================
+
+  async sendMessageStream(
+    conversationId,
+    userId,
+    userRole,
+    question,
+    res
+  ) {
     try {
-      // Verify conversation ownership
-      const conversation = await Conversation.findById(conversationId);
-      if (!conversation || conversation.user_id !== userId) {
-        throw new Error('Conversation not found or access denied');
+      // --------------------------------------------------------
+      // Validate input
+      // --------------------------------------------------------
+
+      if (
+        !question ||
+        !String(question).trim()
+      ) {
+        throw new Error(
+          'Question is required'
+        );
       }
 
-      // Get the last user message to understand the context
-      const messages = await Message.findByConversationId(conversationId);
-      const lastUserMessage = messages.filter(m => m.role === 'user').pop();
-      
-      const originalMessage = lastUserMessage?.content || actionData?.originalMessage || '';
+      const cleanQuestion =
+        String(question).trim();
 
-      // Temporarily set the pending action in state for execution
-      const tempState = {
-        pendingAction: {
-          ...actionData,
-          actionId: actionId
-        }
-      };
+      // --------------------------------------------------------
+      // Validate conversation
+      // --------------------------------------------------------
 
-      // Import the necessary functions to execute the action
-      const { createCalendarEvent, submitLeaveRequest } = await import('../ai/langGraphWorkflow.js');
-      
-      let result;
-      if (actionId.startsWith('calendar_create_')) {
-        result = await createCalendarEvent({
-          userId,
-          pendingAction: actionData,
-          context: {}
+      await this.validateConversation(
+        conversationId,
+        userId
+      );
+
+      // --------------------------------------------------------
+      // Save user message
+      // --------------------------------------------------------
+
+      const userMessage =
+        await Message.create({
+          conversation_id:
+            conversationId,
+
+          role: 'user',
+
+          content: cleanQuestion,
+
+          sources: [],
         });
-      } else if (actionId.startsWith('leave_request_')) {
-        result = await submitLeaveRequest({
-          userId,
-          pendingAction: actionData,
-          context: {}
-        });
-      } else {
-        throw new Error('Unknown action type');
-      }
 
-      // Save assistant message with the execution result
-      const assistantMessage = await Message.create({
-        conversation_id: conversationId,
-        role: 'assistant',
-        content: result.toolResult,
-        sources: []
+      // --------------------------------------------------------
+      // Send user message
+      // --------------------------------------------------------
+
+      this.writeSSE(res, {
+        type: 'user_message',
+        message: userMessage,
       });
 
-      // Update conversation timestamp
-      await Conversation.updateTimestamp(conversationId);
+      // --------------------------------------------------------
+      // Update conversation title
+      // --------------------------------------------------------
+
+      await this.updateTitleIfFirstMessage(
+        conversationId,
+        cleanQuestion
+      );
+
+      // --------------------------------------------------------
+      // Processing status
+      // --------------------------------------------------------
+
+      this.writeSSE(res, {
+        type: 'status',
+        status: 'processing',
+        message:
+          'Processing your request...',
+      });
+
+      // --------------------------------------------------------
+      // IMPORTANT
+      //
+      // The current runLangGraphWorkflow()
+      // returns the COMPLETE response.
+      //
+      // Therefore we cannot honestly call this
+      // "real token streaming" yet.
+      //
+      // The old implementation used:
+      //
+      //   response.slice(...)
+      //
+      // which was fake streaming.
+      //
+      // We intentionally removed that behavior.
+      //
+      // The LangGraph workflow will be updated next
+      // to expose an async stream.
+      // --------------------------------------------------------
+
+      const result =
+        await runLangGraphWorkflow(
+          cleanQuestion,
+          userId,
+          userRole
+        );
+
+      const {
+        response = '',
+        sources = [],
+        error = null,
+        requiresConfirmation = false,
+        pendingAction = null,
+      } = result || {};
+
+      // --------------------------------------------------------
+      // Save complete assistant message
+      // --------------------------------------------------------
+
+      const assistantMessage =
+        await Message.create({
+          conversation_id:
+            conversationId,
+
+          role: 'assistant',
+
+          content:
+            response ||
+            'I was unable to generate a response.',
+
+          sources:
+            Array.isArray(sources)
+              ? sources
+              : [],
+        });
+
+      // --------------------------------------------------------
+      // Send response as one complete event
+      //
+      // This is temporary until LangGraph streaming is added.
+      // --------------------------------------------------------
+
+      this.writeSSE(res, {
+        type: 'assistant_complete',
+
+        message: assistantMessage,
+
+        sources:
+          Array.isArray(sources)
+            ? sources
+            : [],
+
+        requiresConfirmation,
+
+        pendingAction,
+
+        error,
+
+        conversation:
+          await Conversation.findById(
+            conversationId
+          ),
+      });
+
+      // --------------------------------------------------------
+      // Update timestamp
+      // --------------------------------------------------------
+
+      await Conversation.updateTimestamp(
+        conversationId
+      );
+
+      // --------------------------------------------------------
+      // Done
+      // --------------------------------------------------------
+
+      this.writeSSE(res, {
+        type: 'done',
+      });
+
+      res.end();
+    } catch (error) {
+      console.error(
+        '[ConversationService] Error sending stream:',
+        error
+      );
+
+      try {
+        this.writeSSE(res, {
+          type: 'error',
+          error: error.message,
+        });
+
+        res.end();
+      } catch (writeError) {
+        console.error(
+          '[ConversationService] Failed to send stream error:',
+          writeError
+        );
+      }
+    }
+  }
+
+  // ============================================================
+  // SSE HELPER
+  // ============================================================
+
+  writeSSE(res, payload) {
+    if (!res || res.writableEnded) {
+      return;
+    }
+
+    res.write(
+      `data: ${JSON.stringify(payload)}\n\n`
+    );
+  }
+
+  // ============================================================
+  // EXECUTE PENDING ACTION
+  // ============================================================
+  //
+  // IMPORTANT:
+  //
+  // actionData from frontend is treated only as a fallback
+  // for compatibility.
+  //
+  // The next architecture change should move pending actions
+  // to persistent server-side storage and execute by actionId.
+  //
+  // ============================================================
+
+  async executePendingAction(
+    conversationId,
+    userId,
+    userRole,
+    actionId,
+    actionData = {}
+  ) {
+    try {
+      // --------------------------------------------------------
+      // Validate action ID
+      // --------------------------------------------------------
+
+      if (
+        !actionId ||
+        typeof actionId !== 'string'
+      ) {
+        throw new Error(
+          'A valid action ID is required'
+        );
+      }
+
+      // --------------------------------------------------------
+      // Verify conversation
+      // --------------------------------------------------------
+
+      await this.validateConversation(
+        conversationId,
+        userId
+      );
+
+      // --------------------------------------------------------
+      // Import action handlers
+      // --------------------------------------------------------
+
+      const {
+        createCalendarEvent,
+        submitLeaveRequest,
+        sendGmail,
+      } = await import(
+        '../ai/langGraphWorkflow.js'
+      );
+
+      // --------------------------------------------------------
+      // Determine action type
+      // --------------------------------------------------------
+
+      let result;
+
+      if (
+        actionId.startsWith(
+          'calendar_create_'
+        )
+      ) {
+        result =
+          await createCalendarEvent({
+            userId,
+
+            pendingAction: {
+              ...actionData,
+              actionId,
+            },
+
+            context: {
+              userRole,
+            },
+          });
+      } else if (
+        actionId.startsWith(
+          'leave_request_'
+        )
+      ) {
+        result =
+          await submitLeaveRequest({
+            userId,
+
+            pendingAction: {
+              ...actionData,
+              actionId,
+            },
+
+            context: {
+              userRole,
+            },
+          });
+      } else if (
+        actionId.startsWith(
+          'gmail_send_'
+        )
+      ) {
+        result =
+          await sendGmail({
+            userId,
+
+            pendingAction: {
+              ...actionData,
+              actionId,
+            },
+
+            context: {
+              userRole,
+            },
+          });
+      } else {
+        throw new Error(
+          `Unknown action type: ${actionId}`
+        );
+      }
+
+      // --------------------------------------------------------
+      // Normalize tool result
+      // --------------------------------------------------------
+
+      const toolResult =
+        result?.toolResult ||
+        result?.response ||
+        result?.message ||
+        'Action completed successfully.';
+
+      // --------------------------------------------------------
+      // Save execution result
+      // --------------------------------------------------------
+
+      const assistantMessage =
+        await Message.create({
+          conversation_id:
+            conversationId,
+
+          role: 'assistant',
+
+          content: toolResult,
+
+          sources: [],
+        });
+
+      // --------------------------------------------------------
+      // Update timestamp
+      // --------------------------------------------------------
+
+      await Conversation.updateTimestamp(
+        conversationId
+      );
 
       return {
+        success: true,
+
         assistantMessage,
-        conversation: await Conversation.findById(conversationId),
+
+        conversation:
+          await Conversation.findById(
+            conversationId
+          ),
+
         requiresConfirmation: false,
-        pendingAction: null
+
+        pendingAction: null,
       };
     } catch (error) {
-      console.error('Error executing pending action:', error);
+      console.error(
+        '[ConversationService] Error executing pending action:',
+        error
+      );
+
       throw error;
     }
   }
 
-  // Delete a conversation
-  async deleteConversation(conversationId, userId) {
+  // ============================================================
+  // DELETE CONVERSATION
+  // ============================================================
+
+  async deleteConversation(
+    conversationId,
+    userId
+  ) {
     try {
-      const conversation = await Conversation.findById(conversationId);
-      
-      if (!conversation) {
-        throw new Error('Conversation not found');
-      }
+      await this.validateConversation(
+        conversationId,
+        userId
+      );
 
-      // Check ownership
-      if (conversation.user_id !== userId) {
-        throw new Error('Access denied');
-      }
+      // Delete messages first.
+      await Message.deleteByConversationId(
+        conversationId
+      );
 
-      // Delete messages first (cascade should handle this, but being explicit)
-      await Message.deleteByConversationId(conversationId);
-      
-      // Delete conversation
-      await Conversation.delete(conversationId);
-      
-      return { success: true };
+      // Delete conversation.
+      await Conversation.delete(
+        conversationId
+      );
+
+      return {
+        success: true,
+      };
     } catch (error) {
-      console.error('Error deleting conversation:', error);
+      console.error(
+        '[ConversationService] Error deleting conversation:',
+        error
+      );
+
       throw error;
     }
   }
 
-  // Update conversation title
-  async updateConversationTitle(conversationId, userId, title) {
+  // ============================================================
+  // UPDATE CONVERSATION TITLE
+  // ============================================================
+
+  async updateConversationTitle(
+    conversationId,
+    userId,
+    title
+  ) {
     try {
-      const conversation = await Conversation.findById(conversationId);
-      
-      if (!conversation) {
-        throw new Error('Conversation not found');
+      await this.validateConversation(
+        conversationId,
+        userId
+      );
+
+      const cleanTitle =
+        String(title || '').trim();
+
+      if (!cleanTitle) {
+        throw new Error(
+          'Conversation title is required'
+        );
       }
 
-      // Check ownership
-      if (conversation.user_id !== userId) {
-        throw new Error('Access denied');
+      if (cleanTitle.length > 100) {
+        throw new Error(
+          'Conversation title cannot exceed 100 characters'
+        );
       }
 
-      const updated = await Conversation.update(conversationId, { title });
-      return updated;
+      return await Conversation.update(
+        conversationId,
+        {
+          title: cleanTitle,
+        }
+      );
     } catch (error) {
-      console.error('Error updating conversation title:', error);
+      console.error(
+        '[ConversationService] Error updating title:',
+        error
+      );
+
       throw error;
     }
   }

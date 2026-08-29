@@ -1,5 +1,5 @@
-
 import { useState, useEffect } from 'react';
+
 import {
   LayoutDashboard,
   FileText,
@@ -9,9 +9,15 @@ import {
   Calendar,
   User,
   Clock,
+  Plus,
+  PanelLeftClose,
+  PanelLeft,
+  Sparkles,
+  Mail,
 } from 'lucide-react';
 
 import { useUser } from '../context/UserContext';
+
 import {
   documentAPI,
   conversationAPI,
@@ -24,6 +30,7 @@ import ConversationList from '../components/ConversationList';
 import LeaveManagement from '../components/LeaveManagement';
 import EmployeeCalendar from '../components/EmployeeCalendar';
 import Profile from '../components/Profile';
+import Gmail from '../components/Gmail';
 
 const HRDashboard = () => {
   const { user, isHR, logout } = useUser();
@@ -33,10 +40,14 @@ const HRDashboard = () => {
   const [documents, setDocuments] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+
   const [activeConversation, setActiveConversation] =
     useState(null);
 
   const [loading, setLoading] = useState(true);
+
+  const [sidebarCollapsed, setSidebarCollapsed] =
+    useState(false);
 
   // ============================================================
   // LOAD HR DATA
@@ -118,12 +129,18 @@ const HRDashboard = () => {
         setActiveConversation(
           response.conversation
         );
+
+        setActiveTab('copilot');
       }
+
+      return response;
     } catch (error) {
       console.error(
         'Error creating conversation:',
         error
       );
+
+      throw error;
     }
   };
 
@@ -147,12 +164,18 @@ const HRDashboard = () => {
         setActiveConversation(
           response.conversation
         );
+
+        setActiveTab('copilot');
       }
+
+      return response;
     } catch (error) {
       console.error(
         'Error loading conversation:',
         error
       );
+
+      throw error;
     }
   };
 
@@ -180,19 +203,10 @@ const HRDashboard = () => {
         response?.success &&
         response?.conversation
       ) {
-        /*
-         * Update the active conversation immediately.
-         * Copilot also receives this API response directly
-         * because we return it below.
-         */
         setActiveConversation(
           response.conversation
         );
 
-        /*
-         * Update the conversation list immediately
-         * without requiring a refresh.
-         */
         setConversations((prev) =>
           prev.map((conversation) =>
             conversation.id ===
@@ -203,18 +217,6 @@ const HRDashboard = () => {
         );
       }
 
-      /*
-       * IMPORTANT:
-       *
-       * Copilot.jsx does:
-       *
-       * const response = await onSendMessage(...)
-       *
-       * Therefore this handler MUST return the API response.
-       *
-       * Without this return, Copilot receives undefined and
-       * cannot immediately display the AI response.
-       */
       return response;
     } catch (error) {
       console.error(
@@ -225,6 +227,47 @@ const HRDashboard = () => {
       throw error;
     }
   };
+
+  // ============================================================
+  // SEND MESSAGE STREAMING
+  // ============================================================
+
+ const handleSendMessageStream = async (
+  conversationId,
+  data,
+  onChunk,
+  onComplete,
+  onError
+) => {
+  try {
+    await conversationAPI.sendMessageStream(
+      conversationId,
+      data,
+      onChunk,
+      (finalPayload) => {
+        const updated =
+          finalPayload?.conversation ||
+          finalPayload?.data?.conversation ||
+          finalPayload;
+
+        if (updated?.id) {
+          setActiveConversation(updated);
+          setConversations((prev) =>
+            prev.map((c) => (c.id === updated.id ? updated : c))
+          );
+        }
+
+        if (typeof onComplete === 'function') {
+          onComplete(finalPayload);
+        }
+      },
+      onError
+    );
+  } catch (error) {
+    console.error('Error in streaming message:', error);
+    if (onError) onError(error);
+  }
+};
 
   // ============================================================
   // EXECUTE ACTION
@@ -264,10 +307,6 @@ const HRDashboard = () => {
         );
       }
 
-      /*
-       * Copilot.jsx also awaits this callback and expects
-       * the returned assistantMessage/action response.
-       */
       return response;
     } catch (error) {
       console.error(
@@ -309,6 +348,8 @@ const HRDashboard = () => {
         'Error deleting conversation:',
         error
       );
+
+      throw error;
     }
   };
 
@@ -348,11 +389,15 @@ const HRDashboard = () => {
           );
         }
       }
+
+      return response;
     } catch (error) {
       console.error(
         'Error editing conversation:',
         error
       );
+
+      throw error;
     }
   };
 
@@ -378,6 +423,8 @@ const HRDashboard = () => {
           ...prev,
         ]);
       }
+
+      return response;
     } catch (error) {
       console.error(
         'Error uploading document:',
@@ -411,6 +458,8 @@ const HRDashboard = () => {
         'Error deleting document:',
         error
       );
+
+      throw error;
     }
   };
 
@@ -432,18 +481,137 @@ const HRDashboard = () => {
   };
 
   // ============================================================
+  // NAVIGATION ITEMS
+  // ============================================================
+
+  const navigationItems = [
+    {
+      id: 'copilot',
+      label: 'Copilot',
+      icon: MessageSquare,
+    },
+    {
+      id: 'documents',
+      label: 'Documents',
+      icon: FileText,
+    },
+    {
+      id: 'users',
+      label: 'Employees',
+      icon: Users,
+    },
+    {
+      id: 'gmail',
+      label: 'Gmail',
+      icon: Mail,
+    },
+    {
+      id: 'calendar',
+      label: 'Calendar',
+      icon: Calendar,
+    },
+    {
+      id: 'leave',
+      label: 'Leave',
+      icon: Clock,
+    },
+    {
+      id: 'profile',
+      label: 'Profile',
+      icon: User,
+    },
+  ];
+
+  // ============================================================
+  // PAGE TITLE
+  // ============================================================
+
+  const getPageTitle = () => {
+    switch (activeTab) {
+      case 'copilot':
+        return 'Employee Copilot';
+
+      case 'documents':
+        return 'Documents';
+
+      case 'users':
+        return 'Employees';
+
+      case 'gmail':
+        return 'Gmail';
+
+      case 'calendar':
+        return 'Calendar';
+
+      case 'leave':
+        return 'Leave Management';
+
+      case 'profile':
+        return 'Profile';
+
+      default:
+        return 'HR Dashboard';
+    }
+  };
+
+  // ============================================================
+  // PAGE DESCRIPTION
+  // ============================================================
+
+  const getPageDescription = () => {
+    switch (activeTab) {
+      case 'copilot':
+        return 'Your intelligent workplace assistant';
+
+      case 'documents':
+        return 'Manage company documents';
+
+      case 'users':
+        return 'Manage employees and teams';
+
+      case 'gmail':
+        return 'Manage your Gmail inbox and emails';
+
+      case 'calendar':
+        return 'Manage your work calendar';
+
+      case 'leave':
+        return 'Manage employee leave';
+
+      case 'profile':
+        return 'Manage your account';
+
+      default:
+        return '';
+    }
+  };
+
+  // ============================================================
   // LOADING
   // ============================================================
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto" />
+      <div className="min-h-screen bg-[#f8f9fb] flex items-center justify-center">
+        <div className="flex flex-col items-center">
 
-          <p className="mt-4 text-gray-600">
+          <div className="relative">
+
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-200">
+              <Sparkles
+                size={24}
+                className="text-white"
+              />
+            </div>
+
+            <div className="absolute -inset-1 rounded-2xl border-2 border-violet-200 animate-pulse" />
+
+          </div>
+
+          <p className="mt-5 text-sm font-medium text-gray-600">
             Loading HR Dashboard...
           </p>
+
         </div>
       </div>
     );
@@ -454,436 +622,822 @@ const HRDashboard = () => {
   // ============================================================
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
+    <div className="h-screen bg-[#f8f9fb] flex overflow-hidden text-gray-900">
 
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            {/* BRAND */}
+      {/* ========================================================
+          LEFT SIDEBAR
+      ======================================================== */}
 
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
-                <LayoutDashboard
-                  size={22}
-                  className="text-purple-600"
-                />
-              </div>
+      <aside
+        className={`
+          hidden md:flex
+          flex-col
+          shrink-0
+          bg-white
+          border-r
+          border-gray-200
+          transition-all
+          duration-300
+          ${
+            sidebarCollapsed
+              ? 'w-[76px]'
+              : 'w-[240px]'
+          }
+        `}
+      >
 
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">
-                  HR Dashboard
-                </h1>
+        {/* ======================================================
+            BRAND
+        ====================================================== */}
 
-                <p className="text-sm text-gray-600">
-                  Welcome, {user?.name || 'HR'}
-                </p>
-              </div>
-            </div>
+        <div
+          className={`
+            h-[76px]
+            flex
+            items-center
+            border-b
+            border-gray-100
+            ${
+              sidebarCollapsed
+                ? 'justify-center'
+                : 'px-5 gap-3'
+            }
+          `}
+        >
 
-            {/* ACTIONS */}
+          <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-md shadow-violet-200">
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={logout}
-                className="
-                  flex items-center gap-2
-                  px-4 py-2
-                  text-gray-600
-                  hover:text-gray-900
-                  hover:bg-gray-100
-                  rounded-lg
-                  transition
-                "
-              >
-                <LogOut size={18} />
-
-                <span>
-                  Logout
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* ======================================================
-          NAVIGATION
-      ====================================================== */}
-
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex gap-4 overflow-x-auto">
-
-            {/* COPILOT */}
-
-            <button
-              onClick={() =>
-                setActiveTab('copilot')
-              }
-              className={`
-                flex items-center gap-2
-                px-4 py-3
-                font-medium
-                whitespace-nowrap
-                transition-colors
-                ${
-                  activeTab === 'copilot'
-                    ? 'text-purple-500 border-b-2 border-purple-500'
-                    : 'text-gray-600 hover:text-gray-900'
-                }
-              `}
-            >
-              <MessageSquare size={18} />
-
-              Copilot
-            </button>
-
-            {/* DOCUMENTS */}
-
-            <button
-              onClick={() =>
-                setActiveTab('documents')
-              }
-              className={`
-                flex items-center gap-2
-                px-4 py-3
-                font-medium
-                whitespace-nowrap
-                transition-colors
-                ${
-                  activeTab === 'documents'
-                    ? 'text-purple-500 border-b-2 border-purple-500'
-                    : 'text-gray-600 hover:text-gray-900'
-                }
-              `}
-            >
-              <FileText size={18} />
-
-              Documents
-            </button>
-
-            {/* EMPLOYEES */}
-
-            <button
-              onClick={() =>
-                setActiveTab('users')
-              }
-              className={`
-                flex items-center gap-2
-                px-4 py-3
-                font-medium
-                whitespace-nowrap
-                transition-colors
-                ${
-                  activeTab === 'users'
-                    ? 'text-purple-500 border-b-2 border-purple-500'
-                    : 'text-gray-600 hover:text-gray-900'
-                }
-              `}
-            >
-              <Users size={18} />
-
-              Employees
-            </button>
-
-            {/* CALENDAR */}
-
-            <button
-              onClick={() =>
-                setActiveTab('calendar')
-              }
-              className={`
-                flex items-center gap-2
-                px-4 py-3
-                font-medium
-                whitespace-nowrap
-                transition-colors
-                ${
-                  activeTab === 'calendar'
-                    ? 'text-purple-500 border-b-2 border-purple-500'
-                    : 'text-gray-600 hover:text-gray-900'
-                }
-              `}
-            >
-              <Calendar size={18} />
-
-              Calendar
-            </button>
-
-            {/* LEAVE */}
-
-            <button
-              onClick={() =>
-                setActiveTab('leave')
-              }
-              className={`
-                flex items-center gap-2
-                px-4 py-3
-                font-medium
-                whitespace-nowrap
-                transition-colors
-                ${
-                  activeTab === 'leave'
-                    ? 'text-purple-500 border-b-2 border-purple-500'
-                    : 'text-gray-600 hover:text-gray-900'
-                }
-              `}
-            >
-              <Clock size={18} />
-
-              Leave
-            </button>
-
-            {/* PROFILE */}
-
-            <button
-              onClick={() =>
-                setActiveTab('profile')
-              }
-              className={`
-                flex items-center gap-2
-                px-4 py-3
-                font-medium
-                whitespace-nowrap
-                transition-colors
-                ${
-                  activeTab === 'profile'
-                    ? 'text-purple-500 border-b-2 border-purple-500'
-                    : 'text-gray-600 hover:text-gray-900'
-                }
-              `}
-            >
-              <User size={18} />
-
-              Profile
-            </button>
-
-          </div>
-        </div>
-      </div>
-
-      {/* ======================================================
-          CONTENT
-      ====================================================== */}
-
-      <main className="max-w-7xl mx-auto px-4 py-6">
-
-        {/* ====================================================
-            COPILOT
-        ==================================================== */}
-
-        {activeTab === 'copilot' && (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-200px)]">
-
-            <div className="lg:col-span-1 min-h-0">
-              <ConversationList
-                conversations={conversations}
-                activeConversation={
-                  activeConversation
-                }
-                onSelect={
-                  handleSelectConversation
-                }
-                onCreate={
-                  handleCreateConversation
-                }
-                onDelete={
-                  handleDeleteConversation
-                }
-                onEdit={
-                  handleEditConversation
-                }
-              />
-            </div>
-
-            <div className="lg:col-span-3 min-h-0">
-              <Copilot
-                conversation={
-                  activeConversation
-                }
-                onSendMessage={
-                  handleSendMessage
-                }
-                onExecuteAction={
-                  handleExecuteAction
-                }
-                onDeleteConversation={
-                  handleDeleteConversation
-                }
-              />
-            </div>
-
-          </div>
-        )}
-
-        {/* ====================================================
-            DOCUMENTS
-        ==================================================== */}
-
-        {activeTab === 'documents' && (
-          <div className="h-[calc(100vh-200px)]">
-            <Documents
-              documents={documents}
-              onUpload={handleUploadDocument}
-              onDelete={handleDeleteDocument}
-              onView={handleViewDocument}
-              isHR={true}
+            <LayoutDashboard
+              size={21}
+              className="text-white"
             />
+
           </div>
-        )}
 
-        {/* ====================================================
-            EMPLOYEES
-        ==================================================== */}
+          {!sidebarCollapsed && (
+            <div className="min-w-0">
 
-        {activeTab === 'users' && (
-          <div className="bg-white rounded-lg shadow border border-gray-100">
+              <h1 className="font-bold text-[15px] text-gray-900 truncate">
+                HR Dashboard
+              </h1>
 
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">
-                All Employees
-              </h2>
-
-              <p className="text-sm text-gray-600 mt-1">
-                Total: {allUsers.length} employees
+              <p className="text-xs text-gray-500 truncate">
+                Employee Copilot
               </p>
+
             </div>
+          )}
 
-            <div className="p-6">
+        </div>
 
-              {allUsers.length > 0 ? (
-                <div className="overflow-x-auto">
+        {/* ======================================================
+            NAVIGATION
+        ====================================================== */}
 
-                  <table className="w-full">
+        <nav className="flex-1 px-3 py-5 overflow-y-auto">
 
-                    <thead>
-                      <tr className="border-b border-gray-200">
+          {!sidebarCollapsed && (
+            <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">
+              Workspace
+            </p>
+          )}
 
-                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                          Name
-                        </th>
+          <div className="space-y-1">
 
-                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                          Email
-                        </th>
+            {navigationItems.map(
+              ({
+                id,
+                label,
+                icon: Icon,
+              }) => {
 
-                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                          Role
-                        </th>
+                const active =
+                  activeTab === id;
 
-                        <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                          Department
-                        </th>
+                return (
+                  <button
+                    key={id}
+                    onClick={() =>
+                      setActiveTab(id)
+                    }
+                    title={
+                      sidebarCollapsed
+                        ? label
+                        : undefined
+                    }
+                    className={`
+                      w-full
+                      flex
+                      items-center
+                      rounded-xl
+                      transition-all
+                      duration-200
+                      group
 
-                      </tr>
-                    </thead>
+                      ${
+                        sidebarCollapsed
+                          ? 'justify-center px-3 py-3'
+                          : 'gap-3 px-3 py-2.5'
+                      }
 
-                    <tbody>
+                      ${
+                        active
+                          ? 'bg-violet-50 text-violet-700 shadow-sm'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      }
+                    `}
+                  >
 
-                      {allUsers.map((employee) => (
-                        <tr
-                          key={employee.id}
-                          className="border-b border-gray-200 hover:bg-gray-50 transition"
-                        >
+                    <Icon
+                      size={19}
+                      strokeWidth={
+                        active ? 2.3 : 2
+                      }
+                      className={
+                        active
+                          ? 'text-violet-600'
+                          : 'text-gray-500 group-hover:text-gray-700'
+                      }
+                    />
 
-                          <td className="py-3 px-4 text-gray-900">
-                            {employee.name}
-                          </td>
+                    {!sidebarCollapsed && (
+                      <span
+                        className={`
+                          text-sm
+                          ${
+                            active
+                              ? 'font-semibold'
+                              : 'font-medium'
+                          }
+                        `}
+                      >
+                        {label}
+                      </span>
+                    )}
 
-                          <td className="py-3 px-4 text-gray-600">
-                            {employee.email}
-                          </td>
+                  </button>
+                );
+              }
+            )}
 
-                          <td className="py-3 px-4">
+          </div>
 
-                            <span
-                              className={`
-                                px-2 py-1
-                                rounded
-                                text-xs
-                                font-medium
-                                ${
-                                  employee.role === 'hr'
-                                    ? 'bg-purple-100 text-purple-700'
-                                    : 'bg-blue-100 text-blue-700'
-                                }
-                              `}
-                            >
-                              {employee.role}
-                            </span>
+          {/* ====================================================
+              QUICK ACTION
+          ==================================================== */}
 
-                          </td>
+          <div className="mt-7">
 
-                          <td className="py-3 px-4 text-gray-700">
-                            {employee.department}
-                          </td>
+            {!sidebarCollapsed && (
+              <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">
+                Quick Action
+              </p>
+            )}
 
-                        </tr>
-                      ))}
+            <button
+              onClick={handleCreateConversation}
+              title={
+                sidebarCollapsed
+                  ? 'New chat'
+                  : undefined
+              }
+              className={`
+                w-full
+                flex
+                items-center
+                rounded-xl
+                border
+                border-dashed
+                border-gray-300
+                text-gray-600
+                hover:border-violet-300
+                hover:bg-violet-50
+                hover:text-violet-700
+                transition-all
 
-                    </tbody>
+                ${
+                  sidebarCollapsed
+                    ? 'justify-center px-3 py-3'
+                    : 'gap-3 px-3 py-2.5'
+                }
+              `}
+            >
 
-                  </table>
+              <Plus size={18} />
 
-                </div>
-              ) : (
-                <div className="text-center text-gray-500 py-8">
-
-                  <Users
-                    size={48}
-                    className="mx-auto mb-4"
-                  />
-
-                  <p>
-                    No employees found
-                  </p>
-
-                </div>
+              {!sidebarCollapsed && (
+                <span className="text-sm font-medium">
+                  New conversation
+                </span>
               )}
 
+            </button>
+
+          </div>
+
+        </nav>
+
+        {/* ======================================================
+            USER / LOGOUT
+        ====================================================== */}
+
+        <div className="border-t border-gray-100 p-3">
+
+          <div
+            className={`
+              flex
+              items-center
+              ${
+                sidebarCollapsed
+                  ? 'justify-center'
+                  : 'gap-3 px-2'
+              }
+            `}
+          >
+
+            <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold">
+              {(
+                user?.name ||
+                user?.email ||
+                'H'
+              )
+                .charAt(0)
+                .toUpperCase()}
             </div>
+
+            {!sidebarCollapsed && (
+              <div className="flex-1 min-w-0">
+
+                <p className="text-sm font-semibold text-gray-800 truncate">
+                  {user?.name || 'HR User'}
+                </p>
+
+                <p className="text-xs text-gray-500 truncate">
+                  {user?.email || 'HR'}
+                </p>
+
+              </div>
+            )}
+
           </div>
-        )}
 
-        {/* ====================================================
-            CALENDAR
-        ==================================================== */}
+          <button
+            onClick={logout}
+            title={
+              sidebarCollapsed
+                ? 'Logout'
+                : undefined
+            }
+            className={`
+              mt-3
+              w-full
+              flex
+              items-center
+              rounded-xl
+              text-gray-500
+              hover:bg-red-50
+              hover:text-red-600
+              transition
 
-        {activeTab === 'calendar' && (
-          <div className="min-h-[calc(100vh-200px)]">
-            <EmployeeCalendar />
+              ${
+                sidebarCollapsed
+                  ? 'justify-center px-3 py-2.5'
+                  : 'gap-3 px-3 py-2.5'
+              }
+            `}
+          >
+
+            <LogOut size={18} />
+
+            {!sidebarCollapsed && (
+              <span className="text-sm font-medium">
+                Logout
+              </span>
+            )}
+
+          </button>
+
+        </div>
+
+        {/* ======================================================
+            COLLAPSE BUTTON
+        ====================================================== */}
+
+        <div className="border-t border-gray-100 p-3">
+
+          <button
+            onClick={() =>
+              setSidebarCollapsed(
+                (prev) => !prev
+              )
+            }
+            title={
+              sidebarCollapsed
+                ? 'Expand sidebar'
+                : 'Collapse sidebar'
+            }
+            className={`
+              w-full
+              flex
+              items-center
+              rounded-xl
+              text-gray-500
+              hover:bg-gray-50
+              hover:text-gray-800
+              transition
+
+              ${
+                sidebarCollapsed
+                  ? 'justify-center px-3 py-2.5'
+                  : 'gap-3 px-3 py-2.5'
+              }
+            `}
+          >
+
+            {sidebarCollapsed ? (
+              <PanelLeft size={18} />
+            ) : (
+              <>
+                <PanelLeftClose size={18} />
+
+                <span className="text-sm font-medium">
+                  Collapse sidebar
+                </span>
+              </>
+            )}
+
+          </button>
+
+        </div>
+
+      </aside>
+
+      {/* ========================================================
+          MAIN APPLICATION
+      ======================================================== */}
+
+      <div className="flex-1 min-w-0 flex flex-col">
+
+        {/* ======================================================
+            TOP HEADER
+        ====================================================== */}
+
+        <header className="h-[76px] shrink-0 bg-white border-b border-gray-200 flex items-center justify-between px-5 lg:px-7">
+
+          <div className="flex items-center gap-3">
+
+            {/* Mobile brand */}
+
+            <div className="md:hidden w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+
+              <Sparkles
+                size={18}
+                className="text-white"
+              />
+
+            </div>
+
+            <div>
+
+              <h2 className="text-[17px] font-semibold text-gray-900">
+                {getPageTitle()}
+              </h2>
+
+              <p className="hidden sm:block text-xs text-gray-500 mt-0.5">
+                {getPageDescription()}
+              </p>
+
+            </div>
+
           </div>
-        )}
 
-        {/* ====================================================
-            LEAVE
-        ==================================================== */}
+        
 
-        {activeTab === 'leave' && (
-          <div className="h-[calc(100vh-200px)]">
-            <LeaveManagement
-              isHR={true}
-            />
+        </header>
+
+        {/* ======================================================
+            MOBILE NAVIGATION
+        ====================================================== */}
+
+        <div className="md:hidden shrink-0 bg-white border-b border-gray-200 overflow-x-auto">
+
+          <div className="flex items-center gap-1 p-2 min-w-max">
+
+            {navigationItems.map(
+              ({
+                id,
+                label,
+                icon: Icon,
+              }) => {
+
+                const active =
+                  activeTab === id;
+
+                return (
+                  <button
+                    key={id}
+                    onClick={() =>
+                      setActiveTab(id)
+                    }
+                    className={`
+                      flex
+                      items-center
+                      gap-2
+                      px-3
+                      py-2
+                      rounded-lg
+                      text-xs
+                      font-medium
+                      whitespace-nowrap
+                      transition
+
+                      ${
+                        active
+                          ? 'bg-violet-50 text-violet-700'
+                          : 'text-gray-500 hover:bg-gray-50'
+                      }
+                    `}
+                  >
+
+                    <Icon size={16} />
+
+                    {label}
+
+                  </button>
+                );
+              }
+            )}
+
           </div>
-        )}
 
-        {/* ====================================================
-            PROFILE
-        ==================================================== */}
+        </div>
 
-        {activeTab === 'profile' && (
-          <div className="min-h-[calc(100vh-200px)]">
-            <Profile />
-          </div>
-        )}
+        {/* ======================================================
+            PAGE CONTENT
+        ====================================================== */}
 
-      </main>
+        <main className="flex-1 min-h-0 overflow-hidden">
+
+          {/* ====================================================
+              COPILOT
+          ==================================================== */}
+
+          {activeTab === 'copilot' && (
+            <div className="h-full flex min-w-0">
+
+              {/* ==================================================
+                  CHATGPT STYLE CONVERSATION SIDEBAR
+              ================================================== */}
+
+              <section className="hidden sm:flex w-[280px] lg:w-[310px] shrink-0 bg-[#f7f7f8] border-r border-gray-200 flex-col">
+
+                {/* Conversation header */}
+
+                <div className="px-4 pt-4 pb-3">
+
+                  <button
+                    onClick={
+                      handleCreateConversation
+                    }
+                    className="
+                      w-full
+                      flex
+                      items-center
+                      justify-center
+                      gap-2
+                      px-4
+                      py-2.5
+                      rounded-xl
+                      bg-white
+                      border
+                      border-gray-200
+                      shadow-sm
+                      text-sm
+                      font-medium
+                      text-gray-700
+                      hover:border-violet-300
+                      hover:text-violet-700
+                      hover:bg-violet-50
+                      transition-all
+                    "
+                  >
+
+                    <Plus size={17} />
+
+                    New conversation
+
+                  </button>
+
+                </div>
+
+                {/* Conversation list */}
+
+                <div className="flex-1 min-h-0 overflow-hidden px-2 pb-3">
+
+                  <ConversationList
+                    conversations={conversations}
+                    activeConversation={
+                      activeConversation
+                    }
+                    onSelect={
+                      handleSelectConversation
+                    }
+                    onCreate={
+                      handleCreateConversation
+                    }
+                    onDelete={
+                      handleDeleteConversation
+                    }
+                    onEdit={
+                      handleEditConversation
+                    }
+                  />
+
+                </div>
+
+              </section>
+
+              {/* ==================================================
+                  CHAT AREA
+              ================================================== */}
+
+              <section className="flex-1 min-w-0 min-h-0 bg-white">
+
+                <div className="h-full w-full">
+
+                  <Copilot
+                    conversation={
+                      activeConversation
+                    }
+                    onSendMessage={
+                      handleSendMessage
+                    }
+                    onSendMessageStream={
+                      handleSendMessageStream
+                    }
+                    onExecuteAction={
+                      handleExecuteAction
+                    }
+                    onDeleteConversation={
+                      handleDeleteConversation
+                    }
+                  />
+
+                </div>
+
+              </section>
+
+            </div>
+          )}
+
+          {/* ====================================================
+              DOCUMENTS
+          ==================================================== */}
+
+          {activeTab === 'documents' && (
+            <div className="h-full overflow-y-auto p-4 lg:p-7">
+
+              <Documents
+                documents={documents}
+                onUpload={
+                  handleUploadDocument
+                }
+                onDelete={
+                  handleDeleteDocument
+                }
+                onView={
+                  handleViewDocument
+                }
+                isHR={true}
+              />
+
+            </div>
+          )}
+
+          {/* ====================================================
+              EMPLOYEES
+          ==================================================== */}
+
+          {activeTab === 'users' && (
+            <div className="h-full overflow-y-auto p-4 lg:p-7">
+
+              <div className="max-w-7xl mx-auto bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+
+                <div className="p-6 border-b border-gray-100">
+
+                  <div className="flex items-center gap-3">
+
+                    <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center">
+
+                      <Users
+                        size={20}
+                        className="text-violet-600"
+                      />
+
+                    </div>
+
+                    <div>
+
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        All Employees
+                      </h2>
+
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        Total: {allUsers.length}{' '}
+                        employees
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+                <div className="p-6">
+
+                  {allUsers.length > 0 ? (
+                    <div className="overflow-x-auto">
+
+                      <table className="w-full">
+
+                        <thead>
+
+                          <tr className="border-b border-gray-200">
+
+                            <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              Name
+                            </th>
+
+                            <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              Email
+                            </th>
+
+                            <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              Role
+                            </th>
+
+                            <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              Department
+                            </th>
+
+                          </tr>
+
+                        </thead>
+
+                        <tbody>
+
+                          {allUsers.map(
+                            (employee) => (
+                              <tr
+                                key={
+                                  employee.id
+                                }
+                                className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition"
+                              >
+
+                                <td className="py-4 px-4 text-sm font-medium text-gray-900">
+                                  {employee.name}
+                                </td>
+
+                                <td className="py-4 px-4 text-sm text-gray-600">
+                                  {employee.email}
+                                </td>
+
+                                <td className="py-4 px-4">
+
+                                  <span
+                                    className={`
+                                      inline-flex
+                                      px-2.5
+                                      py-1
+                                      rounded-full
+                                      text-xs
+                                      font-semibold
+
+                                      ${
+                                        employee.role ===
+                                        'hr'
+                                          ? 'bg-violet-50 text-violet-700'
+                                          : 'bg-blue-50 text-blue-700'
+                                      }
+                                    `}
+                                  >
+                                    {
+                                      employee.role
+                                    }
+                                  </span>
+
+                                </td>
+
+                                <td className="py-4 px-4 text-sm text-gray-700">
+                                  {
+                                    employee.department
+                                  }
+                                </td>
+
+                              </tr>
+                            )
+                          )}
+
+                        </tbody>
+
+                      </table>
+
+                    </div>
+                  ) : (
+                    <div className="text-center text-gray-500 py-12">
+
+                      <Users
+                        size={44}
+                        className="mx-auto mb-4 text-gray-300"
+                      />
+
+                      <p className="text-sm">
+                        No employees found
+                      </p>
+
+                    </div>
+                  )}
+
+                </div>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* ====================================================
+              GMAIL
+          ==================================================== */}
+
+          {activeTab === 'gmail' && (
+            <div className="h-full overflow-y-auto p-4 lg:p-7">
+
+              <div className="max-w-[1500px] mx-auto h-full">
+
+                <Gmail />
+
+              </div>
+
+            </div>
+          )}
+
+          {/* ====================================================
+              CALENDAR
+          ==================================================== */}
+
+          {activeTab === 'calendar' && (
+            <div className="h-full overflow-y-auto p-4 lg:p-7">
+
+              <div className="max-w-[1500px] mx-auto h-full">
+
+                <EmployeeCalendar />
+
+              </div>
+
+            </div>
+          )}
+
+          {/* ====================================================
+              LEAVE
+          ==================================================== */}
+
+          {activeTab === 'leave' && (
+            <div className="h-full overflow-y-auto p-4 lg:p-7">
+
+              <div className="max-w-7xl mx-auto">
+
+                <LeaveManagement
+                  isHR={true}
+                />
+
+              </div>
+
+            </div>
+          )}
+
+          {/* ====================================================
+              PROFILE
+          ==================================================== */}
+
+          {activeTab === 'profile' && (
+            <div className="h-full overflow-y-auto p-4 lg:p-7">
+
+              <div className="max-w-5xl mx-auto">
+
+                <Profile />
+
+              </div>
+
+            </div>
+          )}
+
+        </main>
+
+      </div>
+
     </div>
   );
 };
 
 export default HRDashboard;
-

@@ -1,16 +1,149 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageSquare,
   Plus,
-  Trash2,
-  Edit3,
   X,
   Check,
   Search,
+  Clock3,
   MoreHorizontal,
-  Sparkles,
+  BrainCircuit,
+  Edit3,
+  Trash2,
 } from 'lucide-react';
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+const getConversationDate = (conversation) => {
+  return (
+    conversation?.updated_at ||
+    conversation?.updatedAt ||
+    conversation?.created_at ||
+    conversation?.createdAt ||
+    null
+  );
+};
+
+const getTimestamp = (conversation) => {
+  const value = getConversationDate(conversation);
+
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const startOfDay = (date) => {
+  const result = new Date(date);
+
+  result.setHours(0, 0, 0, 0);
+
+  return result;
+};
+
+const getDayDifference = (date) => {
+  const today = startOfDay(new Date());
+  const target = startOfDay(date);
+
+  return Math.floor(
+    (today.getTime() - target.getTime()) /
+      (24 * 60 * 60 * 1000)
+  );
+};
+
+const getConversationGroup = (conversation) => {
+  const timestamp = getTimestamp(conversation);
+
+  if (!timestamp) {
+    return 'Older';
+  }
+
+  const difference = getDayDifference(
+    new Date(timestamp)
+  );
+
+  if (difference <= 0) {
+    return 'Today';
+  }
+
+  if (difference === 1) {
+    return 'Yesterday';
+  }
+
+  if (difference <= 7) {
+    return 'Previous 7 days';
+  }
+
+  return 'Older';
+};
+
+const formatTime = (dateString) => {
+  if (!dateString) {
+    return '';
+  }
+
+  const date = new Date(dateString);
+
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const now = new Date();
+
+  const difference =
+    now.getTime() - date.getTime();
+
+  if (difference < 60 * 1000) {
+    return 'Just now';
+  }
+
+  if (difference < 60 * 60 * 1000) {
+    const minutes = Math.floor(
+      difference / (60 * 1000)
+    );
+
+    return `${minutes}m ago`;
+  }
+
+  if (difference < 24 * 60 * 60 * 1000) {
+    const hours = Math.floor(
+      difference / (60 * 60 * 1000)
+    );
+
+    return `${hours}h ago`;
+  }
+
+  if (difference < 48 * 60 * 60 * 1000) {
+    return 'Yesterday';
+  }
+
+  if (difference < 7 * 24 * 60 * 60 * 1000) {
+    const days = Math.floor(
+      difference / (24 * 60 * 60 * 1000)
+    );
+
+    return `${days}d ago`;
+  }
+
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year:
+      date.getFullYear() !== now.getFullYear()
+        ? 'numeric'
+        : undefined,
+  });
+};
+
+// ============================================================
+// CONVERSATION ITEM
+// ============================================================
 
 const ConversationItem = ({
   conversation,
@@ -19,172 +152,424 @@ const ConversationItem = ({
   onDelete,
   onEdit,
 }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedTitle, setEditedTitle] = useState(
-    conversation.title || 'New Conversation'
-  );
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isEditing, setIsEditing] =
+    useState(false);
+
+  const [editedTitle, setEditedTitle] =
+    useState(
+      conversation?.title ||
+        'New Conversation'
+    );
+
+  const [isDeleting, setIsDeleting] =
+    useState(false);
+
+  // ----------------------------------------------------------
+  // TITLE HOVER / MARQUEE STATE
+  // ----------------------------------------------------------
+
+  const titleContainerRef = useRef(null);
+  const titleTextRef = useRef(null);
+
+  const [isTitleOverflowing, setIsTitleOverflowing] =
+    useState(false);
+
+  const [isTitleHovered, setIsTitleHovered] =
+    useState(false);
+
+  // ----------------------------------------------------------
+  // CHECK TITLE OVERFLOW
+  // ----------------------------------------------------------
 
   useEffect(() => {
-    setEditedTitle(conversation.title || 'New Conversation');
-  }, [conversation.title]);
+    const checkTitleOverflow = () => {
+      const container = titleContainerRef.current;
+      const text = titleTextRef.current;
+
+      if (!container || !text) {
+        return;
+      }
+
+      setIsTitleOverflowing(
+        text.scrollWidth > container.clientWidth + 1
+      );
+    };
+
+    checkTitleOverflow();
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(
+            checkTitleOverflow
+          )
+        : null;
+
+    if (resizeObserver) {
+      if (titleContainerRef.current) {
+        resizeObserver.observe(
+          titleContainerRef.current
+        );
+      }
+
+      if (titleTextRef.current) {
+        resizeObserver.observe(
+          titleTextRef.current
+        );
+      }
+    }
+
+    window.addEventListener(
+      'resize',
+      checkTitleOverflow
+    );
+
+    return () => {
+      window.removeEventListener(
+        'resize',
+        checkTitleOverflow
+      );
+
+      resizeObserver?.disconnect();
+    };
+  }, [
+    conversation?.title,
+  ]);
+
+  // ----------------------------------------------------------
+  // RESET EDITED TITLE
+  // ----------------------------------------------------------
+
+  useEffect(() => {
+    setEditedTitle(
+      conversation?.title ||
+        'New Conversation'
+    );
+  }, [conversation?.title]);
+
+  const updatedAt =
+    getConversationDate(conversation);
+
+  // ----------------------------------------------------------
+  // EDIT
+  // ----------------------------------------------------------
 
   const handleEdit = async () => {
     const title = editedTitle.trim();
 
     if (!title) {
-      setEditedTitle(conversation.title || 'New Conversation');
+      setEditedTitle(
+        conversation?.title ||
+          'New Conversation'
+      );
+
       setIsEditing(false);
+
       return;
     }
 
-    if (title === conversation.title) {
+    if (
+      title ===
+      (conversation?.title ||
+        'New Conversation')
+    ) {
       setIsEditing(false);
+
       return;
     }
 
     try {
-      await onEdit(conversation.id, { title });
+      await onEdit(
+        conversation.id,
+        { title }
+      );
+
       setIsEditing(false);
     } catch (error) {
-      console.error('Failed to edit title:', error);
+      console.error(
+        'Failed to edit conversation:',
+        error
+      );
     }
   };
 
+  // ----------------------------------------------------------
+  // DELETE
+  // ----------------------------------------------------------
+
   const handleDelete = async () => {
-    if (!window.confirm('Delete this conversation?')) {
+    const confirmed = window.confirm(
+      'Delete this conversation? This action cannot be undone.'
+    );
+
+    if (!confirmed) {
       return;
     }
 
     try {
       setIsDeleting(true);
+
       await onDelete(conversation.id);
     } catch (error) {
-      console.error('Failed to delete conversation:', error);
+      console.error(
+        'Failed to delete conversation:',
+        error
+      );
+
       setIsDeleting(false);
     }
   };
 
+  // ----------------------------------------------------------
+  // KEYBOARD
+  // ----------------------------------------------------------
+
   const handleKeyDown = (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
+
       handleEdit();
     }
 
     if (event.key === 'Escape') {
       setIsEditing(false);
-      setEditedTitle(conversation.title || 'New Conversation');
+
+      setEditedTitle(
+        conversation?.title ||
+          'New Conversation'
+      );
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
+  // ----------------------------------------------------------
+  // TITLE HOVER
+  // ----------------------------------------------------------
 
-    const date = new Date(dateString);
-
-    if (Number.isNaN(date.getTime())) {
-      return '';
+  const handleTitleMouseEnter = () => {
+    if (isTitleOverflowing) {
+      setIsTitleHovered(true);
     }
+  };
 
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-
-    if (diff < 60 * 1000) {
-      return 'Just now';
-    }
-
-    if (diff < 60 * 60 * 1000) {
-      return `${Math.floor(diff / (60 * 1000))}m ago`;
-    }
-
-    if (diff < 24 * 60 * 60 * 1000) {
-      return `${Math.floor(diff / (60 * 60 * 1000))}h ago`;
-    }
-
-    if (diff < 7 * 24 * 60 * 60 * 1000) {
-      return `${Math.floor(diff / (24 * 60 * 60 * 1000))}d ago`;
-    }
-
-    return date.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-    });
+  const handleTitleMouseLeave = () => {
+    setIsTitleHovered(false);
   };
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 6 }}
+      initial={{
+        opacity: 0,
+        y: 8,
+        scale: 0.98,
+      }}
       animate={{
         opacity: isDeleting ? 0 : 1,
         y: 0,
-        scale: isDeleting ? 0.96 : 1,
+        scale: isDeleting ? 0.94 : 1,
       }}
-      transition={{ duration: 0.18 }}
+      exit={{
+        opacity: 0,
+        x: -20,
+        scale: 0.95,
+      }}
+      transition={{
+        duration: 0.22,
+        ease: 'easeOut',
+      }}
       className="relative"
     >
       <motion.div
-        whileHover={{ x: 2 }}
-        transition={{ duration: 0.15 }}
-        onClick={() => !isEditing && !isDeleting && onSelect(conversation)}
+        whileHover={
+          isDeleting || isEditing
+            ? undefined
+            : {
+                x: 2,
+              }
+        }
+        transition={{
+          duration: 0.15,
+        }}
+        onClick={() => {
+          if (!isEditing && !isDeleting) {
+            onSelect(conversation);
+          }
+        }}
         className={`
-          group relative cursor-pointer overflow-hidden rounded-xl
-          border transition-all duration-200
+          group
+          relative
+          overflow-hidden
+          cursor-pointer
+          rounded-2xl
+          border
+          transition-all
+          duration-200
           ${
             isActive
-              ? 'border-blue-200 bg-blue-50/80 shadow-sm'
-              : 'border-transparent bg-transparent hover:border-gray-200 hover:bg-white hover:shadow-sm'
+              ? `
+                border-violet-200
+                bg-gradient-to-r
+                from-violet-50
+                via-indigo-50/70
+                to-white
+                shadow-sm
+              `
+              : `
+                border-transparent
+                bg-transparent
+                hover:border-gray-200
+                hover:bg-white
+                hover:shadow-[0_4px_18px_rgba(15,23,42,0.05)]
+              `
           }
         `}
       >
-        {/* Active indicator */}
-        <AnimatePresence>
-          {isActive && (
-            <motion.div
-              layoutId="activeConversation"
-              className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-gradient-to-b from-blue-500 to-violet-500"
-              transition={{
-                type: 'spring',
-                stiffness: 400,
-                damping: 30,
-              }}
-            />
-          )}
-        </AnimatePresence>
+        {/* ====================================================
+            ACTIVE GLOW
+        ==================================================== */}
+
+        {isActive && (
+          <motion.div
+            layoutId="conversation-active-bar"
+            className="
+              absolute
+              left-0
+              top-3
+              bottom-3
+              w-[3px]
+              rounded-r-full
+              bg-gradient-to-b
+              from-violet-500
+              via-indigo-500
+              to-blue-500
+            "
+            transition={{
+              type: 'spring',
+              stiffness: 450,
+              damping: 32,
+            }}
+          />
+        )}
+
+        {/* ====================================================
+            CONTENT
+        ==================================================== */}
 
         <div className="flex items-center gap-3 px-3 py-3">
-          {/* Icon */}
-          <div
+
+          {/* ==================================================
+              ICON
+          ================================================== */}
+
+          <motion.div
+            animate={
+              isActive
+                ? {
+                    scale: [1, 1.04, 1],
+                  }
+                : {
+                    scale: 1,
+                  }
+            }
+            transition={{
+              duration: 2,
+              repeat: isActive
+                ? Infinity
+                : 0,
+              repeatDelay: 3,
+            }}
             className={`
-              flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg
-              transition-all duration-200
+              relative
+              flex
+              h-9
+              w-9
+              shrink-0
+              items-center
+              justify-center
+              rounded-xl
+              transition-all
+              duration-200
               ${
                 isActive
-                  ? 'bg-gradient-to-br from-blue-500 to-violet-600 text-white shadow-sm'
-                  : 'bg-gray-100 text-gray-500 group-hover:bg-gray-200'
+                  ? `
+                    bg-gradient-to-br
+                    from-violet-500
+                    via-indigo-500
+                    to-blue-600
+                    text-white
+                    shadow-md
+                    shadow-violet-500/20
+                  `
+                  : `
+                    bg-gray-100
+                    text-gray-500
+                    group-hover:bg-violet-50
+                    group-hover:text-violet-600
+                  `
               }
             `}
           >
-            <MessageSquare size={16} strokeWidth={2} />
-          </div>
+            <MessageSquare
+              size={16}
+              strokeWidth={
+                isActive ? 2.2 : 1.9
+              }
+            />
 
-          {/* Content */}
+            {isActive && (
+              <span
+                className="
+                  absolute
+                  -right-0.5
+                  -top-0.5
+                  h-2
+                  w-2
+                  rounded-full
+                  border-2
+                  border-white
+                  bg-emerald-500
+                "
+              />
+            )}
+          </motion.div>
+
+          {/* ==================================================
+              TEXT
+          ================================================== */}
+
           <div className="min-w-0 flex-1">
+
             {isEditing ? (
               <div
-                className="flex items-center gap-1"
-                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1.5"
+                onClick={(event) =>
+                  event.stopPropagation()
+                }
               >
                 <input
                   autoFocus
                   type="text"
                   value={editedTitle}
-                  onChange={(e) => setEditedTitle(e.target.value)}
+                  onChange={(event) =>
+                    setEditedTitle(
+                      event.target.value
+                    )
+                  }
                   onKeyDown={handleKeyDown}
                   className="
-                    min-w-0 flex-1 rounded-lg border border-blue-300
-                    bg-white px-2 py-1.5 text-sm font-medium text-gray-900
-                    outline-none ring-2 ring-blue-500/10
+                    min-w-0
+                    flex-1
+                    rounded-lg
+                    border
+                    border-violet-300
+                    bg-white
+                    px-2.5
+                    py-1.5
+                    text-xs
+                    font-medium
+                    text-gray-900
+                    outline-none
+                    ring-4
+                    ring-violet-500/10
                   "
                 />
 
@@ -192,92 +577,224 @@ const ConversationItem = ({
                   type="button"
                   onClick={handleEdit}
                   className="
-                    flex h-7 w-7 flex-shrink-0 items-center justify-center
-                    rounded-md text-emerald-600 transition-colors
+                    flex
+                    h-7
+                    w-7
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-lg
+                    text-emerald-600
+                    transition
                     hover:bg-emerald-50
                   "
                   title="Save"
                 >
-                  <Check size={15} />
+                  <Check size={14} />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
                     setIsEditing(false);
+
                     setEditedTitle(
-                      conversation.title || 'New Conversation'
+                      conversation?.title ||
+                        'New Conversation'
                     );
                   }}
                   className="
-                    flex h-7 w-7 flex-shrink-0 items-center justify-center
-                    rounded-md text-gray-400 transition-colors
-                    hover:bg-gray-100 hover:text-gray-600
+                    flex
+                    h-7
+                    w-7
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-lg
+                    text-gray-400
+                    transition
+                    hover:bg-gray-100
+                    hover:text-gray-700
                   "
                   title="Cancel"
                 >
-                  <X size={15} />
+                  <X size={14} />
                 </button>
               </div>
             ) : (
               <>
-                <h4
-                  className={`
-                    truncate text-sm font-medium
-                    ${
-                      isActive
-                        ? 'text-gray-900'
-                        : 'text-gray-700 group-hover:text-gray-900'
-                    }
-                  `}
-                >
-                  {conversation.title || 'New Conversation'}
-                </h4>
+                {/* ==================================================
+                    TITLE WITH HOVER SLIDE
+                ================================================== */}
 
-                <div className="mt-1 flex items-center gap-1.5">
-                  <span
+                <div
+                  ref={titleContainerRef}
+                  className="
+                    min-w-0
+                    overflow-hidden
+                    whitespace-nowrap
+                  "
+                  onMouseEnter={
+                    handleTitleMouseEnter
+                  }
+                  onMouseLeave={
+                    handleTitleMouseLeave
+                  }
+                >
+                  <motion.h4
+                    ref={titleTextRef}
+                    initial={false}
+                    animate={
+                      isTitleHovered &&
+                      isTitleOverflowing
+                        ? {
+                            x: [
+                              0,
+                              -Math.max(
+                                0,
+                                (titleTextRef.current
+                                  ?.scrollWidth ||
+                                  0) -
+                                  (titleContainerRef.current
+                                    ?.clientWidth ||
+                                    0)
+                              ),
+                              0,
+                            ],
+                          }
+                        : {
+                            x: 0,
+                          }
+                    }
+                    transition={
+                      isTitleHovered &&
+                      isTitleOverflowing
+                        ? {
+                            duration: Math.max(
+                              3,
+                              Math.min(
+                                8,
+                                ((titleTextRef.current
+                                  ?.scrollWidth ||
+                                  0) -
+                                  (titleContainerRef.current
+                                    ?.clientWidth ||
+                                    0)) /
+                                  35
+                              )
+                            ),
+                            ease: 'easeInOut',
+                            repeat: Infinity,
+                            repeatType: 'loop',
+                            repeatDelay: 0.8,
+                          }
+                        : {
+                            duration: 0.2,
+                          }
+                    }
                     className={`
-                      text-[11px]
-                      ${isActive ? 'text-blue-600' : 'text-gray-400'}
+                      inline-block
+                      max-w-none
+                      text-[13px]
+                      leading-5
+                      ${
+                        isActive
+                          ? 'font-semibold text-gray-900'
+                          : 'font-medium text-gray-700 group-hover:text-gray-900'
+                      }
                     `}
                   >
-                    {formatDate(conversation.updated_at)}
+                    {conversation?.title ||
+                      'New Conversation'}
+                  </motion.h4>
+                </div>
+
+                {/* ==================================================
+                    TIME
+                ================================================== */}
+
+                <div className="mt-1 flex items-center gap-1.5">
+
+                  <Clock3
+                    size={11}
+                    className={
+                      isActive
+                        ? 'text-violet-400'
+                        : 'text-gray-300'
+                    }
+                  />
+
+                  <span
+                    className={`
+                      truncate
+                      text-[10px]
+                      ${
+                        isActive
+                          ? 'font-medium text-violet-500'
+                          : 'text-gray-400'
+                      }
+                    `}
+                  >
+                    {formatTime(updatedAt)}
                   </span>
 
                   {isActive && (
                     <>
-                      <span className="h-1 w-1 rounded-full bg-blue-400" />
-                      <span className="text-[11px] font-medium text-blue-500">
+                      <span className="h-1 w-1 rounded-full bg-violet-300" />
+
+                      <span className="text-[10px] font-semibold text-violet-500">
                         Active
                       </span>
                     </>
                   )}
+
                 </div>
               </>
             )}
           </div>
 
-          {/* Actions */}
+          {/* ==================================================
+              ACTIONS
+          ================================================== */}
+
           {!isEditing && (
             <div
               className="
-                flex flex-shrink-0 items-center gap-0.5
-                opacity-0 transition-opacity duration-200
+                flex
+                shrink-0
+                items-center
+                gap-0.5
+                opacity-0
+                translate-x-1
+                transition-all
+                duration-200
+                group-hover:translate-x-0
                 group-hover:opacity-100
               "
-              onClick={(e) => e.stopPropagation()}
+              onClick={(event) =>
+                event.stopPropagation()
+              }
             >
               <button
                 type="button"
-                onClick={() => setIsEditing(true)}
+                onClick={() =>
+                  setIsEditing(true)
+                }
                 className="
-                  flex h-7 w-7 items-center justify-center rounded-md
-                  text-gray-400 transition-all hover:bg-gray-100
-                  hover:text-gray-700
+                  flex
+                  h-7
+                  w-7
+                  items-center
+                  justify-center
+                  rounded-lg
+                  text-gray-400
+                  transition-all
+                  hover:bg-violet-50
+                  hover:text-violet-600
                 "
                 title="Rename"
               >
-                <Edit3 size={14} />
+                <Edit3 size={13} />
               </button>
 
               <button
@@ -285,22 +802,130 @@ const ConversationItem = ({
                 onClick={handleDelete}
                 disabled={isDeleting}
                 className="
-                  flex h-7 w-7 items-center justify-center rounded-md
-                  text-gray-400 transition-all
-                  hover:bg-red-50 hover:text-red-500
-                  disabled:cursor-not-allowed disabled:opacity-50
+                  flex
+                  h-7
+                  w-7
+                  items-center
+                  justify-center
+                  rounded-lg
+                  text-gray-400
+                  transition-all
+                  hover:bg-red-50
+                  hover:text-red-500
+                  disabled:cursor-not-allowed
+                  disabled:opacity-50
                 "
                 title="Delete"
               >
-                <Trash2 size={14} />
+                <Trash2 size={13} />
               </button>
             </div>
           )}
         </div>
+
+        {/* ====================================================
+            SUBTLE ACTIVE SHINE
+        ==================================================== */}
+
+        {isActive && (
+          <motion.div
+            initial={{
+              opacity: 0,
+              x: '-100%',
+            }}
+            animate={{
+              opacity: [0, 0.45, 0],
+              x: ['-100%', '100%'],
+            }}
+            transition={{
+              duration: 2.8,
+              repeat: Infinity,
+              repeatDelay: 6,
+              ease: 'easeInOut',
+            }}
+            className="
+              pointer-events-none
+              absolute
+              inset-y-0
+              left-0
+              w-1/2
+              bg-gradient-to-r
+              from-transparent
+              via-white/70
+              to-transparent
+              skew-x-[-20deg]
+            "
+          />
+        )}
       </motion.div>
     </motion.div>
   );
 };
+
+// ============================================================
+// CONVERSATION GROUP
+// ============================================================
+
+const ConversationGroup = ({
+  title,
+  conversations,
+  activeConversation,
+  onSelect,
+  onDelete,
+  onEdit,
+}) => {
+  if (!conversations.length) {
+    return null;
+  }
+
+  return (
+    <div className="mb-5">
+
+      <div className="mb-2 flex items-center gap-2 px-2">
+
+        <span
+          className="
+            text-[10px]
+            font-bold
+            uppercase
+            tracking-[0.14em]
+            text-gray-400
+          "
+        >
+          {title}
+        </span>
+
+        <div className="h-px flex-1 bg-gray-100" />
+      </div>
+
+      <div className="space-y-1">
+
+        <AnimatePresence mode="popLayout">
+          {conversations.map(
+            (conversation) => (
+              <ConversationItem
+                key={conversation.id}
+                conversation={conversation}
+                isActive={
+                  activeConversation?.id ===
+                  conversation.id
+                }
+                onSelect={onSelect}
+                onDelete={onDelete}
+                onEdit={onEdit}
+              />
+            )
+          )}
+        </AnimatePresence>
+
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 
 const ConversationList = ({
   conversations = [],
@@ -310,202 +935,678 @@ const ConversationList = ({
   onDelete,
   onEdit,
 }) => {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] =
+    useState('');
 
-  const filteredConversations = conversations.filter((conversation) =>
-    (conversation.title || 'New Conversation')
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  );
+  // ==========================================================
+  // SEARCH + SORT + GROUP
+  // ==========================================================
+
+  const groupedConversations = useMemo(() => {
+    const normalizedSearch =
+      search.trim().toLowerCase();
+
+    const sorted = [...conversations]
+      .filter((conversation) => {
+        if (!normalizedSearch) {
+          return true;
+        }
+
+        const title =
+          conversation?.title ||
+          'New Conversation';
+
+        return title
+          .toLowerCase()
+          .includes(normalizedSearch);
+      })
+      .sort(
+        (a, b) =>
+          getTimestamp(b) -
+          getTimestamp(a)
+      );
+
+    const groups = {
+      Today: [],
+      Yesterday: [],
+      'Previous 7 days': [],
+      Older: [],
+    };
+
+    sorted.forEach((conversation) => {
+      const group =
+        getConversationGroup(
+          conversation
+        );
+
+      if (!groups[group]) {
+        groups[group] = [];
+      }
+
+      groups[group].push(
+        conversation
+      );
+    });
+
+    return groups;
+  }, [conversations, search]);
+
+  const visibleConversationCount =
+    Object.values(
+      groupedConversations
+    ).reduce(
+      (total, group) =>
+        total + group.length,
+      0
+    );
+
+  // ==========================================================
+  // CLEAR SEARCH
+  // ==========================================================
+
+  const handleClearSearch = () => {
+    setSearch('');
+  };
 
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
-      {/* Header */}
-      <div className="flex-shrink-0 border-b border-gray-200/80 bg-white">
-        <div className="px-4 pb-3 pt-4">
-          {/* Brand */}
+    <aside
+      className="
+        flex
+        h-full
+        min-h-0
+        w-full
+        flex-col
+        overflow-hidden
+        bg-[#f8f9fc]
+      "
+    >
+
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
+
+      <div
+        className="
+          shrink-0
+          border-b
+          border-gray-200/80
+          bg-white
+        "
+      >
+        <div className="px-4 pb-4 pt-4">
+
+          {/* ==================================================
+              BRAND ROW
+          ================================================== */}
+
           <div className="mb-4 flex items-center gap-3">
-            <div
+
+            <motion.div
+              whileHover={{
+                scale: 1.05,
+                rotate: 2,
+              }}
+              transition={{
+                type: 'spring',
+                stiffness: 350,
+                damping: 20,
+              }}
               className="
-                flex h-10 w-10 items-center justify-center rounded-xl
-                bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600
-                text-white shadow-md shadow-blue-500/20
+                relative
+                flex
+                h-10
+                w-10
+                shrink-0
+                items-center
+                justify-center
+                rounded-xl
+                bg-gradient-to-br
+                from-violet-500
+                via-indigo-500
+                to-blue-600
+                text-white
+                shadow-lg
+                shadow-violet-500/20
               "
             >
-              <Sparkles size={19} />
-            </div>
+              <BrainCircuit
+                size={18}
+                strokeWidth={2}
+              />
+            </motion.div>
 
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-bold tracking-tight text-gray-900">
+
+              <h2
+                className="
+                  truncate
+                  text-[13px]
+                  font-bold
+                  tracking-tight
+                  text-gray-900
+                "
+              >
                 Employee Copilot
               </h2>
-              <p className="text-[11px] text-gray-400">
-                Your AI workspace
+
+              <p className="mt-0.5 truncate text-[10px] text-gray-400">
+                Intelligent workspace
               </p>
+
             </div>
 
-            <button
+            {/* NEW CHAT */}
+
+            <motion.button
               type="button"
               onClick={onCreate}
+              whileHover={{
+                scale: 1.05,
+              }}
+              whileTap={{
+                scale: 0.94,
+              }}
               className="
-                flex h-9 w-9 items-center justify-center rounded-xl
-                bg-gray-900 text-white shadow-sm
-                transition-all duration-200
-                hover:bg-gray-800 hover:shadow-md
-                active:scale-95
+                flex
+                h-9
+                w-9
+                shrink-0
+                items-center
+                justify-center
+                rounded-xl
+                bg-gradient-to-br
+                from-violet-500
+                to-indigo-600
+                text-white
+                shadow-md
+                shadow-violet-500/20
+                transition-all
+                hover:shadow-lg
+                hover:shadow-violet-500/30
               "
               title="New conversation"
               aria-label="New conversation"
             >
-              <Plus size={18} />
-            </button>
+              <Plus
+                size={18}
+                strokeWidth={2.3}
+              />
+            </motion.button>
+
           </div>
 
-          {/* Search */}
+          {/* ==================================================
+              SEARCH
+          ================================================== */}
+
           <div className="relative">
+
             <Search
               size={15}
+              strokeWidth={2}
               className="
-                pointer-events-none absolute left-3 top-1/2
-                -translate-y-1/2 text-gray-400
+                pointer-events-none
+                absolute
+                left-3
+                top-1/2
+                -translate-y-1/2
+                text-gray-400
               "
             />
 
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search conversations..."
+              onChange={(event) =>
+                setSearch(
+                  event.target.value
+                )
+              }
+              placeholder="Search conversations"
               className="
-                h-9 w-full rounded-lg border border-gray-200
-                bg-gray-50 pl-9 pr-3 text-xs text-gray-900
-                outline-none transition-all
+                h-10
+                w-full
+                rounded-xl
+                border
+                border-gray-200
+                bg-gray-50/80
+                pl-9
+                pr-9
+                text-xs
+                font-medium
+                text-gray-800
+                outline-none
+                transition-all
                 placeholder:text-gray-400
-                focus:border-blue-300 focus:bg-white
-                focus:ring-3 focus:ring-blue-500/10
+                focus:border-violet-300
+                focus:bg-white
+                focus:ring-4
+                focus:ring-violet-500/10
               "
             />
+
+            <AnimatePresence>
+              {search && (
+                <motion.button
+                  initial={{
+                    opacity: 0,
+                    scale: 0.8,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    scale: 1,
+                  }}
+                  exit={{
+                    opacity: 0,
+                    scale: 0.8,
+                  }}
+                  type="button"
+                  onClick={
+                    handleClearSearch
+                  }
+                  className="
+                    absolute
+                    right-2
+                    top-1/2
+                    flex
+                    h-6
+                    w-6
+                    -translate-y-1/2
+                    items-center
+                    justify-center
+                    rounded-md
+                    text-gray-400
+                    transition
+                    hover:bg-gray-200
+                    hover:text-gray-700
+                  "
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </motion.button>
+              )}
+            </AnimatePresence>
+
           </div>
         </div>
       </div>
 
-      {/* Section header */}
-      <div className="flex items-center justify-between px-4 pb-2 pt-4">
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">
-          Conversations
-        </span>
+      {/* ======================================================
+          LIST HEADER
+      ====================================================== */}
 
-        {conversations.length > 0 && (
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-400">
-            {conversations.length}
+      <div className="flex shrink-0 items-center justify-between px-4 pb-2 pt-4">
+
+        <div className="flex items-center gap-2">
+
+          <span
+            className="
+              text-[10px]
+              font-bold
+              uppercase
+              tracking-[0.14em]
+              text-gray-400
+            "
+          >
+            Conversations
+          </span>
+
+          {conversations.length > 0 && (
+            <span
+              className="
+                flex
+                h-5
+                min-w-5
+                items-center
+                justify-center
+                rounded-full
+                bg-violet-50
+                px-1.5
+                text-[9px]
+                font-bold
+                text-violet-500
+              "
+            >
+              {conversations.length}
+            </span>
+          )}
+
+        </div>
+
+        {search && (
+          <span className="text-[9px] font-medium text-gray-400">
+            {visibleConversationCount}{' '}
+            result
+            {visibleConversationCount !== 1
+              ? 's'
+              : ''}
           </span>
         )}
+
       </div>
 
-      {/* Conversation list */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 scrollbar-thin">
-        <AnimatePresence mode="popLayout">
-          {filteredConversations.length > 0 ? (
-            <motion.div
-              layout
-              className="space-y-1"
+      {/* ======================================================
+          CONVERSATION CONTENT
+      ====================================================== */}
+
+      <div
+        className="
+          min-h-0
+          flex-1
+          overflow-y-auto
+          px-2
+          pb-3
+          scrollbar-thin
+        "
+      >
+
+        {visibleConversationCount >
+        0 ? (
+          <motion.div
+            layout
+            initial={{
+              opacity: 0,
+            }}
+            animate={{
+              opacity: 1,
+            }}
+            transition={{
+              duration: 0.2,
+            }}
+          >
+
+            <ConversationGroup
+              title="Today"
+              conversations={
+                groupedConversations.Today
+              }
+              activeConversation={
+                activeConversation
+              }
+              onSelect={onSelect}
+              onDelete={onDelete}
+              onEdit={onEdit}
+            />
+
+            <ConversationGroup
+              title="Yesterday"
+              conversations={
+                groupedConversations.Yesterday
+              }
+              activeConversation={
+                activeConversation
+              }
+              onSelect={onSelect}
+              onDelete={onDelete}
+              onEdit={onEdit}
+            />
+
+            <ConversationGroup
+              title="Previous 7 days"
+              conversations={
+                groupedConversations[
+                  'Previous 7 days'
+                ]
+              }
+              activeConversation={
+                activeConversation
+              }
+              onSelect={onSelect}
+              onDelete={onDelete}
+              onEdit={onEdit}
+            />
+
+            <ConversationGroup
+              title="Older"
+              conversations={
+                groupedConversations.Older
+              }
+              activeConversation={
+                activeConversation
+              }
+              onSelect={onSelect}
+              onDelete={onDelete}
+              onEdit={onEdit}
+            />
+
+          </motion.div>
+        ) : search ? (
+          /* ====================================================
+             SEARCH EMPTY
+          ==================================================== */
+
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: 10,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            className="
+              px-5
+              py-14
+              text-center
+            "
+          >
+            <div
+              className="
+                mx-auto
+                mb-4
+                flex
+                h-12
+                w-12
+                items-center
+                justify-center
+                rounded-2xl
+                bg-white
+                text-gray-400
+                shadow-sm
+                ring-1
+                ring-gray-200
+              "
             >
-              {filteredConversations.map((conversation) => (
-                <ConversationItem
-                  key={conversation.id}
-                  conversation={conversation}
-                  isActive={
-                    activeConversation?.id === conversation.id
-                  }
-                  onSelect={onSelect}
-                  onDelete={onDelete}
-                  onEdit={onEdit}
-                />
-              ))}
-            </motion.div>
-          ) : search ? (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="px-5 py-12 text-center"
+              <Search size={19} />
+            </div>
+
+            <h3 className="text-xs font-semibold text-gray-800">
+              No conversations found
+            </h3>
+
+            <p className="mt-1.5 text-[10px] leading-5 text-gray-400">
+              Try another keyword or clear
+              your search.
+            </p>
+
+            <button
+              type="button"
+              onClick={
+                handleClearSearch
+              }
+              className="
+                mt-4
+                rounded-lg
+                bg-violet-50
+                px-3
+                py-2
+                text-[10px]
+                font-semibold
+                text-violet-600
+                transition
+                hover:bg-violet-100
+              "
             >
-              <div
-                className="
-                  mx-auto mb-3 flex h-11 w-11 items-center justify-center
-                  rounded-xl bg-gray-100 text-gray-400
-                "
-              >
-                <Search size={19} />
-              </div>
+              Clear search
+            </button>
+          </motion.div>
+        ) : (
+          /* ====================================================
+             NO CONVERSATIONS
+          ==================================================== */
 
-              <p className="text-sm font-medium text-gray-700">
-                No conversations found
-              </p>
-
-              <p className="mt-1 text-xs text-gray-400">
-                Try a different search
-              </p>
-            </motion.div>
-          ) : (
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: 10,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            className="
+              px-5
+              py-12
+              text-center
+            "
+          >
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="px-5 py-12 text-center"
+              animate={{
+                y: [0, -4, 0],
+              }}
+              transition={{
+                duration: 3,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+              className="
+                mx-auto
+                mb-5
+                flex
+                h-14
+                w-14
+                items-center
+                justify-center
+                rounded-2xl
+                bg-gradient-to-br
+                from-violet-50
+                via-indigo-50
+                to-blue-50
+                text-violet-500
+                shadow-sm
+                ring-1
+                ring-violet-100
+              "
             >
-              <div
-                className="
-                  mx-auto mb-4 flex h-14 w-14 items-center justify-center
-                  rounded-2xl bg-gradient-to-br from-blue-50 to-violet-50
-                  text-blue-500 ring-1 ring-blue-100
-                "
-              >
-                <MessageSquare size={23} />
-              </div>
-
-              <h3 className="text-sm font-semibold text-gray-800">
-                No conversations yet
-              </h3>
-
-              <p className="mt-1.5 text-xs leading-5 text-gray-400">
-                Start a conversation with your AI copilot.
-              </p>
-
-              <button
-                type="button"
-                onClick={onCreate}
-                className="
-                  mt-4 inline-flex items-center gap-1.5 rounded-lg
-                  bg-gray-900 px-3 py-2 text-xs font-medium text-white
-                  shadow-sm transition-all hover:bg-gray-800
-                  active:scale-95
-                "
-              >
-                <Plus size={14} />
-                Start chatting
-              </button>
+              <MessageSquare
+                size={22}
+                strokeWidth={1.8}
+              />
             </motion.div>
-          )}
-        </AnimatePresence>
+
+            <h3 className="text-xs font-semibold text-gray-800">
+              No conversations yet
+            </h3>
+
+            <p className="mx-auto mt-1.5 max-w-[190px] text-[10px] leading-5 text-gray-400">
+              Start a conversation and your
+              AI workspace will appear here.
+            </p>
+
+            <motion.button
+              type="button"
+              onClick={onCreate}
+              whileHover={{
+                y: -1,
+                scale: 1.02,
+              }}
+              whileTap={{
+                scale: 0.97,
+              }}
+              className="
+                mt-5
+                inline-flex
+                items-center
+                gap-1.5
+                rounded-xl
+                bg-gradient-to-r
+                from-violet-500
+                to-indigo-600
+                px-3.5
+                py-2.5
+                text-[10px]
+                font-semibold
+                text-white
+                shadow-md
+                shadow-violet-500/20
+              "
+            >
+              <Plus size={13} />
+              Start chatting
+            </motion.button>
+          </motion.div>
+        )}
+
       </div>
 
-      {/* Bottom status */}
-      <div className="flex-shrink-0 border-t border-gray-200/80 bg-white px-4 py-3">
+      {/* ======================================================
+          FOOTER STATUS
+      ====================================================== */}
+
+      <div
+        className="
+          shrink-0
+          border-t
+          border-gray-200/80
+          bg-white
+          px-4
+          py-3
+        "
+      >
         <div className="flex items-center gap-2">
+
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+
+            <motion.span
+              animate={{
+                scale: [1, 1.8, 1],
+                opacity: [0.6, 0, 0.6],
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: 'easeOut',
+              }}
+              className="
+                absolute
+                inset-0
+                rounded-full
+                bg-emerald-400
+              "
+            />
+
+            <span
+              className="
+                relative
+                h-2
+                w-2
+                rounded-full
+                bg-emerald-500
+              "
+            />
+
           </span>
 
-          <span className="text-[11px] font-medium text-gray-500">
+          <span className="text-[10px] font-medium text-gray-500">
             Copilot ready
           </span>
 
-          <MoreHorizontal
-            size={14}
-            className="ml-auto text-gray-300"
-          />
+          <div className="ml-auto flex items-center gap-1">
+
+            <span className="text-[9px] text-gray-300">
+              AI
+            </span>
+
+            <MoreHorizontal
+              size={13}
+              className="text-gray-300"
+            />
+
+          </div>
+
         </div>
       </div>
+
     </aside>
   );
 };

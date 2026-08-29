@@ -1,7 +1,16 @@
 import { GoogleGenAI } from '@google/genai';
 import { config } from '../config/index.js';
 
+// ============================================================
+// CONSTANTS
+// ============================================================
+
 const EMBEDDING_DIMENSION = 1536;
+const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001';
+
+// ============================================================
+// EMBEDDING SERVICE
+// ============================================================
 
 class EmbeddingService {
   constructor() {
@@ -15,128 +24,187 @@ class EmbeddingService {
       apiKey: config.geminiApiKey,
     });
 
-    this.model = config.embeddingModel || 'gemini-embedding-001';
+    this.model =
+      config.embeddingModel ||
+      DEFAULT_EMBEDDING_MODEL;
 
     console.log(
-      `Embedding service initialized with ${this.model} (${EMBEDDING_DIMENSION} dimensions)`
+      `[Embedding] Initialized | model=${this.model} | dimensions=${EMBEDDING_DIMENSION}`
     );
   }
 
-  normalizeEmbedding(embedding) {
-    if (!Array.isArray(embedding) || embedding.length === 0) {
-      throw new Error('Embedding is empty or invalid');
-    }
+  // ==========================================================
+  // VALIDATE TEXT
+  // ==========================================================
 
-    const values = embedding.map(Number);
-
-    if (
-      !values.every(
-        (value) =>
-          Number.isFinite(value)
-      )
-    ) {
-      throw new Error(
-        'Embedding contains invalid numeric values'
-      );
-    }
-
-    /*
-     * gemini-embedding-001 returns 3072 dimensions by default.
-     *
-     * We explicitly request 1536 dimensions.
-     *
-     * Google recommends manual normalization when using
-     * reduced dimensions with gemini-embedding-001.
-     */
-    const magnitude = Math.sqrt(
-      values.reduce(
-        (sum, value) => sum + value * value,
-        0
-      )
-    );
-
-    if (magnitude === 0) {
-      throw new Error(
-        'Embedding has zero magnitude'
-      );
-    }
-
-    return values.map(
-      (value) => value / magnitude
-    );
-  }
-
-  async embedSingle(text, taskType) {
+  validateText(text) {
     if (
       typeof text !== 'string' ||
       !text.trim()
     ) {
       throw new Error(
-        'Text must be a non-empty string'
+        'Embedding text must be a non-empty string'
       );
     }
 
-    const result =
-      await this.ai.models.embedContent({
-        model: this.model,
-        contents: text,
-        config: {
-          outputDimensionality: EMBEDDING_DIMENSION,
-          taskType,
-        },
-      });
+    return text.trim();
+  }
 
-    const embedding =
-      result?.embeddings?.[0]?.values;
+  // ==========================================================
+  // NORMALIZE EMBEDDING
+  // ==========================================================
 
+  normalizeEmbedding(embedding) {
     if (
       !Array.isArray(embedding) ||
       embedding.length === 0
     ) {
       throw new Error(
-        'Google Gemini returned an empty embedding'
+        'Embedding is empty or invalid'
+      );
+    }
+
+    const values = embedding.map(Number);
+
+    const containsInvalidValue =
+      values.some(
+        (value) =>
+          !Number.isFinite(value)
+      );
+
+    if (containsInvalidValue) {
+      throw new Error(
+        'Embedding contains invalid numeric values'
       );
     }
 
     if (
-      embedding.length !==
+      values.length !==
       EMBEDDING_DIMENSION
     ) {
       throw new Error(
-        `Embedding dimension mismatch: expected ${EMBEDDING_DIMENSION}, received ${embedding.length}`
+        `Embedding dimension mismatch: expected ${EMBEDDING_DIMENSION}, received ${values.length}`
       );
     }
 
-    return this.normalizeEmbedding(
-      embedding
+    // --------------------------------------------------------
+    // L2 normalization
+    // --------------------------------------------------------
+
+    const magnitude = Math.sqrt(
+      values.reduce(
+        (sum, value) =>
+          sum + value * value,
+        0
+      )
+    );
+
+    if (
+      !Number.isFinite(magnitude) ||
+      magnitude === 0
+    ) {
+      throw new Error(
+        'Embedding has zero or invalid magnitude'
+      );
+    }
+
+    return values.map(
+      (value) =>
+        value / magnitude
     );
   }
 
-  async embedDocuments(texts) {
+  // ==========================================================
+  // EMBED SINGLE TEXT
+  // ==========================================================
+
+  async embedSingle(
+    text,
+    taskType
+  ) {
+    const normalizedText =
+      this.validateText(text);
+
     try {
+      const result =
+        await this.ai.models.embedContent({
+          model: this.model,
+
+          contents: normalizedText,
+
+          config: {
+            outputDimensionality:
+              EMBEDDING_DIMENSION,
+
+            taskType,
+          },
+        });
+
+      const embedding =
+        result?.embeddings?.[0]?.values;
+
       if (
-        !Array.isArray(texts) ||
-        texts.length === 0
+        !Array.isArray(embedding) ||
+        embedding.length === 0
       ) {
         throw new Error(
-          'No texts provided for embedding'
+          'Google Gemini returned an empty embedding'
         );
       }
 
-      const embeddings = [];
+      return this.normalizeEmbedding(
+        embedding
+      );
+    } catch (error) {
+      console.error(
+        '[Embedding] Failed:',
+        error
+      );
 
-      for (let i = 0; i < texts.length; i++) {
+      throw new Error(
+        `Failed to generate embedding: ${error.message}`
+      );
+    }
+  }
+
+  // ==========================================================
+  // EMBED DOCUMENTS
+  // ==========================================================
+
+  async embedDocuments(texts) {
+    if (
+      !Array.isArray(texts) ||
+      texts.length === 0
+    ) {
+      throw new Error(
+        'No texts provided for document embedding'
+      );
+    }
+
+    const embeddings = [];
+
+    try {
+      for (
+        let i = 0;
+        i < texts.length;
+        i++
+      ) {
+        const text =
+          this.validateText(texts[i]);
+
         console.log(
-          `Embedding document chunk ${i + 1}/${texts.length}...`
+          `[Embedding] Document chunk ${i + 1}/${texts.length}`
         );
 
         const embedding =
           await this.embedSingle(
-            texts[i],
+            text,
             'RETRIEVAL_DOCUMENT'
           );
 
-        embeddings.push(embedding);
+        embeddings.push(
+          embedding
+        );
       }
 
       if (
@@ -149,37 +217,28 @@ class EmbeddingService {
       }
 
       console.log(
-        `Generated ${embeddings.length} embeddings`
-      );
-
-      console.log(
-        `Embedding dimension: ${embeddings[0].length}`
+        `[Embedding] Generated ${embeddings.length} document embeddings`
       );
 
       return embeddings;
     } catch (error) {
       console.error(
-        'Error embedding documents:',
+        '[Embedding] Document embedding failed:',
         error
       );
 
       throw new Error(
-        `Failed to generate embeddings: ${error.message}`
+        `Failed to generate document embeddings: ${error.message}`
       );
     }
   }
 
+  // ==========================================================
+  // EMBED QUERY
+  // ==========================================================
+
   async embedQuery(text) {
     try {
-      if (
-        typeof text !== 'string' ||
-        !text.trim()
-      ) {
-        throw new Error(
-          'Query text must be a non-empty string'
-        );
-      }
-
       const embedding =
         await this.embedSingle(
           text,
@@ -198,7 +257,7 @@ class EmbeddingService {
       return embedding;
     } catch (error) {
       console.error(
-        'Error embedding query:',
+        '[Embedding] Query embedding failed:',
         error
       );
 
@@ -207,6 +266,26 @@ class EmbeddingService {
       );
     }
   }
+
+  // ==========================================================
+  // GET DIMENSION
+  // ==========================================================
+
+  getDimension() {
+    return EMBEDDING_DIMENSION;
+  }
+
+  // ==========================================================
+  // GET MODEL
+  // ==========================================================
+
+  getModel() {
+    return this.model;
+  }
 }
+
+// ============================================================
+// SINGLETON
+// ============================================================
 
 export default new EmbeddingService();

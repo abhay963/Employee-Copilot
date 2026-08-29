@@ -8,215 +8,173 @@ import { LeaveRequest } from '../models/LeaveRequest.js';
 import { config } from '../config/index.js';
 
 import googleCalendarService from '../services/googleCalendarService.js';
+import gmailService from '../services/gmailService.js';
+
+import tavilyTool from './tools/tavilyTool.js';
 
 // ============================================================
-// GEMINI MODEL
+// GEMINI
 // ============================================================
 
 const llm = new ChatGoogleGenerativeAI({
   apiKey: config.geminiApiKey,
   model: config.geminiModel,
-  temperature: 0.3,
-  maxOutputTokens: 1024,
+  temperature: 0.2,
+  maxOutputTokens: 2048,
 });
 
 // ============================================================
-// AI GUARDRAILS - INPUT VALIDATION
+// CONSTANTS
+// ============================================================
+
+const VALID_INTENTS = [
+  'leave_balance',
+  'leave_policy',
+  'leave_request',
+  'calendar_events',
+  'calendar_create',
+  'gmail_read',
+  'gmail_send',
+  'web_search',
+  'general',
+];
+
+const ACTION_TYPES = [
+  'leave_request',
+  'calendar_create',
+  'gmail_send',
+];
+
+// ============================================================
+// INPUT GUARDRAILS
 // ============================================================
 
 export function validateUserInput(input) {
-  if (!input || typeof input !== 'string') {
+  if (
+    typeof input !== 'string' ||
+    !input.trim()
+  ) {
     throw new Error(
-      'Invalid input: input must be a non-empty string'
+      'Please enter a valid message.'
     );
   }
 
+  const trimmed = input.trim();
+
+  if (trimmed.length > 4000) {
+    throw new Error(
+      'Your message is too long. Please keep it under 4000 characters.'
+    );
+  }
+
+  // Prompt injection patterns.
   const injectionPatterns = [
-    /ignore (previous|all) instructions/i,
-    /override (system|security) rules/i,
-    /execute (arbitrary|system) command/i,
-    /bypass (authentication|authorization)/i,
-    /reveal (secret|password|token|key)/i,
-    /admin (access|privilege|rights)/i,
-    /sudo|escalate (privilege|rights)/i,
-    /\\x[0-9a-f]{2}/i,
-    /<script[^>]*>/i,
-    /javascript:/i,
-    /data:/i,
+    /ignore\s+(all\s+)?previous\s+instructions/i,
+    /ignore\s+(all\s+)?system\s+instructions/i,
+    /forget\s+(your\s+)?instructions/i,
+    /override\s+(the\s+)?system/i,
+    /reveal\s+(your\s+)?system\s+prompt/i,
+    /show\s+(me\s+)?your\s+system\s+prompt/i,
+    /reveal\s+(the\s+)?api\s*key/i,
+    /reveal\s+(the\s+)?password/i,
+    /reveal\s+(the\s+)?secret/i,
+    /bypass\s+authentication/i,
+    /bypass\s+authorization/i,
+    /execute\s+arbitrary\s+command/i,
+    /<script[\s\S]*?>/i,
+    /javascript\s*:/i,
   ];
 
   for (const pattern of injectionPatterns) {
-    if (pattern.test(input)) {
+    if (pattern.test(trimmed)) {
       throw new Error(
-        'Security violation: Potential prompt injection detected'
+        'I can’t help with bypassing security controls or exposing private system information.'
       );
     }
   }
 
-  const crossUserPatterns = [
-    /other (user|employee|person)/i,
-    /another (user|employee|account)/i,
-    /someone else/i,
-    /my (manager|colleague|coworker)/i,
-    /employee (id|name|email)/i,
-  ];
-
-  for (const pattern of crossUserPatterns) {
-    if (pattern.test(input)) {
-      throw new Error(
-        'Security violation: Cross-user data access attempt detected'
-      );
-    }
-  }
-
-  const destructivePatterns = [
-    /delete (all|everything)/i,
-    /drop (table|database)/i,
-    /truncate/i,
-    /destroy/i,
-    /erase/i,
-  ];
-
-  for (const pattern of destructivePatterns) {
-    if (pattern.test(input)) {
-      throw new Error(
-        'Security violation: Destructive operation requested'
-      );
-    }
-  }
-
-  return input.trim().substring(0, 2000);
+  return trimmed;
 }
 
 // ============================================================
-// AI GUARDRAILS - OUTPUT VALIDATION
+// OUTPUT GUARDRAILS
 // ============================================================
 
 export function validateAIOutput(output) {
-  if (!output || typeof output !== 'string') {
-    throw new Error('Invalid AI output');
+  if (
+    typeof output !== 'string' ||
+    !output.trim()
+  ) {
+    return 'I was unable to generate a response. Please try again.';
+  }
+
+  let cleaned = output.trim();
+
+  if (cleaned.length > 12000) {
+    cleaned = cleaned.substring(0, 12000);
   }
 
   const leakagePatterns = [
-    /password[=:].+/i,
-    /token[=:].+/i,
-    /secret[=:].+/i,
-    /api[ _-]?key[=:].+/i,
-    /sql[ _-]?query/i,
-    /internal[ _-]?system/i,
-    /admin[ _-]?panel/i,
+    /(?:api[_ -]?key|secret|password|access[_ -]?token)\s*[:=]\s*\S+/i,
+    /process\.env\.[A-Z0-9_]+/i,
+    /BEGIN\s+(?:RSA|OPENSSH|PRIVATE)\s+KEY/i,
   ];
 
   for (const pattern of leakagePatterns) {
-    if (pattern.test(output)) {
-      throw new Error(
-        'Security violation: Potential data leakage in AI output'
-      );
+    if (pattern.test(cleaned)) {
+      return 'I can’t provide private system credentials or internal secrets.';
     }
   }
 
-  return output;
+  return cleaned;
 }
 
 // ============================================================
-// LEAVE BALANCE TOOL
+// SAFE JSON EXTRACTION
 // ============================================================
 
-async function queryLeaveBalance(state) {
+function extractJSON(content) {
+  if (!content) {
+    return null;
+  }
+
+  const text = String(content)
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
   try {
-    const { userId } = state;
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(
+      /\{[\s\S]*\}/
+    );
 
-    const balance =
-      await LeaveBalance.findByUserId(userId);
-
-    if (!balance) {
-      return {
-        ...state,
-        toolResult:
-          'Unable to retrieve your leave balance. Please contact HR.',
-        currentTool: null,
-      };
+    if (!match) {
+      return null;
     }
 
-    const result =
-      `Your current leave balance:\n` +
-      `- Annual Leave: ${balance.annual_leave} days\n` +
-      `- Sick Leave: ${balance.sick_leave} days\n` +
-      `- Personal Leave: ${balance.personal_leave} days`;
-
-    return {
-      ...state,
-      toolResult: result,
-      currentTool: null,
-      context: {
-        ...state.context,
-        leaveBalance: balance,
-      },
-    };
-  } catch (error) {
-    console.error(
-      'Error querying leave balance:',
-      error
-    );
-
-    return {
-      ...state,
-      toolResult:
-        'Error retrieving leave balance. Please try again later.',
-      currentTool: null,
-    };
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
   }
 }
 
 // ============================================================
-// LEAVE POLICY TOOL
+// DATE HELPERS
 // ============================================================
 
-async function checkLeavePolicy(state) {
-  try {
-    const {
-      messages,
-      userId,
-      userRole,
-    } = state;
-
-    const lastMessage =
-      messages[messages.length - 1];
-
-    const ragResult =
-      await runRAGWorkflow(
-        `What is the leave policy for: ${lastMessage.content}`,
-        userId,
-        userRole
-      );
-
-    return {
-      ...state,
-      toolResult: ragResult.answer,
-      currentTool: null,
-      context: {
-        ...state.context,
-        policyInfo: ragResult,
-      },
-    };
-  } catch (error) {
-    console.error(
-      'Error checking leave policy:',
-      error
-    );
-
-    return {
-      ...state,
-      toolResult:
-        'Error retrieving leave policy information. Please try again later.',
-      currentTool: null,
-    };
-  }
+function pad(value) {
+  return String(value).padStart(2, '0');
 }
 
-// ============================================================
-// CALENDAR DATE RANGE
-// ============================================================
+function formatDateLocal(date) {
+  return `${date.getFullYear()}-${pad(
+    date.getMonth() + 1
+  )}-${pad(date.getDate())}`;
+}
 
 function getStartOfDay(date) {
   const result = new Date(date);
@@ -244,154 +202,333 @@ function getEndOfDay(date) {
   return result;
 }
 
-function getCalendarDateRange(userMessage) {
-  const message =
-    userMessage.toLowerCase();
+function addDays(date, days) {
+  const result = new Date(date);
 
-  const today =
-    new Date();
+  result.setDate(
+    result.getDate() + days
+  );
+
+  return result;
+}
+
+// ============================================================
+// RELATIVE DATE PARSER
+// ============================================================
+
+function parseRelativeDate(message) {
+  const text = String(message || '')
+    .toLowerCase();
+
+  const today = new Date();
+
+  if (text.includes('today')) {
+    return formatDateLocal(today);
+  }
+
+  if (text.includes('tomorrow')) {
+    return formatDateLocal(
+      addDays(today, 1)
+    );
+  }
+
+  const weekdays = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  };
+
+  for (const [name, targetDay] of Object.entries(
+    weekdays
+  )) {
+    if (
+      text.includes(`next ${name}`)
+    ) {
+      const currentDay =
+        today.getDay();
+
+      let diff =
+        targetDay - currentDay;
+
+      if (diff <= 0) {
+        diff += 7;
+      }
+
+      return formatDateLocal(
+        addDays(today, diff)
+      );
+    }
+  }
+
+  return formatDateLocal(today);
+}
+
+// ============================================================
+// CALENDAR RANGE
+// ============================================================
+
+function getCalendarDateRange(
+  userMessage
+) {
+  const message =
+    String(userMessage || '')
+      .toLowerCase();
+
+  const today = new Date();
+
+  // ----------------------------
+  // Specific date
+  // ----------------------------
+
+  const isoMatch =
+    message.match(
+      /\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/
+    );
+
+  if (isoMatch) {
+    const date = new Date(
+      Number(isoMatch[1]),
+      Number(isoMatch[2]) - 1,
+      Number(isoMatch[3])
+    );
+
+    return {
+      startDate:
+        getStartOfDay(date),
+      endDate:
+        getEndOfDay(date),
+      label:
+        formatDateLocal(date),
+    };
+  }
+
+  // ----------------------------
+  // Today
+  // ----------------------------
 
   if (
-    message.includes('today') ||
-    message.includes('meeting today') ||
-    message.includes('schedule today') ||
-    message.includes('calendar today')
+    message.includes('today')
   ) {
     return {
-      startDate: getStartOfDay(today),
-      endDate: getEndOfDay(today),
+      startDate:
+        getStartOfDay(today),
+      endDate:
+        getEndOfDay(today),
       label: 'today',
     };
   }
+
+  // ----------------------------
+  // Tomorrow
+  // ----------------------------
 
   if (
     message.includes('tomorrow')
   ) {
     const tomorrow =
-      new Date(today);
-
-    tomorrow.setDate(
-      tomorrow.getDate() + 1
-    );
+      addDays(today, 1);
 
     return {
       startDate:
         getStartOfDay(tomorrow),
-
       endDate:
         getEndOfDay(tomorrow),
-
       label: 'tomorrow',
     };
   }
 
-  if (
-    message.includes('this week') ||
-    message.includes('week')
-  ) {
-    const start =
-      getStartOfDay(today);
-
-    const day =
-      start.getDay();
-
-    const diff =
-      day === 0 ? 0 : day;
-
-    start.setDate(
-      start.getDate() - diff
-    );
-
-    const end =
-      new Date(start);
-
-    end.setDate(
-      start.getDate() + 6
-    );
-
-    return {
-      startDate:
-        getStartOfDay(start),
-
-      endDate:
-        getEndOfDay(end),
-
-      label: 'this week',
-    };
-  }
+  // ----------------------------
+  // Next week
+  // IMPORTANT:
+  // Must come BEFORE generic "week".
+  // ----------------------------
 
   if (
     message.includes('next week')
   ) {
-    const start =
-      getStartOfDay(today);
-
     const day =
-      start.getDay();
+      today.getDay();
 
-    const daysUntilNextSunday =
-      day === 0 ? 7 : 7 - day;
+    const daysUntilNextMonday =
+      day === 0
+        ? 1
+        : 8 - day;
 
-    start.setDate(
-      start.getDate() +
-        daysUntilNextSunday
-    );
+    const start =
+      addDays(
+        today,
+        daysUntilNextMonday
+      );
 
     const end =
-      new Date(start);
-
-    end.setDate(
-      start.getDate() + 6
-    );
+      addDays(start, 6);
 
     return {
       startDate:
         getStartOfDay(start),
-
       endDate:
         getEndOfDay(end),
-
       label: 'next week',
     };
   }
 
+  // ----------------------------
+  // This week
+  // ----------------------------
+
+  if (
+    message.includes('this week') ||
+    message === 'week' ||
+    message.includes('this weeks')
+  ) {
+    const currentDay =
+      today.getDay();
+
+    const daysFromMonday =
+      currentDay === 0
+        ? 6
+        : currentDay - 1;
+
+    const start =
+      addDays(
+        today,
+        -daysFromMonday
+      );
+
+    const end =
+      addDays(start, 6);
+
+    return {
+      startDate:
+        getStartOfDay(start),
+      endDate:
+        getEndOfDay(end),
+      label: 'this week',
+    };
+  }
+
+  // ----------------------------
+  // This month
+  // ----------------------------
+
+  if (
+    message.includes('this month')
+  ) {
+    const start =
+      new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        1
+      );
+
+    const end =
+      new Date(
+        today.getFullYear(),
+        today.getMonth() + 1,
+        0
+      );
+
+    return {
+      startDate:
+        getStartOfDay(start),
+      endDate:
+        getEndOfDay(end),
+      label: 'this month',
+    };
+  }
+
+  // ----------------------------
+  // Upcoming
+  // ----------------------------
+
   if (
     message.includes('upcoming') ||
-    message.includes('next meetings') ||
-    message.includes('upcoming meetings') ||
-    message.includes('future meetings')
+    message.includes('future') ||
+    message.includes('next meetings')
   ) {
     const end =
-      new Date(today);
-
-    end.setDate(
-      end.getDate() + 7
-    );
+      addDays(today, 30);
 
     return {
       startDate:
         new Date(),
-
       endDate:
         getEndOfDay(end),
-
       label: 'upcoming',
     };
   }
 
+  // ----------------------------
+  // Default
+  // ----------------------------
+
   return {
     startDate:
       getStartOfDay(today),
-
     endDate:
       getEndOfDay(today),
-
     label: 'today',
   };
 }
 
 // ============================================================
-// FORMAT CALENDAR EVENT
+// TIME PARSER
+// ============================================================
+
+function parseTime(value) {
+  if (!value) {
+    return null;
+  }
+
+  const text =
+    String(value)
+      .trim()
+      .toLowerCase();
+
+  const match =
+    text.match(
+      /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/
+    );
+
+  if (!match) {
+    return null;
+  }
+
+  let hours =
+    Number(match[1]);
+
+  const minutes =
+    Number(match[2] || 0);
+
+  const meridiem =
+    match[3];
+
+  if (
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return null;
+  }
+
+  if (meridiem === 'pm' && hours < 12) {
+    hours += 12;
+  }
+
+  if (meridiem === 'am' && hours === 12) {
+    hours = 0;
+  }
+
+  return `${pad(hours)}:${pad(minutes)}`;
+}
+
+// ============================================================
+// CALENDAR EVENT FORMATTER
 // ============================================================
 
 function formatCalendarEvent(event) {
@@ -399,9 +536,7 @@ function formatCalendarEvent(event) {
     event.summary ||
     'Untitled event';
 
-  if (
-    event.start?.date
-  ) {
+  if (event.start?.date) {
     return {
       title,
       allDay: true,
@@ -416,14 +551,14 @@ function formatCalendarEvent(event) {
     };
   }
 
-  const startDateTime =
+  const start =
     event.start?.dateTime
       ? new Date(
           event.start.dateTime
         )
       : null;
 
-  const endDateTime =
+  const end =
     event.end?.dateTime
       ? new Date(
           event.end.dateTime
@@ -432,37 +567,25 @@ function formatCalendarEvent(event) {
 
   return {
     title,
-
     allDay: false,
-
     start:
-      startDateTime
-        ? startDateTime.toISOString()
+      start
+        ? start.toISOString()
         : null,
-
     end:
-      endDateTime
-        ? endDateTime.toISOString()
+      end
+        ? end.toISOString()
         : null,
-
     location:
       event.location || null,
-
     description:
       event.description || null,
-
     htmlLink:
       event.htmlLink || null,
   };
 }
 
-// ============================================================
-// FORMAT TIME
-// ============================================================
-
-function formatEventTime(
-  event
-) {
+function formatEventTime(event) {
   if (event.allDay) {
     return 'All day';
   }
@@ -479,7 +602,26 @@ function formatEventTime(
       ? new Date(event.end)
       : null;
 
-  const timeFormatter =
+  const formatter =
+    new Intl.DateTimeFormat(
+      'en-IN',
+      {
+        day: 'numeric',
+        month: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }
+    );
+
+  const startText =
+    formatter.format(start);
+
+  if (!end) {
+    return startText;
+  }
+
+  const endFormatter =
     new Intl.DateTimeFormat(
       'en-IN',
       {
@@ -489,54 +631,129 @@ function formatEventTime(
       }
     );
 
-  const dateFormatter =
-    new Intl.DateTimeFormat(
-      'en-IN',
-      {
-        day: 'numeric',
-        month: 'short',
-      }
-    );
-
-  const startTime =
-    timeFormatter.format(start);
-
-  if (!end) {
-    return `${dateFormatter.format(start)} at ${startTime}`;
-  }
-
-  const endTime =
-    timeFormatter.format(end);
-
-  const sameDay =
-    start.toDateString() ===
-    end.toDateString();
-
-  if (sameDay) {
-    return `${dateFormatter.format(start)}, ${startTime} - ${endTime}`;
-  }
-
-  return `${dateFormatter.format(start)}, ${startTime} - ${dateFormatter.format(end)}, ${endTime}`;
+  return `${startText} - ${endFormatter.format(
+    end
+  )}`;
 }
 
 // ============================================================
-// CALENDAR EVENTS TOOL
+// LEAVE BALANCE
+// ============================================================
+
+async function queryLeaveBalance(
+  state
+) {
+  try {
+    const balance =
+      await LeaveBalance.findByUserId(
+        state.userId
+      );
+
+    if (!balance) {
+      return {
+        ...state,
+        toolResult:
+          'I could not retrieve your leave balance. Please contact HR.',
+      };
+    }
+
+    return {
+      ...state,
+
+      toolResult:
+        `Here is your current leave balance:\n\n` +
+        `• Annual Leave: ${balance.annual_leave} days\n` +
+        `• Sick Leave: ${balance.sick_leave} days\n` +
+        `• Personal Leave: ${balance.personal_leave} days`,
+
+      context: {
+        ...state.context,
+        leaveBalance: balance,
+      },
+
+      currentTool: null,
+    };
+  } catch (error) {
+    console.error(
+      '[LeaveBalance]',
+      error
+    );
+
+    return {
+      ...state,
+      toolResult:
+        'I could not retrieve your leave balance right now. Please try again.',
+      currentTool: null,
+    };
+  }
+}
+
+// ============================================================
+// LEAVE POLICY → RAG
+// ============================================================
+
+async function checkLeavePolicy(
+  state
+) {
+  try {
+    const message =
+      state.messages[
+        state.messages.length - 1
+      ].content;
+
+    const ragResult =
+      await runRAGWorkflow(
+        message,
+        state.userId,
+        state.userRole
+      );
+
+    return {
+      ...state,
+
+      toolResult:
+        ragResult.answer,
+
+      context: {
+        ...state.context,
+
+        ragResult,
+
+        policyInfo:
+          ragResult,
+      },
+
+      currentTool: null,
+    };
+  } catch (error) {
+    console.error(
+      '[LeavePolicy]',
+      error
+    );
+
+    return {
+      ...state,
+
+      toolResult:
+        'I could not retrieve the leave policy right now. Please try again.',
+
+      currentTool: null,
+    };
+  }
+}
+
+// ============================================================
+// CALENDAR EVENTS
 // ============================================================
 
 async function queryCalendarEvents(
   state
 ) {
   try {
-    const {
-      messages,
-      userId,
-    } = state;
-
-    const lastMessage =
-      messages[messages.length - 1];
-
-    const userMessage =
-      lastMessage.content;
+    const message =
+      state.messages[
+        state.messages.length - 1
+      ].content;
 
     const {
       startDate,
@@ -544,27 +761,33 @@ async function queryCalendarEvents(
       label,
     } =
       getCalendarDateRange(
-        userMessage
+        message
       );
 
     console.log(
-      `Calendar query: ${label}`,
-      startDate,
-      endDate
+      '[Calendar]',
+      {
+        label,
+        startDate,
+        endDate,
+      }
     );
 
     const events =
       await googleCalendarService.getEvents(
-        userId,
+        state.userId,
         startDate,
         endDate
       );
 
     const activeEvents =
-      events.filter(
-        (event) =>
-          event.status !== 'cancelled'
-      );
+      Array.isArray(events)
+        ? events.filter(
+            event =>
+              event.status !==
+              'cancelled'
+          )
+        : [];
 
     const formattedEvents =
       activeEvents.map(
@@ -574,38 +797,13 @@ async function queryCalendarEvents(
     if (
       formattedEvents.length === 0
     ) {
-      let message;
-
-      if (label === 'today') {
-        message =
-          "You don't have any meetings or calendar events today.";
-      } else if (
-        label === 'tomorrow'
-      ) {
-        message =
-          "You don't have any meetings or calendar events tomorrow.";
-      } else if (
-        label === 'this week'
-      ) {
-        message =
-          "You don't have any meetings or calendar events this week.";
-      } else if (
-        label === 'next week'
-      ) {
-        message =
-          "You don't have any meetings or calendar events next week.";
-      } else {
-        message =
-          "You don't have any upcoming meetings or calendar events.";
-      }
-
       return {
         ...state,
 
         toolResult:
-          message,
-
-        currentTool: null,
+          getNoCalendarEventsMessage(
+            label
+          ),
 
         context: {
           ...state.context,
@@ -618,19 +816,21 @@ async function queryCalendarEvents(
             label,
           },
         },
+
+        currentTool: null,
       };
     }
 
-    const eventLines =
+    const lines =
       formattedEvents.map(
         (event, index) => {
           let line =
-            `${index + 1}. ${event.title}\n` +
-            `   ${formatEventTime(event)}`;
+            `${index + 1}. **${event.title}**\n` +
+            `   ${formatEventTime(
+              event
+            )}`;
 
-          if (
-            event.location
-          ) {
+          if (event.location) {
             line +=
               `\n   Location: ${event.location}`;
           }
@@ -639,64 +839,16 @@ async function queryCalendarEvents(
         }
       );
 
-    let heading;
-
-    if (
-      label === 'today'
-    ) {
-      heading =
-        `Yes. You have ${formattedEvents.length} calendar event${
-          formattedEvents.length === 1
-            ? ''
-            : 's'
-        } today:`;
-    } else if (
-      label === 'tomorrow'
-    ) {
-      heading =
-        `You have ${formattedEvents.length} calendar event${
-          formattedEvents.length === 1
-            ? ''
-            : 's'
-        } tomorrow:`;
-    } else if (
-      label === 'this week'
-    ) {
-      heading =
-        `You have ${formattedEvents.length} calendar event${
-          formattedEvents.length === 1
-            ? ''
-            : 's'
-        } this week:`;
-    } else if (
-      label === 'next week'
-    ) {
-      heading =
-        `You have ${formattedEvents.length} calendar event${
-          formattedEvents.length === 1
-            ? ''
-            : 's'
-        } next week:`;
-    } else {
-      heading =
-        `You have ${formattedEvents.length} upcoming calendar event${
-          formattedEvents.length === 1
-            ? ''
-            : 's'
-        }:`;
-    }
-
-    const result =
-      `${heading}\n\n` +
-      eventLines.join('\n\n');
-
     return {
       ...state,
 
       toolResult:
-        result,
-
-      currentTool: null,
+        `You have ${formattedEvents.length} calendar event${
+          formattedEvents.length === 1
+            ? ''
+            : 's'
+        } ${label}:\n\n` +
+        lines.join('\n\n'),
 
       context: {
         ...state.context,
@@ -710,24 +862,26 @@ async function queryCalendarEvents(
           label,
         },
       },
+
+      currentTool: null,
     };
   } catch (error) {
     console.error(
-      'Error querying Google Calendar:',
+      '[Calendar]',
       error
     );
 
     if (
       error.code ===
-      'GOOGLE_NOT_CONNECTED' ||
+        'GOOGLE_NOT_CONNECTED' ||
       error.message ===
-      'GOOGLE_NOT_CONNECTED'
+        'GOOGLE_NOT_CONNECTED'
     ) {
       return {
         ...state,
 
         toolResult:
-          'Your Google Calendar is not connected. Please connect Google Calendar from the Calendar page first.',
+          'Your Google Calendar is not connected. Please connect it from the Calendar page first.',
 
         currentTool: null,
       };
@@ -735,15 +889,15 @@ async function queryCalendarEvents(
 
     if (
       error.code ===
-      'GOOGLE_RECONNECT_REQUIRED' ||
+        'GOOGLE_RECONNECT_REQUIRED' ||
       error.message ===
-      'GOOGLE_RECONNECT_REQUIRED'
+        'GOOGLE_RECONNECT_REQUIRED'
     ) {
       return {
         ...state,
 
         toolResult:
-          'Your Google Calendar connection needs to be renewed. Please reconnect Google Calendar from the Calendar page.',
+          'Your Google Calendar connection needs to be renewed. Please reconnect it from the Calendar page.',
 
         currentTool: null,
       };
@@ -753,37 +907,124 @@ async function queryCalendarEvents(
       ...state,
 
       toolResult:
-        'I could not access your Google Calendar right now. Please try again in a moment.',
+        'I could not access your Google Calendar right now. Please try again.',
 
       currentTool: null,
     };
   }
 }
 
+function getNoCalendarEventsMessage(
+  label
+) {
+  switch (label) {
+    case 'today':
+      return "You don't have any meetings or calendar events today.";
+
+    case 'tomorrow':
+      return "You don't have any meetings or calendar events tomorrow.";
+
+    case 'this week':
+      return "You don't have any meetings or calendar events this week.";
+
+    case 'next week':
+      return "You don't have any meetings or calendar events next week.";
+
+    case 'this month':
+      return "You don't have any meetings or calendar events this month.";
+
+    default:
+      return "I couldn't find any upcoming calendar events.";
+  }
+}
+
 // ============================================================
-// CHECK LEAVE REQUEST
+// LEAVE DETAILS
+// ============================================================
+
+async function extractLeaveDetails(
+  userMessage
+) {
+  try {
+    const prompt = `
+You are extracting structured leave information.
+
+Return ONLY valid JSON.
+
+{
+  "leave_type": "annual" | "sick" | "personal" | null,
+  "start_date": "YYYY-MM-DD" | null,
+  "end_date": "YYYY-MM-DD" | null,
+  "reason": "string" | null
+}
+
+Rules:
+- Convert today/tomorrow/next Monday etc. into actual dates.
+- Never invent a missing date.
+- If only one date is provided, use it for start_date and end_date.
+- Do not add information not present in the user's request.
+
+User:
+${userMessage}
+`;
+
+    const response =
+      await llm.invoke(prompt);
+
+    return extractJSON(
+      response.content
+    );
+  } catch (error) {
+    console.error(
+      '[LeaveExtraction]',
+      error
+    );
+
+    return null;
+  }
+}
+
+// ============================================================
+// CALCULATE LEAVE DAYS
+// ============================================================
+
+async function calculateLeaveDays(
+  startDate,
+  endDate
+) {
+  const days =
+    await LeaveRequest.calculateDays(
+      startDate,
+      endDate
+    );
+
+  return Number(days);
+}
+
+// ============================================================
+// VALIDATE LEAVE REQUEST
 // ============================================================
 
 async function validateLeaveRequest(
   state
 ) {
   try {
-    const {
-      pendingAction,
-    } = state;
+    const action =
+      state.pendingAction;
 
     if (
-      !pendingAction ||
-      pendingAction.type !==
+      !action ||
+      action.type !==
         'leave_request'
     ) {
       return {
         ...state,
 
         toolResult:
-          'No pending leave request to validate.',
+          'There is no pending leave request to validate.',
 
-        currentTool: null,
+        requiresConfirmation:
+          false,
       };
     }
 
@@ -792,11 +1033,40 @@ async function validateLeaveRequest(
       start_date,
       end_date,
       number_of_days,
-    } =
-      pendingAction;
+    } = action;
+
+    if (
+      !leave_type ||
+      !start_date ||
+      !end_date
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          'I need the leave type and complete start/end dates before I can submit the request.',
+
+        requiresConfirmation:
+          false,
+      };
+    }
+
+    if (
+      number_of_days <= 0
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          'The requested leave duration is invalid.',
+
+        requiresConfirmation:
+          false,
+      };
+    }
 
     // --------------------------------------------------------
-    // CHECK LEAVE BALANCE
+    // Balance
     // --------------------------------------------------------
 
     const hasBalance =
@@ -811,17 +1081,18 @@ async function validateLeaveRequest(
         ...state,
 
         toolResult:
-          `Insufficient ${leave_type} leave balance. Please check your current balance or choose different dates.`,
-
-        currentTool: null,
+          `You don't have enough ${leave_type} leave balance for ${number_of_days} day(s).`,
 
         requiresConfirmation:
           false,
+
+        pendingAction:
+          null,
       };
     }
 
     // --------------------------------------------------------
-    // CHECK OVERLAPPING LEAVE
+    // Existing leave
     // --------------------------------------------------------
 
     const overlapping =
@@ -832,27 +1103,25 @@ async function validateLeaveRequest(
       );
 
     if (
-      overlapping.length > 0
+      overlapping?.length > 0
     ) {
       return {
         ...state,
 
         toolResult:
-          'You have overlapping leave requests during this period. Please choose different dates.',
-
-        currentTool: null,
+          'You already have a leave request overlapping these dates.',
 
         requiresConfirmation:
           false,
+
+        pendingAction:
+          null,
       };
     }
 
     // --------------------------------------------------------
-    // CHECK GOOGLE CALENDAR CONFLICTS
+    // Calendar conflict
     // --------------------------------------------------------
-
-    let calendarConflicts =
-      null;
 
     try {
       const conflictCheck =
@@ -863,30 +1132,13 @@ async function validateLeaveRequest(
         );
 
       if (
-        conflictCheck.hasConflicts
+        conflictCheck?.hasConflicts
       ) {
-        calendarConflicts =
-          conflictCheck.conflicts;
-
-        const conflictDetails =
-          conflictCheck.conflicts
-            .map(
-              (c) =>
-                `- ${new Date(
-                  c.start
-                ).toLocaleString()} to ${new Date(
-                  c.end
-                ).toLocaleString()}`
-            )
-            .join('\n');
-
         return {
           ...state,
 
           toolResult:
-            `You have calendar conflicts during the requested leave period:\n${conflictDetails}\n\nPlease consider rescheduling or contact your manager.`,
-
-          currentTool: null,
+            'There are calendar events during this leave period. Please review the conflicts before submitting the leave request.',
 
           requiresConfirmation:
             false,
@@ -894,33 +1146,34 @@ async function validateLeaveRequest(
           context: {
             ...state.context,
 
-            calendarConflicts,
+            calendarConflicts:
+              conflictCheck.conflicts,
           },
         };
       }
-    } catch (
-      calendarError
-    ) {
+    } catch (error) {
       console.warn(
-        'Calendar conflict check failed:',
-        calendarError.message
+        '[Leave] Calendar conflict check failed:',
+        error.message
       );
+
+      // Calendar conflict checking should not
+      // prevent leave submission if Calendar itself
+      // is unavailable.
     }
 
     return {
       ...state,
 
       toolResult:
-        'Leave request validation passed. Ready to submit.',
-
-      currentTool: null,
+        'Your leave request has passed validation and is ready for confirmation.',
 
       requiresConfirmation:
         true,
     };
   } catch (error) {
     console.error(
-      'Error validating leave request:',
+      '[LeaveValidation]',
       error
     );
 
@@ -928,9 +1181,7 @@ async function validateLeaveRequest(
       ...state,
 
       toolResult:
-        'Error validating leave request. Please try again later.',
-
-      currentTool: null,
+        'I could not validate the leave request right now.',
 
       requiresConfirmation:
         false,
@@ -939,7 +1190,7 @@ async function validateLeaveRequest(
 }
 
 // ============================================================
-// SUBMIT LEAVE REQUEST
+// SUBMIT LEAVE
 // ============================================================
 
 export async function submitLeaveRequest(
@@ -960,9 +1211,13 @@ export async function submitLeaveRequest(
         ...state,
 
         toolResult:
-          'No pending leave request to submit.',
+          'There is no pending leave request to submit.',
 
-        currentTool: null,
+        requiresConfirmation:
+          false,
+
+        pendingAction:
+          null,
       };
     }
 
@@ -972,11 +1227,10 @@ export async function submitLeaveRequest(
       end_date,
       number_of_days,
       reason,
-    } =
-      pendingAction;
+    } = pendingAction;
 
     // --------------------------------------------------------
-    // REVALIDATE BEFORE SUBMISSION
+    // Revalidate balance immediately before mutation.
     // --------------------------------------------------------
 
     const hasBalance =
@@ -991,35 +1245,7 @@ export async function submitLeaveRequest(
         ...state,
 
         toolResult:
-          `Insufficient ${leave_type} leave balance. The request was not submitted.`,
-
-        currentTool: null,
-
-        requiresConfirmation:
-          false,
-
-        pendingAction:
-          null,
-      };
-    }
-
-    const overlapping =
-      await LeaveRequest.checkOverlappingLeave(
-        userId,
-        start_date,
-        end_date
-      );
-
-    if (
-      overlapping.length > 0
-    ) {
-      return {
-        ...state,
-
-        toolResult:
-          'This leave request overlaps with an existing leave request. The request was not submitted.',
-
-        currentTool: null,
+          `Your ${leave_type} leave balance is no longer sufficient. The request was not submitted.`,
 
         requiresConfirmation:
           false,
@@ -1030,7 +1256,35 @@ export async function submitLeaveRequest(
     }
 
     // --------------------------------------------------------
-    // CREATE DATABASE RECORD
+    // Revalidate overlap.
+    // --------------------------------------------------------
+
+    const overlapping =
+      await LeaveRequest.checkOverlappingLeave(
+        userId,
+        start_date,
+        end_date
+      );
+
+    if (
+      overlapping?.length > 0
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          'The request now overlaps with another leave request, so it was not submitted.',
+
+        requiresConfirmation:
+          false,
+
+        pendingAction:
+          null,
+      };
+    }
+
+    // --------------------------------------------------------
+    // Database mutation
     // --------------------------------------------------------
 
     const leaveRequest =
@@ -1047,7 +1301,7 @@ export async function submitLeaveRequest(
       ...state,
 
       toolResult:
-        `Leave request submitted successfully!\n\n` +
+        `Leave request submitted successfully.\n\n` +
         `Request ID: ${leaveRequest.id}\n` +
         `Type: ${leave_type}\n` +
         `Dates: ${start_date} to ${end_date}\n` +
@@ -1055,17 +1309,22 @@ export async function submitLeaveRequest(
         `Reason: ${reason || 'Not specified'}\n` +
         `Status: Pending HR approval`,
 
-      currentTool: null,
-
       requiresConfirmation:
         false,
 
       pendingAction:
         null,
+
+      context: {
+        ...state.context,
+
+        submittedLeaveRequest:
+          leaveRequest,
+      },
     };
   } catch (error) {
     console.error(
-      'Error submitting leave request:',
+      '[LeaveSubmit]',
       error
     );
 
@@ -1073,38 +1332,719 @@ export async function submitLeaveRequest(
       ...state,
 
       toolResult:
-        'Error submitting leave request. Please try again later.',
-
-      currentTool: null,
+        'I could not submit your leave request. Please try again.',
 
       requiresConfirmation:
         false,
+
+      pendingAction:
+        null,
     };
   }
 }
 
 // ============================================================
-// GENERAL RAG QUERY
+// GMAIL READ
+// ============================================================
+
+function getHeader(
+  email,
+  headerName
+) {
+  return (
+    email?.payload?.headers?.find(
+      header =>
+        String(header.name)
+          .toLowerCase() ===
+        headerName.toLowerCase()
+    )?.value || null
+  );
+}
+
+async function gmailReadQuery(
+  state
+) {
+  try {
+    const message =
+      state.messages[
+        state.messages.length - 1
+      ].content;
+
+    const connected =
+      await gmailService.isConnected(
+        state.userId
+      );
+
+    if (!connected) {
+      return {
+        ...state,
+
+        toolResult:
+          'Your Gmail is not connected. Please connect Gmail from the settings page first.',
+
+        currentTool: null,
+      };
+    }
+
+    const lower =
+      message.toLowerCase();
+
+    const emails =
+      await gmailService.getRecentEmails(
+        state.userId,
+        20
+      );
+
+    let filtered =
+      Array.isArray(emails)
+        ? emails
+        : [];
+
+    // --------------------------------------------------------
+    // Unread
+    // --------------------------------------------------------
+
+    if (
+      lower.includes('unread')
+    ) {
+      filtered =
+        filtered.filter(email =>
+          !email.labelIds ||
+          email.labelIds.includes(
+            'UNREAD'
+          )
+        );
+    }
+
+    // --------------------------------------------------------
+    // From
+    // --------------------------------------------------------
+
+    const fromMatch =
+      message.match(
+        /\bfrom\s+(.+?)(?:\s+(?:about|subject|regarding)\b|$)/i
+      );
+
+    if (fromMatch) {
+      const person =
+        fromMatch[1]
+          .trim()
+          .replace(
+            /^["']|["']$/g,
+            ''
+          );
+
+      filtered =
+        filtered.filter(email => {
+          const from =
+            getHeader(
+              email,
+              'From'
+            );
+
+          return from
+            ?.toLowerCase()
+            .includes(
+              person.toLowerCase()
+            );
+        });
+    }
+
+    // --------------------------------------------------------
+    // Topic
+    // --------------------------------------------------------
+
+    const aboutMatch =
+      message.match(
+        /\b(?:about|subject|regarding)\s+(.+)$/i
+      );
+
+    if (aboutMatch) {
+      const topic =
+        aboutMatch[1]
+          .trim()
+          .replace(
+            /^["']|["']$/g,
+            ''
+          );
+
+      filtered =
+        filtered.filter(email => {
+          const subject =
+            getHeader(
+              email,
+              'Subject'
+            );
+
+          return subject
+            ?.toLowerCase()
+            .includes(
+              topic.toLowerCase()
+            );
+        });
+    }
+
+    if (
+      filtered.length === 0
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          'I could not find any matching emails in your recent Gmail.',
+
+        context: {
+          ...state.context,
+
+          gmailResults: [],
+        },
+
+        currentTool: null,
+      };
+    }
+
+    const lines =
+      filtered
+        .slice(0, 10)
+        .map(
+          (email, index) => {
+            const from =
+              getHeader(
+                email,
+                'From'
+              ) ||
+              'Unknown sender';
+
+            const subject =
+              getHeader(
+                email,
+                'Subject'
+              ) ||
+              'No subject';
+
+            const date =
+              getHeader(
+                email,
+                'Date'
+              ) ||
+              'Unknown date';
+
+            return (
+              `${index + 1}. **${subject}**\n` +
+              `   From: ${from}\n` +
+              `   Date: ${date}`
+            );
+          }
+        );
+
+    return {
+      ...state,
+
+      toolResult:
+        `I found ${filtered.length} matching email${
+          filtered.length === 1
+            ? ''
+            : 's'
+        }:\n\n` +
+        lines.join('\n\n'),
+
+      context: {
+        ...state.context,
+
+        gmailResults:
+          filtered.slice(0, 10),
+      },
+
+      currentTool: null,
+    };
+  } catch (error) {
+    console.error(
+      '[GmailRead]',
+      error
+    );
+
+    return {
+      ...state,
+
+      toolResult:
+        'I could not access your Gmail right now. Please try again.',
+
+      currentTool: null,
+    };
+  }
+}
+
+// ============================================================
+// EMAIL DETAILS
+// ============================================================
+
+async function extractEmailDetails(
+  userMessage
+) {
+  try {
+    const prompt = `
+Extract email information from the user request.
+
+Return ONLY valid JSON.
+
+{
+  "to": "email@example.com" | null,
+  "subject": "subject" | null,
+  "body": "body" | null
+}
+
+Rules:
+- Do not invent an email address.
+- If recipient is missing, return null.
+- Preserve the user's intended email content.
+- Do not include markdown outside the JSON.
+
+User:
+${userMessage}
+`;
+
+    const response =
+      await llm.invoke(prompt);
+
+    return extractJSON(
+      response.content
+    );
+  } catch (error) {
+    console.error(
+      '[EmailExtraction]',
+      error
+    );
+
+    return null;
+  }
+}
+
+// ============================================================
+// GMAIL SEND PREPARATION
+// ============================================================
+
+async function gmailSendQuery(
+  state
+) {
+  try {
+    const connected =
+      await gmailService.isConnected(
+        state.userId
+      );
+
+    if (!connected) {
+      return {
+        ...state,
+
+        toolResult:
+          'Your Gmail is not connected. Please connect Gmail from the settings page first.',
+
+        requiresConfirmation:
+          false,
+
+        currentTool: null,
+      };
+    }
+
+    const message =
+      state.messages[
+        state.messages.length - 1
+      ].content;
+
+    const details =
+      await extractEmailDetails(
+        message
+      );
+
+    if (
+      !details ||
+      !details.to
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          'I can prepare the email, but I need the recipient email address first.',
+
+        currentTool: null,
+
+        requiresConfirmation:
+          false,
+      };
+    }
+
+    const subject =
+      details.subject?.trim() ||
+      'No subject';
+
+    const body =
+      details.body?.trim() ||
+      '';
+
+    if (!body) {
+      return {
+        ...state,
+
+        toolResult:
+          'I have the recipient and subject, but I still need the email body.',
+
+        currentTool: null,
+
+        requiresConfirmation:
+          false,
+      };
+    }
+
+    const actionId =
+      `gmail_send_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+
+    const pendingAction = {
+      type: 'gmail_send',
+
+      actionId,
+
+      to: details.to.trim(),
+
+      subject,
+
+      body,
+    };
+
+    return {
+      ...state,
+
+      pendingAction,
+
+      requiresConfirmation:
+        true,
+
+      toolResult:
+        `I've prepared this email:\n\n` +
+        `**To:** ${pendingAction.to}\n` +
+        `**Subject:** ${pendingAction.subject}\n\n` +
+        `**Message:**\n${pendingAction.body}\n\n` +
+        `Please confirm if you'd like me to send it.`,
+
+      context: {
+        ...state.context,
+
+        emailDraft: {
+          to: pendingAction.to,
+          subject:
+            pendingAction.subject,
+          body:
+            pendingAction.body,
+        },
+      },
+
+      currentTool: null,
+    };
+  } catch (error) {
+    console.error(
+      '[GmailSendPrepare]',
+      error
+    );
+
+    return {
+      ...state,
+
+      toolResult:
+        'I could not prepare the email right now. Please try again.',
+
+      requiresConfirmation:
+        false,
+
+      currentTool: null,
+    };
+  }
+}
+
+// ============================================================
+// SEND GMAIL
+// ============================================================
+
+export async function sendGmail(
+  state
+) {
+  try {
+    const {
+      userId,
+      pendingAction,
+    } = state;
+
+    if (
+      !pendingAction ||
+      pendingAction.type !==
+        'gmail_send'
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          'There is no pending email to send.',
+
+        requiresConfirmation:
+          false,
+
+        pendingAction:
+          null,
+      };
+    }
+
+    const {
+      to,
+      subject,
+      body,
+    } = pendingAction;
+
+    if (
+      !to ||
+      !body
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          'The email information is incomplete, so I did not send it.',
+
+        requiresConfirmation:
+          false,
+
+        pendingAction:
+          null,
+      };
+    }
+
+    await gmailService.sendEmail(
+      userId,
+      to,
+      subject,
+      body,
+      false
+    );
+
+    return {
+      ...state,
+
+      toolResult:
+        `Email sent successfully to ${to}.`,
+
+      requiresConfirmation:
+        false,
+
+      pendingAction:
+        null,
+
+      context: {
+        ...state.context,
+
+        sentEmail: {
+          to,
+          subject,
+        },
+      },
+    };
+  } catch (error) {
+    console.error(
+      '[GmailSend]',
+      error
+    );
+
+    return {
+      ...state,
+
+      toolResult:
+        `I couldn't send the email. ${error.message || 'Please try again.'}`,
+
+      requiresConfirmation:
+        false,
+
+      pendingAction:
+        null,
+    };
+  }
+}
+
+// ============================================================
+// TAVILY WEB SEARCH
+// ============================================================
+
+async function webSearchQuery(
+  state
+) {
+  try {
+    if (
+      !tavilyTool?.isConfigured
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          'Web search is not configured yet. Please configure TAVILY_API_KEY in the backend environment.',
+
+        currentTool: null,
+      };
+    }
+
+    const message =
+      state.messages[
+        state.messages.length - 1
+      ].content;
+
+    const result =
+      await tavilyTool.search(
+        message,
+        {
+          maxResults: 5,
+          searchDepth: 'basic',
+          includeAnswer: true,
+        }
+      );
+
+    if (
+      !result?.success
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          `I couldn't complete the web search: ${
+            result?.error ||
+            'Unknown search error'
+          }`,
+
+        currentTool: null,
+      };
+    }
+
+    const results =
+      Array.isArray(
+        result.results
+      )
+        ? result.results
+        : [];
+
+    if (
+      results.length === 0
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          'I searched the web but could not find relevant results.',
+
+        currentTool: null,
+
+        context: {
+          ...state.context,
+
+          webSearchResults: [],
+        },
+      };
+    }
+
+    const context =
+      results
+        .map(
+          (item, index) =>
+            `[Source ${index + 1}]
+Title: ${item.title || 'Untitled'}
+URL: ${item.url || 'Unavailable'}
+Content: ${item.content || ''}`
+        )
+        .join('\n\n');
+
+    const prompt = `
+You are an Employee Copilot.
+
+Answer the user's question using the web search results below.
+
+USER QUESTION:
+${message}
+
+WEB RESULTS:
+${context}
+
+${result.answer
+  ? `SEARCH SUMMARY:\n${result.answer}\n`
+  : ''}
+
+RULES:
+- Use the provided search results.
+- Do not invent facts.
+- Clearly distinguish current web information from company information.
+- If sources disagree, mention the disagreement.
+- Keep the response concise and useful.
+- Do not expose internal implementation details.
+
+Answer:
+`;
+
+    const response =
+      await llm.invoke(prompt);
+
+    const answer =
+      validateAIOutput(
+        String(
+          response.content || ''
+        )
+      );
+
+    return {
+      ...state,
+
+      toolResult:
+        answer,
+
+      currentTool: null,
+
+      context: {
+        ...state.context,
+
+        webSearchResults:
+          results,
+
+        webSearchAnswer:
+          result.answer || null,
+      },
+    };
+  } catch (error) {
+    console.error(
+      '[Tavily]',
+      error
+    );
+
+    return {
+      ...state,
+
+      toolResult:
+        'I encountered an error while searching the web. Please try again.',
+
+      currentTool: null,
+    };
+  }
+}
+
+// ============================================================
+// GENERAL RAG
 // ============================================================
 
 async function generalRAGQuery(
   state
 ) {
   try {
-    const {
-      messages,
-      userId,
-      userRole,
-    } = state;
-
-    const lastMessage =
-      messages[messages.length - 1];
+    const message =
+      state.messages[
+        state.messages.length - 1
+      ].content;
 
     const ragResult =
       await runRAGWorkflow(
-        lastMessage.content,
-        userId,
-        userRole
+        message,
+        state.userId,
+        state.userRole
       );
 
     return {
@@ -1123,7 +2063,7 @@ async function generalRAGQuery(
     };
   } catch (error) {
     console.error(
-      'Error in general RAG query:',
+      '[RAG]',
       error
     );
 
@@ -1131,7 +2071,7 @@ async function generalRAGQuery(
       ...state,
 
       toolResult:
-        'I apologize, but I encountered an error processing your question. Please try again.',
+        'I could not retrieve the company knowledge right now. Please try again.',
 
       currentTool: null,
     };
@@ -1139,176 +2079,7 @@ async function generalRAGQuery(
 }
 
 // ============================================================
-// CLASSIFY USER INTENT
-// ============================================================
-
-async function classifyIntent(
-  userMessage
-) {
-  try {
-    const prompt = `
-Classify the user's intent into exactly ONE of these categories:
-
-1. "leave_balance"
-   User wants to check their own leave balance.
-
-2. "leave_policy"
-   User wants information about company leave policies.
-
-3. "leave_request"
-   User wants to request or apply for leave.
-
-4. "calendar_events"
-   User wants to check their Google Calendar, meetings, appointments,
-   schedule, events, availability, or upcoming meetings.
-
-5. "calendar_create"
-   User wants to CREATE, SCHEDULE, BOOK, or ADD a meeting/event to their calendar.
-   This includes phrases like "schedule", "book", "create meeting", "add to calendar", etc.
-
-6. "general"
-   Any other question that does not belong to the categories above.
-
-Examples:
-
-"How many leaves do I have?"
-=> leave_balance
-
-"What is the annual leave policy?"
-=> leave_policy
-
-"I want to take annual leave next Monday"
-=> leave_request
-
-"Am I having any meeting?"
-=> calendar_events
-
-"Do I have a meeting today?"
-=> calendar_events
-
-"What's on my calendar?"
-=> calendar_events
-
-"Show my upcoming meetings"
-=> calendar_events
-
-"Schedule a meeting tomorrow at 3 PM"
-=> calendar_create
-
-"Book a meeting with Rahul next week"
-=> calendar_create
-
-"Create a meeting called sprint planning on Monday"
-=> calendar_create
-
-"Add a meeting to my calendar"
-=> calendar_create
-
-"How do I apply for reimbursement?"
-=> general
-
-User message:
-"${userMessage}"
-
-Respond with ONLY the category name.
-`;
-
-    const response =
-      await llm.invoke(
-        prompt
-      );
-
-    const intent =
-      String(
-        response.content
-      )
-        .toLowerCase()
-        .trim();
-
-    const validIntents = [
-      'leave_balance',
-      'leave_policy',
-      'leave_request',
-      'calendar_events',
-      'calendar_create',
-      'general',
-    ];
-
-    return validIntents.includes(
-      intent
-    )
-      ? intent
-      : 'general';
-  } catch (error) {
-    console.error(
-      'Error classifying intent:',
-      error
-    );
-
-    return 'general';
-  }
-}
-
-// ============================================================
-// EXTRACT LEAVE DETAILS
-// ============================================================
-
-async function extractLeaveDetails(
-  userMessage
-) {
-  try {
-    const prompt = `
-Extract leave request details from the user's message.
-
-If information is missing, return null for that field.
-
-Respond ONLY with valid JSON:
-
-{
-  "leave_type": "annual" or "sick" or "personal" or null,
-  "start_date": "YYYY-MM-DD" or null,
-  "end_date": "YYYY-MM-DD" or null,
-  "reason": "leave reason" or null
-}
-
-User message:
-"${userMessage}"
-`;
-
-    const response =
-      await llm.invoke(
-        prompt
-      );
-
-    const content =
-      String(
-        response.content
-      );
-
-    const jsonMatch =
-      content.match(
-        /\{[\s\S]*\}/
-      );
-
-    if (jsonMatch) {
-      return JSON.parse(
-        jsonMatch[0]
-      );
-    }
-
-    return null;
-  } catch (error) {
-    console.error(
-      'Error extracting leave details:',
-      error
-    );
-
-    return null;
-  }
-}
-
-// ============================================================
-// EXTRACT CALENDAR EVENT DETAILS
+// CALENDAR EVENT DETAILS
 // ============================================================
 
 async function extractCalendarEventDetails(
@@ -1316,303 +2087,46 @@ async function extractCalendarEventDetails(
 ) {
   try {
     const prompt = `
-Extract calendar event creation details from the user's message.
+Extract calendar event creation information.
 
-If information is missing, return null for that field.
-For date/time, extract specific times if mentioned.
-For dates, convert relative dates like "tomorrow", "next Monday" to actual dates.
-
-Respond ONLY with valid JSON:
+Return ONLY valid JSON:
 
 {
-  "title": "meeting title or subject" or null,
-  "date": "YYYY-MM-DD" or null,
-  "start_time": "HH:MM" in 24-hour format or null,
-  "end_time": "HH:MM" in 24-hour format or null,
-  "duration_minutes": estimated duration in minutes or null,
-  "description": "meeting description or null",
-  "attendees": ["email@example.com"] or null,
-  "location": "location or null"
+  "title": "meeting title" | null,
+  "date": "YYYY-MM-DD" | null,
+  "start_time": "HH:MM" | null,
+  "end_time": "HH:MM" | null,
+  "duration_minutes": number | null,
+  "description": "description" | null,
+  "attendees": ["email@example.com"] | [],
+  "location": "location" | null
 }
 
-User message:
-"${userMessage}"
+Rules:
+- Convert today/tomorrow/next weekday into actual dates.
+- Use 24-hour time.
+- Do not invent missing information.
+- If no end time is provided, duration_minutes can be 60.
+- Do not invent attendees.
+
+User:
+${userMessage}
 `;
 
     const response =
-      await llm.invoke(
-        prompt
-      );
+      await llm.invoke(prompt);
 
-    const content =
-      String(
-        response.content
-      );
-
-    const jsonMatch =
-      content.match(
-        /\{[\s\S]*\}/
-      );
-
-    if (jsonMatch) {
-      return JSON.parse(
-        jsonMatch[0]
-      );
-    }
-
-    return null;
+    return extractJSON(
+      response.content
+    );
   } catch (error) {
     console.error(
-      'Error extracting calendar event details:',
+      '[CalendarExtraction]',
       error
     );
 
     return null;
   }
-}
-
-// ============================================================
-// PARSE RELATIVE DATE
-// ============================================================
-
-function parseRelativeDate(
-  userMessage
-) {
-  const message =
-    userMessage.toLowerCase();
-
-  const today =
-    new Date();
-
-  if (
-    message.includes('today')
-  ) {
-    return today
-      .toISOString()
-      .split('T')[0];
-  }
-
-  if (
-    message.includes('tomorrow')
-  ) {
-    const tomorrow =
-      new Date(today);
-
-    tomorrow.setDate(
-      tomorrow.getDate() + 1
-    );
-
-    return tomorrow
-      .toISOString()
-      .split('T')[0];
-  }
-
-  if (
-    message.includes('next monday')
-  ) {
-    const nextMonday =
-      new Date(today);
-
-    const day =
-      nextMonday.getDay();
-
-    const daysUntilMonday =
-      day === 0
-        ? 1
-        : (8 - day) % 7;
-
-    nextMonday.setDate(
-      nextMonday.getDate() +
-        daysUntilMonday
-    );
-
-    return nextMonday
-      .toISOString()
-      .split('T')[0];
-  }
-
-  if (
-    message.includes('next tuesday')
-  ) {
-    const nextTuesday =
-      new Date(today);
-
-    const day =
-      nextTuesday.getDay();
-
-    const daysUntilTuesday =
-      day === 0
-        ? 2
-        : (9 - day) % 7;
-
-    nextTuesday.setDate(
-      nextTuesday.getDate() +
-        daysUntilTuesday
-    );
-
-    return nextTuesday
-      .toISOString()
-      .split('T')[0];
-  }
-
-  if (
-    message.includes('next wednesday')
-  ) {
-    const nextWednesday =
-      new Date(today);
-
-    const day =
-      nextWednesday.getDay();
-
-    const daysUntilWednesday =
-      day === 0
-        ? 3
-        : (10 - day) % 7;
-
-    nextWednesday.setDate(
-      nextWednesday.getDate() +
-        daysUntilWednesday
-    );
-
-    return nextWednesday
-      .toISOString()
-      .split('T')[0];
-  }
-
-  if (
-    message.includes('next thursday')
-  ) {
-    const nextThursday =
-      new Date(today);
-
-    const day =
-      nextThursday.getDay();
-
-    const daysUntilThursday =
-      day === 0
-        ? 4
-        : (11 - day) % 7;
-
-    nextThursday.setDate(
-      nextThursday.getDate() +
-        daysUntilThursday
-    );
-
-    return nextThursday
-      .toISOString()
-      .split('T')[0];
-  }
-
-  if (
-    message.includes('next friday')
-  ) {
-    const nextFriday =
-      new Date(today);
-
-    const day =
-      nextFriday.getDay();
-
-    const daysUntilFriday =
-      day === 0
-        ? 5
-        : (12 - day) % 7;
-
-    nextFriday.setDate(
-      nextFriday.getDate() +
-        daysUntilFriday
-    );
-
-    return nextFriday
-      .toISOString()
-      .split('T')[0];
-  }
-
-  return today
-    .toISOString()
-    .split('T')[0];
-}
-
-// ============================================================
-// PARSE TIME
-// ============================================================
-
-function parseTime(
-  timeString
-) {
-  if (!timeString) {
-    return null;
-  }
-
-  const timeMatch =
-    timeString.match(
-      /(\d{1,2}):(\d{2})\s*(am|pm)?/i
-    );
-
-  if (timeMatch) {
-    let hours =
-      parseInt(
-        timeMatch[1]
-      );
-
-    const minutes =
-      parseInt(
-        timeMatch[2]
-      );
-
-    const meridiem =
-      timeMatch[3]?.toLowerCase();
-
-    if (
-      meridiem === 'pm' &&
-      hours !== 12
-    ) {
-      hours += 12;
-    } else if (
-      meridiem === 'am' &&
-      hours === 12
-    ) {
-      hours = 0;
-    }
-
-    return `${hours
-      .toString()
-      .padStart(2, '0')}:${minutes
-      .toString()
-      .padStart(2, '0')}`;
-  }
-
-  const simpleMatch =
-    timeString.match(
-      /(\d{1,2})\s*(am|pm)/i
-    );
-
-  if (simpleMatch) {
-    let hours =
-      parseInt(
-        simpleMatch[1]
-      );
-
-    const meridiem =
-      simpleMatch[2].toLowerCase();
-
-    if (
-      meridiem === 'pm' &&
-      hours !== 12
-    ) {
-      hours += 12;
-    } else if (
-      meridiem === 'am' &&
-      hours === 12
-    ) {
-      hours = 0;
-    }
-
-    return `${hours
-      .toString()
-      .padStart(2, '0')}:00`;
-  }
-
-  return null;
 }
 
 // ============================================================
@@ -1623,22 +2137,22 @@ async function validateCalendarEvent(
   state
 ) {
   try {
-    const {
-      pendingAction,
-    } = state;
+    const action =
+      state.pendingAction;
 
     if (
-      !pendingAction ||
-      pendingAction.type !==
+      !action ||
+      action.type !==
         'calendar_create'
     ) {
       return {
         ...state,
 
         toolResult:
-          'No pending calendar event to validate.',
+          'There is no pending calendar event to validate.',
 
-        currentTool: null,
+        requiresConfirmation:
+          false,
       };
     }
 
@@ -1648,22 +2162,20 @@ async function validateCalendarEvent(
       start_time,
       end_time,
       duration_minutes,
-    } =
-      pendingAction;
+    } = action;
 
     if (!title) {
       return {
         ...state,
 
         toolResult:
-          'I need a title for the meeting. What would you like to call this meeting?',
-
-        currentTool: null,
+          'What would you like to call the meeting?',
 
         requiresConfirmation:
           false,
 
-        missingField: 'title',
+        missingField:
+          'meeting title',
       };
     }
 
@@ -1672,14 +2184,13 @@ async function validateCalendarEvent(
         ...state,
 
         toolResult:
-          'I need to know when you want to schedule this meeting. What date would work for you?',
-
-        currentTool: null,
+          'What date should I schedule the meeting for?',
 
         requiresConfirmation:
           false,
 
-        missingField: 'date',
+        missingField:
+          'date',
       };
     }
 
@@ -1688,14 +2199,13 @@ async function validateCalendarEvent(
         ...state,
 
         toolResult:
-          'I need to know what time you want to schedule this meeting. What time works for you?',
-
-        currentTool: null,
+          'What time should I schedule the meeting?',
 
         requiresConfirmation:
           false,
 
-        missingField: 'time',
+        missingField:
+          'time',
       };
     }
 
@@ -1703,48 +2213,38 @@ async function validateCalendarEvent(
       end_time;
 
     if (
-      !finalEndTime &&
-      duration_minutes
+      !finalEndTime
     ) {
-      const startDateTime =
+      const start =
         new Date(
           `${date}T${start_time}:00`
         );
 
-      const endDateTime =
-        new Date(
-          startDateTime.getTime() +
-            duration_minutes *
-              60000
+      const duration =
+        Number(
+          duration_minutes || 60
         );
 
       finalEndTime =
-        endDateTime
-          .toTimeString()
-          .slice(0, 5);
-    } else if (
-      !finalEndTime &&
-      !duration_minutes
-    ) {
-      const startDateTime =
         new Date(
-          `${date}T${start_time}:00`
-        );
-
-      const endDateTime =
-        new Date(
-          startDateTime.getTime() +
-            60 * 60000
-        );
-
-      finalEndTime =
-        endDateTime
+          start.getTime() +
+            duration * 60000
+        )
           .toTimeString()
           .slice(0, 5);
     }
 
-    let calendarConflicts =
-      null;
+    state.pendingAction.end_time =
+      finalEndTime;
+
+    // --------------------------------------------------------
+    // Check conflicts
+    // --------------------------------------------------------
+
+    let hasConflicts =
+      false;
+
+    let conflicts = [];
 
     try {
       const conflictCheck =
@@ -1755,73 +2255,45 @@ async function validateCalendarEvent(
         );
 
       if (
-        conflictCheck.hasConflicts
+        conflictCheck?.hasConflicts
       ) {
-        calendarConflicts =
-          conflictCheck.conflicts;
+        hasConflicts =
+          true;
 
-        const conflictDetails =
-          conflictCheck.conflicts
-            .map(
-              (c) =>
-                `- ${new Date(
-                  c.start
-                ).toLocaleString()} to ${new Date(
-                  c.end
-                ).toLocaleString()}`
-            )
-            .join('\n');
-
-        return {
-          ...state,
-
-          toolResult:
-            `You have calendar conflicts during the requested time:\n${conflictDetails}\n\nWould you like to schedule this meeting anyway, or would you prefer a different time?`,
-
-          currentTool: null,
-
-          requiresConfirmation:
-            true,
-
-          hasConflicts:
-            true,
-
-          context: {
-            ...state.context,
-
-            calendarConflicts,
-          },
-        };
+        conflicts =
+          conflictCheck.conflicts ||
+          [];
       }
-    } catch (
-      calendarError
-    ) {
+    } catch (error) {
       console.warn(
-        'Calendar conflict check failed:',
-        calendarError.message
+        '[Calendar] Conflict check failed:',
+        error.message
       );
     }
-
-    state.pendingAction.end_time =
-      finalEndTime;
 
     return {
       ...state,
 
-      toolResult:
-        'Calendar event validation passed. Ready to schedule.',
-
-      currentTool: null,
-
       requiresConfirmation:
         true,
 
-      hasConflicts:
-        false,
+      hasConflicts,
+
+      context: {
+        ...state.context,
+
+        calendarConflicts:
+          conflicts,
+      },
+
+      toolResult:
+        hasConflicts
+          ? 'The meeting is ready, but there is a calendar conflict during this period.'
+          : 'The meeting is ready to be scheduled.',
     };
   } catch (error) {
     console.error(
-      'Error validating calendar event:',
+      '[CalendarValidation]',
       error
     );
 
@@ -1829,9 +2301,7 @@ async function validateCalendarEvent(
       ...state,
 
       toolResult:
-        'Error validating calendar event. Please try again later.',
-
-      currentTool: null,
+        'I could not validate the calendar event.',
 
       requiresConfirmation:
         false,
@@ -1861,9 +2331,13 @@ export async function createCalendarEvent(
         ...state,
 
         toolResult:
-          'No pending calendar event to create.',
+          'There is no pending calendar event to create.',
 
-        currentTool: null,
+        requiresConfirmation:
+          false,
+
+        pendingAction:
+          null,
       };
     }
 
@@ -1874,8 +2348,34 @@ export async function createCalendarEvent(
       end_time,
       description,
       location,
-    } =
-      pendingAction;
+      attendees,
+    } = pendingAction;
+
+    if (
+      !title ||
+      !date ||
+      !start_time ||
+      !end_time
+    ) {
+      return {
+        ...state,
+
+        toolResult:
+          'The calendar event information is incomplete.',
+
+        requiresConfirmation:
+          false,
+
+        pendingAction:
+          null,
+      };
+    }
+
+    const timezone =
+      Intl.DateTimeFormat()
+        .resolvedOptions()
+        .timeZone ||
+      'Asia/Kolkata';
 
     const eventData = {
       summary: title,
@@ -1885,9 +2385,7 @@ export async function createCalendarEvent(
           `${date}T${start_time}:00`,
 
         timeZone:
-          Intl.DateTimeFormat()
-            .resolvedOptions()
-            .timeZone,
+          timezone,
       },
 
       end: {
@@ -1895,9 +2393,7 @@ export async function createCalendarEvent(
           `${date}T${end_time}:00`,
 
         timeZone:
-          Intl.DateTimeFormat()
-            .resolvedOptions()
-            .timeZone,
+          timezone,
       },
     };
 
@@ -1911,6 +2407,25 @@ export async function createCalendarEvent(
         location;
     }
 
+    if (
+      Array.isArray(attendees) &&
+      attendees.length > 0
+    ) {
+      eventData.attendees =
+        attendees
+          .filter(
+            email =>
+              typeof email ===
+                'string' &&
+              email.includes('@')
+          )
+          .map(
+            email => ({
+              email,
+            })
+          );
+    }
+
     const event =
       await googleCalendarService.createEvent(
         userId,
@@ -1921,11 +2436,10 @@ export async function createCalendarEvent(
       ...state,
 
       toolResult:
-        `Done — I scheduled "${title}" for ${new Date(
-          date
-        ).toLocaleDateString()} from ${start_time} to ${end_time}.`,
-
-      currentTool: null,
+        `Meeting scheduled successfully.\n\n` +
+        `**${title}**\n` +
+        `Date: ${date}\n` +
+        `Time: ${start_time} - ${end_time}`,
 
       requiresConfirmation:
         false,
@@ -1942,7 +2456,7 @@ export async function createCalendarEvent(
     };
   } catch (error) {
     console.error(
-      'Error creating calendar event:',
+      '[CalendarCreate]',
       error
     );
 
@@ -1956,12 +2470,13 @@ export async function createCalendarEvent(
         ...state,
 
         toolResult:
-          'Your Google Calendar is not connected. Please connect Google Calendar from the Calendar page first.',
-
-        currentTool: null,
+          'Your Google Calendar is not connected. Please connect it first.',
 
         requiresConfirmation:
           false,
+
+        pendingAction:
+          null,
       };
     }
 
@@ -1969,14 +2484,177 @@ export async function createCalendarEvent(
       ...state,
 
       toolResult:
-        'Error creating calendar event. Please try again later.',
-
-      currentTool: null,
+        'I could not create the calendar event. Please try again.',
 
       requiresConfirmation:
         false,
+
+      pendingAction:
+        null,
     };
   }
+}
+
+// ============================================================
+// INTENT CLASSIFICATION
+// ============================================================
+
+async function classifyIntent(userMessage) {
+  try {
+    const text = String(userMessage || '')
+      .trim()
+      .toLowerCase();
+
+    // ----------------------------------------------------------
+    // DETERMINISTIC LEAVE ROUTING
+    // ----------------------------------------------------------
+
+    // Leave balance
+    if (
+      /\b(leave balance|leaves balance|how many leaves|how much leave|remaining leave|leave remaining)\b/i.test(
+        text
+      )
+    ) {
+      return 'leave_balance';
+    }
+
+    // Leave policy
+    if (
+      /\b(leave policy|leave rules|leave entitlement|leave procedure|leave guidelines)\b/i.test(
+        text
+      )
+    ) {
+      return 'leave_policy';
+    }
+
+    // Leave request
+    if (
+      /\b(give me leave|grant me leave|i need leave|i want leave|take leave|request leave|apply for leave|apply leave|get leave|need to take leave|want to take leave|can i get leave|please give me leave)\b/i.test(
+        text
+      )
+    ) {
+      return 'leave_request';
+    }
+
+    // ----------------------------------------------------------
+    // GEMINI FALLBACK
+    // ----------------------------------------------------------
+
+    const prompt = `
+Classify the user request into exactly ONE category.
+
+Categories:
+
+leave_balance
+- User wants their own leave balance.
+
+leave_policy
+- User asks about company leave policy.
+
+leave_request
+- User wants to apply, request, take, get, or be given leave.
+- Informal phrases such as:
+  "give me leave"
+  "I need leave"
+  "I want leave"
+  "I need to take leave"
+  "please give me leave"
+  must be classified as leave_request.
+
+calendar_events
+- User wants to check their own Google Calendar.
+
+calendar_create
+- User wants to create/schedule a calendar event.
+
+gmail_read
+- User wants to read/search their own Gmail.
+
+gmail_send
+- User wants to send/draft/reply to an email.
+
+web_search
+- User explicitly asks for latest/current/external internet information.
+
+general
+- Company knowledge, casual questions, coding/help, or anything else.
+
+Important:
+- "What is our leave policy?" = leave_policy
+- "How many leaves do I have?" = leave_balance
+- "Apply leave from Monday to Wednesday" = leave_request
+- "Give me leave" = leave_request
+- "I need leave tomorrow" = leave_request
+- "I want to take leave" = leave_request
+- "Please give me leave" = leave_request
+- "Do I have a meeting today?" = calendar_events
+- "Schedule a meeting tomorrow at 3 PM" = calendar_create
+- "Show my emails" = gmail_read
+- "Send an email to Rahul" = gmail_send
+- "What's the latest React version?" = web_search
+
+Return ONLY the category.
+
+User:
+${userMessage}
+`;
+
+    const response = await llm.invoke(prompt);
+
+    const intent = String(response.content || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[`"' ]/g, '');
+
+    if (VALID_INTENTS.includes(intent)) {
+      return intent;
+    }
+
+    return 'general';
+  } catch (error) {
+    console.error('[Intent]', error);
+    return 'general';
+  }
+}
+
+// ============================================================
+// BUILD ACTION METADATA
+// ============================================================
+
+function buildActionMetadata(
+  pendingAction
+) {
+  if (!pendingAction) {
+    return null;
+  }
+
+  return {
+    actionId:
+      pendingAction.actionId,
+
+    actionType:
+      pendingAction.type,
+
+    actionData:
+      pendingAction,
+
+    title:
+      pendingAction.title ||
+      pendingAction.leave_type ||
+      'Confirm action',
+
+    date:
+      pendingAction.date ||
+      pendingAction.start_date ||
+      null,
+
+    time:
+      pendingAction.start_time ||
+      null,
+
+    hasConflicts:
+      false,
+  };
 }
 
 // ============================================================
@@ -1993,7 +2671,7 @@ export async function runLangGraphWorkflow(
 ) {
   try {
     // --------------------------------------------------------
-    // 1. VALIDATE USER INPUT
+    // Validate input
     // --------------------------------------------------------
 
     const sanitizedInput =
@@ -2002,7 +2680,7 @@ export async function runLangGraphWorkflow(
       );
 
     // --------------------------------------------------------
-    // 2. INITIALIZE STATE
+    // Initial state
     // --------------------------------------------------------
 
     let state = {
@@ -2018,86 +2696,184 @@ export async function runLangGraphWorkflow(
 
       userRole,
 
-      currentTool:
-        null,
+      currentTool: null,
 
-      toolResult:
-        null,
+      toolResult: null,
 
       requiresConfirmation:
         false,
 
-      /*
-       * IMPORTANT:
-       *
-       * When executing a confirmed action, actionData contains
-       * the original pending action.
-       *
-       * This prevents the second request ("yes") from going
-       * through RAG.
-       */
       pendingAction:
         actionData || null,
 
       context: {},
+
+      hasConflicts:
+        false,
     };
 
-    // --------------------------------------------------------
-    // 3. HANDLE CONFIRMED ACTION EXECUTION
-    // --------------------------------------------------------
+    // ========================================================
+    // CONFIRMATION FLOW
+    // ========================================================
+    //
+    // This is the critical fix.
+    //
+    // "yes" should NEVER be classified as a new
+    // general/RAG request.
+    //
+    // Instead:
+    //
+    // UI
+    // ↓
+    // actionId + actionData
+    // ↓
+    // direct execution
+    //
+    // ========================================================
 
     if (
       isConfirmed &&
       actionId
     ) {
       console.log(
-        'Executing confirmed action:',
-        {
-          actionId,
-          actionData,
-        }
+        '[Action] Executing confirmed action:',
+        actionId
       );
 
-      /*
-       * IMPORTANT:
-       *
-       * Do NOT classify the confirmation message.
-       * Do NOT send "yes" to RAG.
-       *
-       * Directly execute the previously validated action.
-       */
+      if (
+        !actionData
+      ) {
+        return {
+          response:
+            'The confirmation data has expired. Please submit the action again.',
+
+          sources: [],
+
+          requiresConfirmation:
+            false,
+
+          pendingAction:
+            null,
+
+          actionMetadata:
+            null,
+
+          error:
+            'MISSING_ACTION_DATA',
+        };
+      }
+
+      const actionType =
+        actionData.type;
 
       if (
-        actionId.startsWith(
+        !ACTION_TYPES.includes(
+          actionType
+        )
+      ) {
+        return {
+          response:
+            'I could not recognize the requested action.',
+
+          sources: [],
+
+          requiresConfirmation:
+            false,
+
+          pendingAction:
+            null,
+
+          actionMetadata:
+            null,
+
+          error:
+            'INVALID_ACTION_TYPE',
+        };
+      }
+
+      // Prevent action type spoofing.
+      if (
+        actionType ===
+          'leave_request' &&
+        !actionId.startsWith(
+          'leave_request_'
+        )
+      ) {
+        throw new Error(
+          'Invalid leave action ID.'
+        );
+      }
+
+      if (
+        actionType ===
+          'calendar_create' &&
+        !actionId.startsWith(
           'calendar_create_'
         )
       ) {
-        state =
-          await createCalendarEvent(
-            state
-          );
-      } else if (
-        actionId.startsWith(
-          'leave_request_'
+        throw new Error(
+          'Invalid calendar action ID.'
+        );
+      }
+
+      if (
+        actionType ===
+          'gmail_send' &&
+        !actionId.startsWith(
+          'gmail_send_'
         )
+      ) {
+        throw new Error(
+          'Invalid Gmail action ID.'
+        );
+      }
+
+      state.pendingAction = {
+        ...actionData,
+        actionId,
+      };
+
+      // ------------------------------------------------------
+      // Execute mutation
+      // ------------------------------------------------------
+
+      if (
+        actionType ===
+        'leave_request'
       ) {
         state =
           await submitLeaveRequest(
             state
           );
-      } else {
-        state.toolResult =
-          'I apologize, but I could not recognize the action to execute.';
       }
 
-      const validatedOutput =
+      else if (
+        actionType ===
+        'calendar_create'
+      ) {
+        state =
+          await createCalendarEvent(
+            state
+          );
+      }
+
+      else if (
+        actionType ===
+        'gmail_send'
+      ) {
+        state =
+          await sendGmail(
+            state
+          );
+      }
+
+      const response =
         validateAIOutput(
           state.toolResult
         );
 
       return {
-        response:
-          validatedOutput,
+        response,
 
         sources:
           state.context
@@ -2118,9 +2894,9 @@ export async function runLangGraphWorkflow(
       };
     }
 
-    // --------------------------------------------------------
-    // 4. CLASSIFY INTENT
-    // --------------------------------------------------------
+    // ========================================================
+    // NORMAL REQUEST
+    // ========================================================
 
     const intent =
       await classifyIntent(
@@ -2128,13 +2904,9 @@ export async function runLangGraphWorkflow(
       );
 
     console.log(
-      'Copilot intent:',
+      '[Copilot] Intent:',
       intent
     );
-
-    // --------------------------------------------------------
-    // 5. ROUTE TO TOOL
-    // --------------------------------------------------------
 
     switch (intent) {
 
@@ -2161,6 +2933,91 @@ export async function runLangGraphWorkflow(
         break;
 
       // ======================================================
+      // LEAVE REQUEST
+      // ======================================================
+
+      case 'leave_request': {
+        const details =
+          await extractLeaveDetails(
+            sanitizedInput
+          );
+
+        if (
+          !details ||
+          !details.leave_type ||
+          !details.start_date ||
+          !details.end_date
+        ) {
+          state.toolResult =
+            `To request leave, I need:\n\n` +
+            `• Leave type: annual, sick, or personal\n` +
+            `• Start date\n` +
+            `• End date\n` +
+            `• Reason (optional)\n\n` +
+            `Example: "Apply annual leave from 2026-09-01 to 2026-09-03 for vacation."`;
+
+          break;
+        }
+
+        const numberOfDays =
+          await calculateLeaveDays(
+            details.start_date,
+            details.end_date
+          );
+
+        const pendingAction = {
+          type:
+            'leave_request',
+
+          actionId:
+            `leave_request_${Date.now()}_${Math.random()
+              .toString(36)
+              .slice(2, 8)}`,
+
+          leave_type:
+            details.leave_type,
+
+          start_date:
+            details.start_date,
+
+          end_date:
+            details.end_date,
+
+          reason:
+            details.reason ||
+            null,
+
+          number_of_days:
+            numberOfDays,
+        };
+
+        state.pendingAction =
+          pendingAction;
+
+        state =
+          await validateLeaveRequest(
+            state
+          );
+
+        if (
+          state.requiresConfirmation
+        ) {
+          state.toolResult =
+            `Please review your leave request:\n\n` +
+            `**Leave type:** ${pendingAction.leave_type}\n` +
+            `**Dates:** ${pendingAction.start_date} → ${pendingAction.end_date}\n` +
+            `**Days:** ${pendingAction.number_of_days}\n` +
+            `**Reason:** ${
+              pendingAction.reason ||
+              'Not specified'
+            }\n\n` +
+            `Would you like me to submit this leave request?`;
+        }
+
+        break;
+      }
+
+      // ======================================================
       // CALENDAR EVENTS
       // ======================================================
 
@@ -2176,243 +3033,160 @@ export async function runLangGraphWorkflow(
       // ======================================================
 
       case 'calendar_create': {
-
-        const eventDetails =
+        let details =
           await extractCalendarEventDetails(
             sanitizedInput
           );
 
+        if (!details) {
+          details = {};
+        }
+
         if (
-          eventDetails &&
-          !eventDetails.date
+          !details.date
         ) {
-          eventDetails.date =
+          details.date =
             parseRelativeDate(
               sanitizedInput
             );
         }
 
         if (
-          eventDetails &&
-          eventDetails.start_time
+          details.start_time
         ) {
-          eventDetails.start_time =
+          details.start_time =
             parseTime(
-              eventDetails.start_time
+              details.start_time
             );
         }
 
         if (
-          eventDetails &&
-          eventDetails.end_time
+          details.end_time
         ) {
-          eventDetails.end_time =
+          details.end_time =
             parseTime(
-              eventDetails.end_time
+              details.end_time
             );
         }
 
-        if (
-          !eventDetails ||
-          !eventDetails.title
-        ) {
-          state.toolResult =
-            'I can help you schedule a meeting. Please provide:\n' +
-            '- Meeting title\n' +
-            '- Date (e.g., "tomorrow", "next Monday")\n' +
-            '- Time (e.g., "3 PM", "2:30 PM")\n\n' +
-            'Example: "Schedule a meeting called Sprint Planning tomorrow at 3 PM"';
+        const pendingAction = {
+          type:
+            'calendar_create',
 
-          state.currentTool =
-            null;
-        } else {
+          actionId:
+            `calendar_create_${Date.now()}_${Math.random()
+              .toString(36)
+              .slice(2, 8)}`,
 
-          state.pendingAction = {
-            type:
-              'calendar_create',
+          title:
+            details.title ||
+            null,
 
-            actionId:
-              `calendar_create_${Date.now()}`,
+          date:
+            details.date ||
+            null,
 
-            ...eventDetails,
-          };
+          start_time:
+            details.start_time ||
+            null,
 
-          state =
-            await validateCalendarEvent(
-              state
-            );
+          end_time:
+            details.end_time ||
+            null,
 
-          if (
-            state.requiresConfirmation
-          ) {
-            const {
-              title,
-              date,
-              start_time,
-              end_time,
-              location,
-              description,
-            } =
-              state.pendingAction;
+          duration_minutes:
+            details.duration_minutes ||
+            60,
 
-            const formattedDate =
-              new Date(
-                date
-              ).toLocaleDateString(
-                'en-US',
-                {
-                  weekday:
-                    'long',
+          description:
+            details.description ||
+            null,
 
-                  month:
-                    'short',
+          attendees:
+            Array.isArray(
+              details.attendees
+            )
+              ? details.attendees
+              : [],
 
-                  day:
-                    'numeric',
-                }
-              );
+          location:
+            details.location ||
+            null,
+        };
 
-            let confirmationText =
-              `I'm ready to schedule this meeting:\n\n` +
-              `**Title:** ${title}\n` +
-              `**Date:** ${formattedDate}\n` +
-              `**Time:** ${start_time} - ${end_time}\n`;
+        state.pendingAction =
+          pendingAction;
 
-            if (location) {
-              confirmationText +=
-                `**Location:** ${location}\n`;
-            }
-
-            if (description) {
-              confirmationText +=
-                `**Description:** ${description}\n`;
-            }
-
-            if (
-              state.hasConflicts
-            ) {
-              confirmationText +=
-                `\n⚠️ **Note:** You have calendar conflicts during this time.`;
-            } else {
-              confirmationText +=
-                `\n✅ No conflicts detected.`;
-            }
-
-            confirmationText +=
-              `\n\nWould you like me to schedule this meeting?`;
-
-            state.toolResult =
-              confirmationText;
-          } else if (
-            state.missingField
-          ) {
-            state.toolResult +=
-              `\n\nPlease provide the ${state.missingField} and I'll help you schedule the meeting.`;
-          }
-        }
-
-        break;
-      }
-
-      // ======================================================
-      // LEAVE REQUEST
-      // ======================================================
-
-      case 'leave_request': {
-
-        const leaveDetails =
-          await extractLeaveDetails(
-            sanitizedInput
+        state =
+          await validateCalendarEvent(
+            state
           );
 
         if (
-          !leaveDetails ||
-          !leaveDetails.leave_type ||
-          !leaveDetails.start_date ||
-          !leaveDetails.end_date
+          state.requiresConfirmation
         ) {
+          const conflictText =
+            state.hasConflicts
+              ? '\n\n⚠️ There is a calendar conflict during this time.'
+              : '\n\n✅ No calendar conflict detected.';
 
           state.toolResult =
-            `To request leave, please provide:
-
-- Type of leave (annual, sick, or personal)
-- Start date (YYYY-MM-DD)
-- End date (YYYY-MM-DD)
-- Reason (optional)
-
-Example:
-"I want to request annual leave from 2026-09-01 to 2026-09-05 for vacation"`;
-
-          state.currentTool =
-            null;
-
-        } else {
-
-          const numberOfDays =
-            await LeaveRequest.calculateDays(
-              leaveDetails.start_date,
-              leaveDetails.end_date
-            );
-
-          /*
-           * Create the pending action.
-           *
-           * THIS DATA MUST BE SENT TO THE FRONTEND.
-           * The frontend will later send it back through
-           * executeAction().
-           */
-
-          state.pendingAction = {
-            type:
-              'leave_request',
-
-            actionId:
-              `leave_request_${Date.now()}`,
-
-            leave_type:
-              leaveDetails.leave_type,
-
-            start_date:
-              leaveDetails.start_date,
-
-            end_date:
-              leaveDetails.end_date,
-
-            reason:
-              leaveDetails.reason ||
-              null,
-
-            number_of_days:
-              numberOfDays,
-          };
-
-          state =
-            await validateLeaveRequest(
-              state
-            );
-
-          if (
-            state.requiresConfirmation
-          ) {
-
-            state.toolResult =
-              `Leave request validation passed. Ready to submit.\n\n` +
-              `Please review the leave request and confirm it below.\n\n` +
-              `- Type: ${leaveDetails.leave_type}\n` +
-              `- Dates: ${leaveDetails.start_date} to ${leaveDetails.end_date}\n` +
-              `- Days: ${numberOfDays}\n` +
-              `- Reason: ${
-                leaveDetails.reason ||
-                'Not specified'
-              }`;
-          }
+            `Please review this meeting:\n\n` +
+            `**Title:** ${pendingAction.title}\n` +
+            `**Date:** ${pendingAction.date}\n` +
+            `**Time:** ${pendingAction.start_time} - ${pendingAction.end_time}` +
+            `${
+              pendingAction.location
+                ? `\n**Location:** ${pendingAction.location}`
+                : ''
+            }` +
+            `${
+              pendingAction.description
+                ? `\n**Description:** ${pendingAction.description}`
+                : ''
+            }` +
+            conflictText +
+            `\n\nWould you like me to schedule it?`;
         }
 
         break;
       }
 
       // ======================================================
-      // GENERAL
+      // GMAIL READ
+      // ======================================================
+
+      case 'gmail_read':
+        state =
+          await gmailReadQuery(
+            state
+          );
+        break;
+
+      // ======================================================
+      // GMAIL SEND
+      // ======================================================
+
+      case 'gmail_send':
+        state =
+          await gmailSendQuery(
+            state
+          );
+        break;
+
+      // ======================================================
+      // TAVILY
+      // ======================================================
+
+      case 'web_search':
+        state =
+          await webSearchQuery(
+            state
+          );
+        break;
+
+      // ======================================================
+      // GENERAL → RAG
       // ======================================================
 
       case 'general':
@@ -2421,26 +3195,21 @@ Example:
           await generalRAGQuery(
             state
           );
-
         break;
     }
 
-    // --------------------------------------------------------
-    // 6. VALIDATE OUTPUT
-    // --------------------------------------------------------
+    // ========================================================
+    // OUTPUT
+    // ========================================================
 
-    const validatedOutput =
+    const response =
       validateAIOutput(
-        state.toolResult
+        state.toolResult ||
+          'I could not generate a response.'
       );
 
-    // --------------------------------------------------------
-    // 7. RETURN RESULT
-    // --------------------------------------------------------
-
     return {
-      response:
-        validatedOutput,
+      response,
 
       sources:
         state.context
@@ -2448,111 +3217,26 @@ Example:
           ?.sources || [],
 
       requiresConfirmation:
-        state.requiresConfirmation,
+        Boolean(
+          state.requiresConfirmation
+        ),
 
       pendingAction:
-        state.pendingAction,
+        state.requiresConfirmation
+          ? state.pendingAction
+          : null,
 
       actionMetadata:
         state.requiresConfirmation
           ? {
-              actionId:
+              ...buildActionMetadata(
                 state.pendingAction
-                  ?.actionId,
-
-              actionType:
-                state.pendingAction
-                  ?.type,
-
-              /*
-               * IMPORTANT:
-               *
-               * Send complete action data to frontend.
-               */
-              actionData:
-                state.pendingAction
-                  ? {
-                      type:
-                        state.pendingAction
-                          .type,
-
-                      leave_type:
-                        state.pendingAction
-                          .leave_type ||
-                        null,
-
-                      start_date:
-                        state.pendingAction
-                          .start_date ||
-                        null,
-
-                      end_date:
-                        state.pendingAction
-                          .end_date ||
-                        null,
-
-                      number_of_days:
-                        state.pendingAction
-                          .number_of_days ||
-                        null,
-
-                      reason:
-                        state.pendingAction
-                          .reason ||
-                        null,
-
-                      title:
-                        state.pendingAction
-                          .title ||
-                        null,
-
-                      date:
-                        state.pendingAction
-                          .date ||
-                        null,
-
-                      start_time:
-                        state.pendingAction
-                          .start_time ||
-                        null,
-
-                      end_time:
-                        state.pendingAction
-                          .end_time ||
-                        null,
-
-                      description:
-                        state.pendingAction
-                          .description ||
-                        null,
-
-                      location:
-                        state.pendingAction
-                          .location ||
-                        null,
-                    }
-                  : null,
-
-              title:
-                state.pendingAction
-                  ?.title ||
-                state.pendingAction
-                  ?.leave_type,
-
-              date:
-                state.pendingAction
-                  ?.date ||
-                state.pendingAction
-                  ?.start_date,
-
-              time:
-                state.pendingAction
-                  ?.start_time ||
-                null,
+              ),
 
               hasConflicts:
-                state.hasConflicts ||
-                false,
+                Boolean(
+                  state.hasConflicts
+                ),
 
               conflictDetails:
                 state.context
@@ -2564,17 +3248,15 @@ Example:
       error:
         null,
     };
-
   } catch (error) {
-
     console.error(
-      'Error in LangGraph workflow:',
+      '[LangGraphWorkflow]',
       error
     );
 
     return {
       response:
-        'I apologize, but I encountered an error processing your request. Please try again or contact support if the issue persists.',
+        'I encountered an error while processing your request. Please try again.',
 
       sources: [],
 
@@ -2592,3 +3274,96 @@ Example:
     };
   }
 }
+
+// ============================================================
+// STREAMING WORKFLOW
+// ============================================================
+//
+// This exposes Gemini token streaming for the next
+// ConversationService/SSE integration.
+//
+// IMPORTANT:
+// Tool execution itself remains non-streaming.
+// The final Gemini generation can stream token-by-token.
+//
+// ============================================================
+
+export async function streamAIResponse(
+  prompt,
+  onToken
+) {
+  if (
+    typeof onToken !== 'function'
+  ) {
+    throw new Error(
+      'onToken callback is required.'
+    );
+  }
+
+  const stream =
+    await llm.stream(prompt);
+
+  let completeResponse = '';
+
+  for await (
+    const chunk of stream
+  ) {
+    let text = '';
+
+    if (
+      typeof chunk?.content ===
+      'string'
+    ) {
+      text =
+        chunk.content;
+    } else if (
+      Array.isArray(
+        chunk?.content
+      )
+    ) {
+      text =
+        chunk.content
+          .map(
+            item =>
+              typeof item ===
+              'string'
+                ? item
+                : item?.text ||
+                  ''
+          )
+          .join('');
+    }
+
+    if (!text) {
+      continue;
+    }
+
+    completeResponse += text;
+
+    await onToken(
+      text
+    );
+  }
+
+  return completeResponse;
+}
+
+// ============================================================
+// EXPORTS FOR TESTING / SERVICES
+// ============================================================
+
+export {
+  classifyIntent,
+  queryCalendarEvents,
+  gmailReadQuery,
+  gmailSendQuery,
+  webSearchQuery,
+  generalRAGQuery,
+  validateLeaveRequest,
+  validateCalendarEvent,
+  extractLeaveDetails,
+  extractCalendarEventDetails,
+  extractEmailDetails,
+  parseRelativeDate,
+  parseTime,
+};

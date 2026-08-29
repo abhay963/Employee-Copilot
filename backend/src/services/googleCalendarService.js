@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
+
 import { config } from '../config/index.js';
 import { query } from '../db/connection.js';
 
@@ -74,7 +75,7 @@ class GoogleCalendarService {
       'google_calendar_oauth'
     ) {
       throw new Error(
-        'Invalid OAuth state'
+        'Invalid Google Calendar OAuth state'
       );
     }
 
@@ -82,7 +83,15 @@ class GoogleCalendarService {
   }
 
   // ============================================================
-  // STORE TOKENS
+  // STORE CALENDAR TOKENS
+  //
+  // IMPORTANT:
+  //
+  // Calendar tokens are stored ONLY in:
+  //
+  // google_calendar_oauth_tokens
+  //
+  // Gmail tokens are completely separate.
   // ============================================================
 
   async storeTokens(userId, tokens) {
@@ -95,7 +104,7 @@ class GoogleCalendarService {
 
       if (!tokens?.access_token) {
         throw new Error(
-          'Google access token is missing'
+          'Google Calendar access token is missing'
         );
       }
 
@@ -108,7 +117,7 @@ class GoogleCalendarService {
 
       await query(
         `
-        INSERT INTO google_oauth_tokens (
+        INSERT INTO google_calendar_oauth_tokens (
           user_id,
           access_token,
           refresh_token,
@@ -120,12 +129,14 @@ class GoogleCalendarService {
 
         ON CONFLICT (user_id)
         DO UPDATE SET
-          access_token = EXCLUDED.access_token,
+
+          access_token =
+            EXCLUDED.access_token,
 
           refresh_token =
             COALESCE(
               EXCLUDED.refresh_token,
-              google_oauth_tokens.refresh_token
+              google_calendar_oauth_tokens.refresh_token
             ),
 
           token_type =
@@ -150,21 +161,26 @@ class GoogleCalendarService {
         ]
       );
 
+      console.log(
+        'Google Calendar tokens stored for user:',
+        userId
+      );
+
       return true;
     } catch (error) {
       console.error(
-        'Error storing OAuth tokens:',
+        'Error storing Google Calendar tokens:',
         error
       );
 
       throw new Error(
-        'Failed to store OAuth tokens'
+        'Failed to store Google Calendar tokens'
       );
     }
   }
 
   // ============================================================
-  // GET TOKENS
+  // GET CALENDAR TOKENS
   // ============================================================
 
   async getTokens(userId) {
@@ -177,7 +193,7 @@ class GoogleCalendarService {
           token_type,
           expires_at,
           scope
-        FROM google_oauth_tokens
+        FROM google_calendar_oauth_tokens
         WHERE user_id = $1
         `,
         [userId]
@@ -214,18 +230,18 @@ class GoogleCalendarService {
       };
     } catch (error) {
       console.error(
-        'Error getting OAuth tokens:',
+        'Error getting Google Calendar tokens:',
         error
       );
 
       throw new Error(
-        'Failed to get OAuth tokens'
+        'Failed to get Google Calendar tokens'
       );
     }
   }
 
   // ============================================================
-  // CHECK CONNECTION
+  // CHECK CALENDAR CONNECTION
   // ============================================================
 
   async isConnected(userId) {
@@ -238,7 +254,7 @@ class GoogleCalendarService {
       );
     } catch (error) {
       console.error(
-        'Error checking Google connection:',
+        'Error checking Google Calendar connection:',
         error
       );
 
@@ -247,7 +263,7 @@ class GoogleCalendarService {
   }
 
   // ============================================================
-  // SET USER CREDENTIALS
+  // SET CALENDAR CREDENTIALS
   // ============================================================
 
   async setCredentials(userId) {
@@ -258,11 +274,11 @@ class GoogleCalendarService {
       if (!tokens) {
         const error =
           new Error(
-            'GOOGLE_NOT_CONNECTED'
+            'GOOGLE_CALENDAR_NOT_CONNECTED'
           );
 
         error.code =
-          'GOOGLE_NOT_CONNECTED';
+          'GOOGLE_CALENDAR_NOT_CONNECTED';
 
         throw error;
       }
@@ -275,7 +291,10 @@ class GoogleCalendarService {
         tokens
       );
 
-      // Refresh expired token
+      // --------------------------------------------------------
+      // Refresh expired access token
+      // --------------------------------------------------------
+
       if (
         tokens.expiry_date &&
         Date.now() >=
@@ -289,7 +308,7 @@ class GoogleCalendarService {
       return true;
     } catch (error) {
       console.error(
-        'Error setting credentials:',
+        'Error setting Google Calendar credentials:',
         error
       );
 
@@ -298,7 +317,7 @@ class GoogleCalendarService {
   }
 
   // ============================================================
-  // REFRESH ACCESS TOKEN
+  // REFRESH CALENDAR ACCESS TOKEN
   // ============================================================
 
   async refreshAccessToken(userId) {
@@ -316,11 +335,11 @@ class GoogleCalendarService {
       ) {
         const error =
           new Error(
-            'GOOGLE_RECONNECT_REQUIRED'
+            'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
           );
 
         error.code =
-          'GOOGLE_RECONNECT_REQUIRED';
+          'GOOGLE_CALENDAR_RECONNECT_REQUIRED';
 
         throw error;
       }
@@ -343,19 +362,48 @@ class GoogleCalendarService {
         credentials
       );
 
+      console.log(
+        'Google Calendar access token refreshed for user:',
+        userId
+      );
+
       return credentials;
     } catch (error) {
       console.error(
-        'Error refreshing access token:',
+        'Error refreshing Google Calendar access token:',
         error
       );
+
+      const errorText =
+        error?.message?.toLowerCase() || '';
+
+      if (
+        errorText.includes(
+          'invalid_grant'
+        ) ||
+        errorText.includes(
+          'invalid grant'
+        )
+      ) {
+        const reconnectError =
+          new Error(
+            'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
+          );
+
+        reconnectError.code =
+          'GOOGLE_CALENDAR_RECONNECT_REQUIRED';
+
+        throw reconnectError;
+      }
 
       throw error;
     }
   }
 
   // ============================================================
-  // GOOGLE AUTH URL
+  // CALENDAR AUTH URL
+  //
+  // ONLY CALENDAR SCOPES
   // ============================================================
 
   getAuthUrl(state) {
@@ -363,26 +411,24 @@ class GoogleCalendarService {
       this.initializeOAuth2Client();
     }
 
-    const scopes = [
+    const calendarScopes = [
       'https://www.googleapis.com/auth/calendar.readonly',
       'https://www.googleapis.com/auth/calendar.events',
     ];
 
-    return this.oauth2Client.generateAuthUrl(
-      {
-        access_type: 'offline',
+    return this.oauth2Client.generateAuthUrl({
+      access_type: 'offline',
 
-        prompt: 'consent',
+      prompt: 'consent',
 
-        scope: scopes,
+      scope: calendarScopes,
 
-        state,
-      }
-    );
+      state,
+    });
   }
 
   // ============================================================
-  // EXCHANGE GOOGLE CODE
+  // EXCHANGE CALENDAR GOOGLE CODE
   // ============================================================
 
   async exchangeCodeForTokens(
@@ -392,7 +438,13 @@ class GoogleCalendarService {
     try {
       if (!code) {
         throw new Error(
-          'Authorization code is missing'
+          'Google Calendar authorization code is missing'
+        );
+      }
+
+      if (!userId) {
+        throw new Error(
+          'User ID is required'
         );
       }
 
@@ -407,6 +459,11 @@ class GoogleCalendarService {
           code
         );
 
+      console.log(
+        'Google Calendar OAuth scopes received:',
+        tokens.scope
+      );
+
       await this.storeTokens(
         userId,
         tokens
@@ -415,13 +472,11 @@ class GoogleCalendarService {
       return tokens;
     } catch (error) {
       console.error(
-        'Error exchanging code for tokens:',
+        'Error exchanging Google Calendar authorization code:',
         error
       );
 
-      throw new Error(
-        'Failed to exchange authorization code for tokens'
-      );
+      throw error;
     }
   }
 
@@ -435,6 +490,10 @@ class GoogleCalendarService {
     endDate
   ) {
     try {
+      console.log(
+        `Getting Google Calendar events for user ${userId} from ${startDate} to ${endDate}`
+      );
+
       await this.setCredentials(
         userId
       );
@@ -445,7 +504,6 @@ class GoogleCalendarService {
       const end =
         new Date(endDate);
 
-      // Include entire end date
       end.setHours(
         23,
         59,
@@ -453,33 +511,47 @@ class GoogleCalendarService {
         999
       );
 
-      const response =
-        await this.calendar.events.list(
-          {
-            calendarId: 'primary',
-
-            timeMin:
-              start.toISOString(),
-
-            timeMax:
-              end.toISOString(),
-
-            singleEvents: true,
-
-            orderBy: 'startTime',
-
-            maxResults: 2500,
-          }
-        );
-
-      return (
-        response.data.items || []
+      console.log(
+        `Querying Google Calendar API: ${start.toISOString()} to ${end.toISOString()}`
       );
+
+      const response =
+        await this.calendar.events.list({
+          calendarId: 'primary',
+
+          timeMin:
+            start.toISOString(),
+
+          timeMax:
+            end.toISOString(),
+
+          singleEvents: true,
+
+          orderBy: 'startTime',
+
+          maxResults: 2500,
+        });
+
+      const events =
+        response.data.items || [];
+
+      console.log(
+        `Retrieved ${events.length} Google Calendar events`
+      );
+
+      return events;
     } catch (error) {
       console.error(
-        'Error getting calendar events:',
+        'Error getting Google Calendar events:',
         error
       );
+
+      if (error.response) {
+        console.error(
+          'Google Calendar API error response:',
+          error.response.data
+        );
+      }
 
       throw error;
     }
@@ -513,23 +585,21 @@ class GoogleCalendarService {
       );
 
       const response =
-        await this.calendar.freebusy.query(
-          {
-            requestBody: {
-              timeMin:
-                start.toISOString(),
+        await this.calendar.freebusy.query({
+          requestBody: {
+            timeMin:
+              start.toISOString(),
 
-              timeMax:
-                end.toISOString(),
+            timeMax:
+              end.toISOString(),
 
-              items: [
-                {
-                  id: 'primary',
-                },
-              ],
-            },
-          }
-        );
+            items: [
+              {
+                id: 'primary',
+              },
+            ],
+          },
+        });
 
       const busyTimes =
         response.data
@@ -554,17 +624,16 @@ class GoogleCalendarService {
       };
     } catch (error) {
       console.error(
-        'Error checking calendar conflicts:',
+        'Error checking Google Calendar conflicts:',
         error
       );
 
-      // Do NOT silently say "no conflicts".
       throw error;
     }
   }
 
   // ============================================================
-  // CREATE EVENT
+  // CREATE CALENDAR EVENT
   // ============================================================
 
   async createEvent(
@@ -577,19 +646,17 @@ class GoogleCalendarService {
       );
 
       const response =
-        await this.calendar.events.insert(
-          {
-            calendarId: 'primary',
+        await this.calendar.events.insert({
+          calendarId: 'primary',
 
-            requestBody:
-              eventData,
-          }
-        );
+          requestBody:
+            eventData,
+        });
 
       return response.data;
     } catch (error) {
       console.error(
-        'Error creating calendar event:',
+        'Error creating Google Calendar event:',
         error
       );
 
@@ -598,7 +665,11 @@ class GoogleCalendarService {
   }
 
   // ============================================================
-  // REVOKE TOKENS
+  // REVOKE CALENDAR TOKENS ONLY
+  //
+  // IMPORTANT:
+  //
+  // This does NOT touch Gmail tokens.
   // ============================================================
 
   async revokeTokens(userId) {
@@ -619,7 +690,7 @@ class GoogleCalendarService {
           );
         } catch (googleError) {
           console.warn(
-            'Google token revoke failed:',
+            'Google Calendar token revoke failed:',
             googleError.message
           );
         }
@@ -627,21 +698,26 @@ class GoogleCalendarService {
 
       await query(
         `
-        DELETE FROM google_oauth_tokens
+        DELETE FROM google_calendar_oauth_tokens
         WHERE user_id = $1
         `,
         [userId]
       );
 
+      console.log(
+        'Google Calendar connection revoked for user:',
+        userId
+      );
+
       return true;
     } catch (error) {
       console.error(
-        'Error revoking OAuth tokens:',
+        'Error revoking Google Calendar tokens:',
         error
       );
 
       throw new Error(
-        'Failed to revoke OAuth tokens'
+        'Failed to revoke Google Calendar connection'
       );
     }
   }
