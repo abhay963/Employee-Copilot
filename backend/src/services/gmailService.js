@@ -18,7 +18,7 @@ class GmailService {
     this.oauth2Client = new google.auth.OAuth2(
       config.googleClientId,
       config.googleClientSecret,
-      config.googleRedirectUri
+      config.googleGmailRedirectUri
     );
 
     this.gmail = google.gmail({

@@ -78,9 +78,15 @@ api.interceptors.response.use(
         }
       }
 
-      return Promise.reject(
-        error.response.data
-      );
+      // Return detailed error information
+      const errorData = error.response.data || {};
+      return Promise.reject({
+        success: false,
+        error: errorData.error || errorData.message || `HTTP ${error.response.status} error`,
+        code: errorData.code,
+        details: errorData,
+        status: error.response.status
+      });
     }
 
     // ----------------------------------------------------------
@@ -97,6 +103,7 @@ api.interceptors.response.use(
         success: false,
         error:
           'Unable to connect to the server. Please make sure the backend is running.',
+        code: 'NETWORK_ERROR'
       });
     }
 
@@ -114,6 +121,7 @@ api.interceptors.response.use(
       error:
         error.message ||
         'Request failed.',
+      code: 'REQUEST_ERROR'
     });
   }
 );
@@ -572,7 +580,7 @@ export const googleAPI = {
   // EmployeeCalendar.jsx uses this name.
   getCalendarAuthUrl: () =>
     api.get(
-      '/api/google/auth/url'
+      '/api/google/calendar/auth/url'
     ),
 
   // ==========================================================
@@ -601,6 +609,11 @@ export const googleAPI = {
   revokeTokens: () =>
     api.delete(
       '/api/google/auth/revoke'
+    ),
+
+  revokeCalendarTokens: () =>
+    api.delete(
+      '/api/google/calendar/revoke'
     ),
 
   // ==========================================================
@@ -649,6 +662,16 @@ export const googleAPI = {
   // ==========================================================
   // GMAIL
   // ==========================================================
+
+  getGmailStatus: () =>
+    api.get(
+      '/api/google/gmail/status'
+    ),
+
+  revokeGmailTokens: () =>
+    api.delete(
+      '/api/google/gmail/revoke'
+    ),
 
   sendEmail: (data) =>
     api.post(

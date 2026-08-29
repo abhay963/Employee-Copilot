@@ -5,6 +5,7 @@ import React, {
   useState,
 } from 'react';
 
+import { toast } from 'react-hot-toast';
 import { googleAPI } from '../services/api';
 
 // ============================================================
@@ -190,12 +191,6 @@ function EmployeeCalendar() {
   const [loading, setLoading] =
     useState(false);
 
-  const [error, setError] =
-    useState('');
-
-  const [successMessage, setSuccessMessage] =
-    useState('');
-
   // ----------------------------------------------------------
   // EVENT MODAL
   // ----------------------------------------------------------
@@ -259,7 +254,6 @@ function EmployeeCalendar() {
     async () => {
       try {
         setCheckingConnection(true);
-        setError('');
 
         const response =
           await googleAPI.getCalendarStatus();
@@ -274,6 +268,11 @@ function EmployeeCalendar() {
         );
 
         setCalendarConnected(false);
+
+        toast.error(
+          err?.error ||
+            'Unable to check Google Calendar connection.'
+        );
       } finally {
         setCheckingConnection(false);
       }
@@ -294,7 +293,6 @@ function EmployeeCalendar() {
 
       try {
         setLoading(true);
-        setError('');
 
         const start =
           monthRange.start;
@@ -324,9 +322,7 @@ function EmployeeCalendar() {
 
         if (
           errorCode ===
-            'GOOGLE_CALENDAR_NOT_CONNECTED' ||
-          errorCode ===
-            'GOOGLE_NOT_CONNECTED'
+            'GOOGLE_CALENDAR_NOT_CONNECTED'
         ) {
           setCalendarConnected(
             false
@@ -334,14 +330,12 @@ function EmployeeCalendar() {
 
           setEvents([]);
 
-          setError(
+          toast.error(
             'Google Calendar is not connected.'
           );
         } else if (
           errorCode ===
-            'GOOGLE_CALENDAR_RECONNECT_REQUIRED' ||
-          errorCode ===
-            'GOOGLE_RECONNECT_REQUIRED'
+            'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
         ) {
           setCalendarConnected(
             false
@@ -349,11 +343,11 @@ function EmployeeCalendar() {
 
           setEvents([]);
 
-          setError(
+          toast.error(
             'Google Calendar authorization has expired. Please reconnect your Google Calendar.'
           );
         } else {
-          setError(
+          toast.error(
             err?.error ||
               err?.message ||
               'Failed to load calendar events.'
@@ -397,8 +391,6 @@ function EmployeeCalendar() {
   const handleConnect = async () => {
     try {
       setConnecting(true);
-      setError('');
-      setSuccessMessage('');
 
       const response =
         await googleAPI.getCalendarAuthUrl();
@@ -417,11 +409,13 @@ function EmployeeCalendar() {
         err
       );
 
-      setError(
-        err?.error ||
-          err?.message ||
-          'Failed to connect Google Calendar.'
-      );
+      const errorMessage = err?.error ||
+        err?.message ||
+        'Failed to connect Google Calendar.';
+
+      toast.error(errorMessage, {
+        duration: 5000,
+      });
 
       setConnecting(false);
     }
@@ -443,15 +437,13 @@ function EmployeeCalendar() {
 
     try {
       setDisconnecting(true);
-      setError('');
-      setSuccessMessage('');
 
       await googleAPI.revokeCalendarTokens();
 
       setCalendarConnected(false);
       setEvents([]);
 
-      setSuccessMessage(
+      toast.success(
         'Google Calendar disconnected successfully.'
       );
     } catch (err) {
@@ -460,7 +452,7 @@ function EmployeeCalendar() {
         err
       );
 
-      setError(
+      toast.error(
         err?.error ||
           err?.message ||
           'Failed to disconnect Google Calendar.'
@@ -498,7 +490,7 @@ function EmployeeCalendar() {
     if (connected === 'true') {
       setCalendarConnected(true);
 
-      setSuccessMessage(
+      toast.success(
         'Google Calendar connected successfully.'
       );
 
@@ -510,10 +502,18 @@ function EmployeeCalendar() {
     }
 
     if (googleError) {
-      setError(
-        errorDescription ||
-          'Google Calendar connection failed.'
-      );
+      console.error('Google Calendar OAuth error:', {
+        error: googleError,
+        description: errorDescription
+      });
+
+      const errorDetails = errorDescription
+        ? `${errorDescription} (Error: ${googleError})`
+        : `Google Calendar connection failed: ${googleError}`;
+
+      toast.error(errorDetails, {
+        duration: 6000,
+      });
 
       window.history.replaceState(
         {},
@@ -635,8 +635,6 @@ function EmployeeCalendar() {
 
     setEventForm(form);
     setShowEventModal(true);
-    setError('');
-    setSuccessMessage('');
   };
 
   // ==========================================================
@@ -681,7 +679,7 @@ function EmployeeCalendar() {
     event.preventDefault();
 
     if (!eventForm.summary.trim()) {
-      setError(
+      toast.error(
         'Event title is required.'
       );
 
@@ -692,7 +690,7 @@ function EmployeeCalendar() {
       !eventForm.start ||
       !eventForm.end
     ) {
-      setError(
+      toast.error(
         'Start and end time are required.'
       );
 
@@ -713,7 +711,7 @@ function EmployeeCalendar() {
         endDate.getTime()
       )
     ) {
-      setError(
+      toast.error(
         'Please enter valid dates and times.'
       );
 
@@ -723,7 +721,7 @@ function EmployeeCalendar() {
     if (
       endDate <= startDate
     ) {
-      setError(
+      toast.error(
         'End time must be after the start time.'
       );
 
@@ -732,8 +730,6 @@ function EmployeeCalendar() {
 
     try {
       setCreatingEvent(true);
-      setError('');
-      setSuccessMessage('');
 
       const eventData = {
         summary:
@@ -768,7 +764,7 @@ function EmployeeCalendar() {
         getInitialForm()
       );
 
-      setSuccessMessage(
+      toast.success(
         'Calendar event created successfully.'
       );
 
@@ -788,11 +784,11 @@ function EmployeeCalendar() {
       ) {
         setCalendarConnected(false);
 
-        setError(
+        toast.error(
           'Google Calendar authorization has expired. Please reconnect.'
         );
       } else {
-        setError(
+        toast.error(
           err?.error ||
             err?.message ||
             'Failed to create calendar event.'
@@ -801,15 +797,6 @@ function EmployeeCalendar() {
     } finally {
       setCreatingEvent(false);
     }
-  };
-
-  // ==========================================================
-  // CLEAR NOTIFICATIONS
-  // ==========================================================
-
-  const clearMessages = () => {
-    setError('');
-    setSuccessMessage('');
   };
 
   // ==========================================================
@@ -915,26 +902,6 @@ function EmployeeCalendar() {
         .calendar-button:disabled {
           opacity: 0.55;
           cursor: not-allowed;
-        }
-
-        .notification {
-          padding: 12px 15px;
-          border-radius: 10px;
-          margin-bottom: 16px;
-          font-size: 13px;
-          border: 1px solid;
-        }
-
-        .notification.error {
-          background: rgba(239,68,68,0.08);
-          border-color: rgba(239,68,68,0.22);
-          color: #ff9da7;
-        }
-
-        .notification.success {
-          background: rgba(34,197,94,0.08);
-          border-color: rgba(34,197,94,0.20);
-          color: #83e6a2;
         }
 
         .calendar-card {
@@ -1431,28 +1398,6 @@ function EmployeeCalendar() {
             </button>
           </div>
         </div>
-
-        {/* ================================================== */}
-        {/* NOTIFICATIONS */}
-        {/* ================================================== */}
-
-        {error && (
-          <div
-            className="notification error"
-            onClick={clearMessages}
-          >
-            {error}
-          </div>
-        )}
-
-        {successMessage && (
-          <div
-            className="notification success"
-            onClick={clearMessages}
-          >
-            {successMessage}
-          </div>
-        )}
 
         {/* ================================================== */}
         {/* CALENDAR CARD */}

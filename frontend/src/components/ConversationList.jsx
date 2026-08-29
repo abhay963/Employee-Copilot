@@ -39,50 +39,6 @@ const getTimestamp = (conversation) => {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 };
 
-const startOfDay = (date) => {
-  const result = new Date(date);
-
-  result.setHours(0, 0, 0, 0);
-
-  return result;
-};
-
-const getDayDifference = (date) => {
-  const today = startOfDay(new Date());
-  const target = startOfDay(date);
-
-  return Math.floor(
-    (today.getTime() - target.getTime()) /
-      (24 * 60 * 60 * 1000)
-  );
-};
-
-const getConversationGroup = (conversation) => {
-  const timestamp = getTimestamp(conversation);
-
-  if (!timestamp) {
-    return 'Older';
-  }
-
-  const difference = getDayDifference(
-    new Date(timestamp)
-  );
-
-  if (difference <= 0) {
-    return 'Today';
-  }
-
-  if (difference === 1) {
-    return 'Yesterday';
-  }
-
-  if (difference <= 7) {
-    return 'Previous 7 days';
-  }
-
-  return 'Older';
-};
-
 const formatTime = (dateString) => {
   if (!dateString) {
     return '';
@@ -117,10 +73,6 @@ const formatTime = (dateString) => {
     );
 
     return `${hours}h ago`;
-  }
-
-  if (difference < 48 * 60 * 60 * 1000) {
-    return 'Yesterday';
   }
 
   if (difference < 7 * 24 * 60 * 60 * 1000) {
@@ -866,63 +818,6 @@ const ConversationItem = ({
 // CONVERSATION GROUP
 // ============================================================
 
-const ConversationGroup = ({
-  title,
-  conversations,
-  activeConversation,
-  onSelect,
-  onDelete,
-  onEdit,
-}) => {
-  if (!conversations.length) {
-    return null;
-  }
-
-  return (
-    <div className="mb-5">
-
-      <div className="mb-2 flex items-center gap-2 px-2">
-
-        <span
-          className="
-            text-[10px]
-            font-bold
-            uppercase
-            tracking-[0.14em]
-            text-gray-400
-          "
-        >
-          {title}
-        </span>
-
-        <div className="h-px flex-1 bg-gray-100" />
-      </div>
-
-      <div className="space-y-1">
-
-        <AnimatePresence mode="popLayout">
-          {conversations.map(
-            (conversation) => (
-              <ConversationItem
-                key={conversation.id}
-                conversation={conversation}
-                isActive={
-                  activeConversation?.id ===
-                  conversation.id
-                }
-                onSelect={onSelect}
-                onDelete={onDelete}
-                onEdit={onEdit}
-              />
-            )
-          )}
-        </AnimatePresence>
-
-      </div>
-    </div>
-  );
-};
-
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
@@ -942,11 +837,11 @@ const ConversationList = ({
   // SEARCH + SORT + GROUP
   // ==========================================================
 
-  const groupedConversations = useMemo(() => {
+  const filteredConversations = useMemo(() => {
     const normalizedSearch =
       search.trim().toLowerCase();
 
-    const sorted = [...conversations]
+    return [...conversations]
       .filter((conversation) => {
         if (!normalizedSearch) {
           return true;
@@ -965,40 +860,10 @@ const ConversationList = ({
           getTimestamp(b) -
           getTimestamp(a)
       );
-
-    const groups = {
-      Today: [],
-      Yesterday: [],
-      'Previous 7 days': [],
-      Older: [],
-    };
-
-    sorted.forEach((conversation) => {
-      const group =
-        getConversationGroup(
-          conversation
-        );
-
-      if (!groups[group]) {
-        groups[group] = [];
-      }
-
-      groups[group].push(
-        conversation
-      );
-    });
-
-    return groups;
   }, [conversations, search]);
 
   const visibleConversationCount =
-    Object.values(
-      groupedConversations
-    ).reduce(
-      (total, group) =>
-        total + group.length,
-      0
-    );
+    filteredConversations.length;
 
   // ==========================================================
   // CLEAR SEARCH
@@ -1313,62 +1178,25 @@ const ConversationList = ({
             transition={{
               duration: 0.2,
             }}
+            className="space-y-1"
           >
-
-            <ConversationGroup
-              title="Today"
-              conversations={
-                groupedConversations.Today
-              }
-              activeConversation={
-                activeConversation
-              }
-              onSelect={onSelect}
-              onDelete={onDelete}
-              onEdit={onEdit}
-            />
-
-            <ConversationGroup
-              title="Yesterday"
-              conversations={
-                groupedConversations.Yesterday
-              }
-              activeConversation={
-                activeConversation
-              }
-              onSelect={onSelect}
-              onDelete={onDelete}
-              onEdit={onEdit}
-            />
-
-            <ConversationGroup
-              title="Previous 7 days"
-              conversations={
-                groupedConversations[
-                  'Previous 7 days'
-                ]
-              }
-              activeConversation={
-                activeConversation
-              }
-              onSelect={onSelect}
-              onDelete={onDelete}
-              onEdit={onEdit}
-            />
-
-            <ConversationGroup
-              title="Older"
-              conversations={
-                groupedConversations.Older
-              }
-              activeConversation={
-                activeConversation
-              }
-              onSelect={onSelect}
-              onDelete={onDelete}
-              onEdit={onEdit}
-            />
-
+            <AnimatePresence mode="popLayout">
+              {filteredConversations.map(
+                (conversation) => (
+                  <ConversationItem
+                    key={conversation.id}
+                    conversation={conversation}
+                    isActive={
+                      activeConversation?.id ===
+                      conversation.id
+                    }
+                    onSelect={onSelect}
+                    onDelete={onDelete}
+                    onEdit={onEdit}
+                  />
+                )
+              )}
+            </AnimatePresence>
           </motion.div>
         ) : search ? (
           /* ====================================================

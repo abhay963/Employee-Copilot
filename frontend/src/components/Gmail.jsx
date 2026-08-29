@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { toast } from 'react-hot-toast';
 import { googleAPI } from '../services/api';
 
 const Gmail = () => {
@@ -13,8 +14,7 @@ const Gmail = () => {
   const [emails, setEmails] = useState([]);
   const [selectedEmail, setSelectedEmail] = useState(null);
 
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+
 
   const [showCompose, setShowCompose] = useState(false);
 
@@ -25,6 +25,7 @@ const Gmail = () => {
   });
 
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   // ============================================================
   // CHECK GOOGLE CONNECTION
@@ -33,9 +34,8 @@ const Gmail = () => {
   const checkConnection = async () => {
     try {
       setLoadingStatus(true);
-      setError('');
 
-      const response = await googleAPI.getCalendarStatus();
+      const response = await googleAPI.getGmailStatus();
 
       setConnected(Boolean(response?.connected));
     } catch (err) {
@@ -43,7 +43,7 @@ const Gmail = () => {
 
       setConnected(false);
 
-      setError(
+      toast.error(
         err?.error ||
           'Unable to check Google connection.'
       );
@@ -59,7 +59,6 @@ const Gmail = () => {
   const loadEmails = async () => {
     try {
       setLoadingEmails(true);
-      setError('');
 
       const response = await googleAPI.getRecentEmails(10);
 
@@ -68,13 +67,13 @@ const Gmail = () => {
       console.error('Error loading recent emails:', err);
 
       if (
-        err?.code === 'GOOGLE_NOT_CONNECTED' ||
+        err?.code === 'GOOGLE_GMAIL_NOT_CONNECTED' ||
         err?.error?.toLowerCase?.().includes('not connected')
       ) {
         setConnected(false);
       }
 
-      setError(
+      toast.error(
         err?.error ||
           'Failed to load recent emails.'
       );
@@ -89,9 +88,6 @@ const Gmail = () => {
 
   const connectGoogle = async () => {
     try {
-      setError('');
-      setSuccess('');
-
       const response = await googleAPI.getAuthUrl();
 
       if (!response?.authUrl) {
@@ -104,7 +100,7 @@ const Gmail = () => {
     } catch (err) {
       console.error('Error connecting Google:', err);
 
-      setError(
+      toast.error(
         err?.error ||
           err?.message ||
           'Failed to start Google authorization.'
@@ -118,18 +114,51 @@ const Gmail = () => {
 
   const openEmail = async (messageId) => {
     try {
-      setError('');
-
       const response = await googleAPI.getEmailById(messageId);
 
       setSelectedEmail(response?.email || null);
     } catch (err) {
       console.error('Error opening email:', err);
 
-      setError(
+      toast.error(
         err?.error ||
           'Failed to open email.'
       );
+    }
+  };
+
+  // ============================================================
+  // DISCONNECT GMAIL
+  // ============================================================
+
+  const handleDisconnect = async () => {
+    const confirmed = window.confirm(
+      'Disconnect Gmail from Employee Copilot?'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDisconnecting(true);
+
+      await googleAPI.revokeGmailTokens();
+
+      setConnected(false);
+      setEmails([]);
+
+      toast.success('Gmail disconnected successfully.');
+    } catch (err) {
+      console.error('Failed to disconnect Gmail:', err);
+
+      toast.error(
+        err?.error ||
+          err?.message ||
+          'Failed to disconnect Gmail.'
+      );
+    } finally {
+      setDisconnecting(false);
     }
   };
 
@@ -145,7 +174,7 @@ const Gmail = () => {
       !emailForm.subject.trim() ||
       !emailForm.body.trim()
     ) {
-      setError(
+      toast.error(
         'Please fill in recipient, subject, and message.'
       );
 
@@ -154,8 +183,6 @@ const Gmail = () => {
 
     try {
       setSendingEmail(true);
-      setError('');
-      setSuccess('');
 
       await googleAPI.sendEmail({
         to: emailForm.to.trim(),
@@ -172,11 +199,11 @@ const Gmail = () => {
 
       setShowCompose(false);
 
-      setSuccess('Email sent successfully.');
+      toast.success('Email sent successfully.');
     } catch (err) {
       console.error('Error sending email:', err);
 
-      setError(
+      toast.error(
         err?.error ||
           'Failed to send email.'
       );
@@ -241,6 +268,29 @@ const Gmail = () => {
   }, [connected]);
 
   // ============================================================
+  // URL CALLBACK RESULT
+  // ============================================================
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    const connected = params.get('google_connected');
+    const googleError = params.get('google_error');
+    const errorDescription = params.get('error_description');
+
+    if (connected === 'true') {
+      setConnected(true);
+      toast.success('Gmail connected successfully.');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    if (googleError) {
+      toast.error(errorDescription || 'Gmail connection failed.');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  // ============================================================
   // LOADING STATE
   // ============================================================
 
@@ -276,7 +326,7 @@ const Gmail = () => {
             </div>
           </div>
 
-          {error && <div style={styles.error}>{error}</div>}
+
 
           <div style={styles.connectCard}>
             <div style={styles.gmailIcon}>
@@ -347,6 +397,18 @@ const Gmail = () => {
 
             <button
               type="button"
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+              style={{
+                ...styles.secondaryButton,
+                ...(disconnecting ? styles.disabledButton : {}),
+              }}
+            >
+              {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowCompose(true)}
               style={styles.primaryButton}
             >
@@ -355,11 +417,7 @@ const Gmail = () => {
           </div>
         </div>
 
-        {/* ======================================================
-            MESSAGES
-        ====================================================== */}
-        {error && <div style={styles.error}>{error}</div>}
-        {success && <div style={styles.success}>{success}</div>}
+
 
         {/* ======================================================
             EMAIL CONTENT

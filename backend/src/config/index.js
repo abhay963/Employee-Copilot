@@ -3,17 +3,26 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export const config = {
-  // Server
+  // ============================================================
+  // SERVER
+  // ============================================================
+
   port: Number(process.env.PORT) || 3001,
 
   nodeEnv:
     process.env.NODE_ENV || 'development',
 
-  // Database
+  // ============================================================
+  // DATABASE
+  // ============================================================
+
   databaseUrl:
     process.env.DATABASE_URL,
 
-  // Gemini API
+  // ============================================================
+  // GEMINI
+  // ============================================================
+
   geminiApiKey:
     process.env.GEMINI_API_KEY,
 
@@ -21,12 +30,18 @@ export const config = {
     process.env.GEMINI_MODEL ||
     'gemini-2.5-flash',
 
+  // ============================================================
   // CORS
+  // ============================================================
+
   corsOrigin:
     process.env.CORS_ORIGIN ||
     'http://localhost:5173',
 
-  // File Upload
+  // ============================================================
+  // FILE UPLOAD
+  // ============================================================
+
   maxFileSize:
     Number(process.env.MAX_FILE_SIZE) ||
     10485760,
@@ -35,7 +50,10 @@ export const config = {
     process.env.UPLOAD_DIR ||
     './uploads',
 
-  // RAG Configuration
+  // ============================================================
+  // RAG
+  // ============================================================
+
   chunkSize:
     Number(process.env.CHUNK_SIZE) ||
     1000,
@@ -56,7 +74,10 @@ export const config = {
   topK:
     Number(process.env.TOP_K) || 5,
 
+  // ============================================================
   // JWT
+  // ============================================================
+
   jwtSecret:
     process.env.JWT_SECRET ||
     'your-secret-key-change-in-production',
@@ -65,34 +86,62 @@ export const config = {
     process.env.JWT_EXPIRES_IN ||
     '24h',
 
-  // Google OAuth
+  // ============================================================
+  // GOOGLE OAUTH
+  //
+  // Gmail and Calendar use the SAME Google OAuth client,
+  // but DIFFERENT redirect URIs and DIFFERENT scopes.
+  // ============================================================
+
   googleClientId:
     process.env.GOOGLE_CLIENT_ID,
 
   googleClientSecret:
     process.env.GOOGLE_CLIENT_SECRET,
 
-  googleRedirectUri:
-    process.env.GOOGLE_REDIRECT_URI ||
+  googleGmailRedirectUri:
+    process.env.GOOGLE_GMAIL_REDIRECT_URI ||
     'http://localhost:3001/api/google/callback',
 
-  // Tavily Search
+  googleCalendarRedirectUri:
+    process.env.GOOGLE_CALENDAR_REDIRECT_URI ||
+    'http://localhost:3001/api/google/calendar/callback',
+
+  // ============================================================
+  // TAVILY
+  // ============================================================
+
   tavilyApiKey:
     process.env.TAVILY_API_KEY,
 };
 
+// ============================================================
+// VALIDATE CONFIG
+// ============================================================
+
 export const validateConfig = () => {
   const required = [
-    'DATABASE_URL',
-    'GEMINI_API_KEY',
-    'GOOGLE_CLIENT_ID',
-    'GOOGLE_CLIENT_SECRET',
+    {
+      name: 'DATABASE_URL',
+      value: config.databaseUrl,
+    },
+    {
+      name: 'GEMINI_API_KEY',
+      value: config.geminiApiKey,
+    },
+    {
+      name: 'GOOGLE_CLIENT_ID',
+      value: config.googleClientId,
+    },
+    {
+      name: 'GOOGLE_CLIENT_SECRET',
+      value: config.googleClientSecret,
+    },
   ];
 
-  const missing =
-    required.filter(
-      (key) => !config[key]
-    );
+  const missing = required
+    .filter((item) => !item.value)
+    .map((item) => item.name);
 
   if (missing.length > 0) {
     throw new Error(
@@ -101,6 +150,13 @@ export const validateConfig = () => {
       )}`
     );
   }
+
+  // Log redirect URIs for debugging (not required to be set, have defaults)
+  console.log('==========================================');
+  console.log('Google OAuth Configuration:');
+  console.log('Gmail Redirect URI:', config.googleGmailRedirectUri);
+  console.log('Calendar Redirect URI:', config.googleCalendarRedirectUri);
+  console.log('==========================================');
 
   return true;
 };

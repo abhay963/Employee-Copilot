@@ -6,6 +6,7 @@ import {
   CalendarDays,
 } from 'lucide-react';
 
+import { toast } from 'react-hot-toast';
 import { googleAPI } from '../services/api';
 
 const GoogleCallback = () => {
@@ -40,6 +41,10 @@ const GoogleCallback = () => {
             'Google Calendar connection was cancelled.'
           );
 
+          toast.error(
+            'Google Calendar connection was cancelled.'
+          );
+
           return;
         }
 
@@ -52,6 +57,10 @@ const GoogleCallback = () => {
 
           setStatus('error');
           setMessage(
+            'Invalid Google OAuth response. Missing authorization code or state.'
+          );
+
+          toast.error(
             'Invalid Google OAuth response. Missing authorization code or state.'
           );
 
@@ -76,6 +85,10 @@ const GoogleCallback = () => {
         setStatus('success');
 
         setMessage(
+          'Google Calendar connected successfully!'
+        );
+
+        toast.success(
           'Google Calendar connected successfully!'
         );
 
@@ -109,11 +122,14 @@ const GoogleCallback = () => {
 
         setStatus('error');
 
-        setMessage(
+        const errorMessage =
           error?.error ||
             error?.message ||
-            'Failed to connect Google Calendar. Please try again.'
-        );
+            'Failed to connect Google Calendar. Please try again.';
+
+        setMessage(errorMessage);
+
+        toast.error(errorMessage);
       }
     };
 

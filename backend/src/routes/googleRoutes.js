@@ -1,85 +1,148 @@
 import express from 'express';
 
 import { authenticate } from '../middleware/auth.js';
+import { config } from '../config/index.js';
 
 import googleCalendarService from '../services/googleCalendarService.js';
 import gmailService from '../services/gmailService.js';
 
-const router = express.Router();
+const router =
+  express.Router();
 
-const FRONTEND_URL = 'http://localhost:5173';
+const FRONTEND_URL =
+  process.env.FRONTEND_URL ||
+  'http://localhost:5173';
 
 // ============================================================
-// HELPER FUNCTIONS
+// ERROR HELPERS
 // ============================================================
 
 function getErrorCode(error) {
   return (
     error?.code ||
     error?.response?.data?.error ||
+    error?.response?.status ||
     null
   );
 }
 
 function getErrorMessage(error) {
   return (
-    error?.response?.data?.error_description ||
-    error?.response?.data?.message ||
+    error?.response?.data
+      ?.error_description ||
+    error?.response?.data
+      ?.message ||
     error?.message ||
     ''
   );
 }
 
 function isPermissionError(error) {
-  const message = getErrorMessage(error).toLowerCase();
+  const message =
+    getErrorMessage(
+      error
+    ).toLowerCase();
+
+  const code =
+    getErrorCode(error);
 
   return (
-    getErrorCode(error) === 403 ||
-    message.includes('insufficient permission') ||
-    message.includes('insufficientpermissions') ||
-    message.includes('permission')
+    code === 403 ||
+    message.includes(
+      'insufficient permission'
+    ) ||
+    message.includes(
+      'insufficientpermissions'
+    ) ||
+    message.includes(
+      'permission'
+    )
   );
 }
 
 // ============================================================
-// GMAIL OAUTH
+// GOOGLE OAUTH ERROR DESCRIPTION
 // ============================================================
 
-/**
- * GET /api/google/auth/url
- *
- * Gmail OAuth only.
- *
- * Gmail service is responsible for:
- * - Gmail OAuth scopes
- * - Gmail authorization URL
- * - Gmail token storage
- */
+function getGoogleOAuthErrorDescription(
+  error
+) {
+  switch (error) {
+    case 'access_denied':
+      return (
+        'You denied access to Google. Please try again and grant the required permissions.'
+      );
+
+    case 'invalid_request':
+      return (
+        'Invalid Google OAuth request. Please try again.'
+      );
+
+    case 'unauthorized_client':
+      return (
+        'The application is not authorized. Please check your Google OAuth configuration.'
+      );
+
+    case 'invalid_client':
+      return (
+        'The Google OAuth client configuration is invalid.'
+      );
+
+    case 'redirect_uri_mismatch':
+      return (
+        'The redirect URI does not match the Google OAuth configuration.'
+      );
+
+    case 'invalid_grant':
+      return (
+        'The Google authorization code is invalid or expired. Please reconnect.'
+      );
+
+    default:
+      return (
+        'Google authorization failed. Please try again.'
+      );
+  }
+}
+
+// ============================================================
+// GMAIL OAUTH URL
+// ============================================================
+
 router.get(
   '/auth/url',
   authenticate,
   (req, res) => {
     try {
-      const state = String(req.user.id);
+      const state =
+        gmailService.createOAuthState(
+          req.user.id
+        );
 
       const authUrl =
-        gmailService.getAuthUrl(state);
+        gmailService.getAuthUrl(
+          state
+        );
 
       console.log(
         '=========================================='
       );
+
       console.log(
         'Gmail OAuth URL generated'
       );
+
       console.log(
         'User ID:',
         req.user.id
       );
+
       console.log(
-        'Redirect URI:',
-        process.env.GOOGLE_GMAIL_REDIRECT_URI ||
-          process.env.GOOGLE_REDIRECT_URI
+        'Gmail Redirect URI:',
+        process.env
+          .GOOGLE_GMAIL_REDIRECT_URI
       );
+
       console.log(
         '=========================================='
       );
@@ -94,11 +157,13 @@ router.get(
         error
       );
 
-      return res.status(500).json({
-        success: false,
-        error:
-          'Failed to generate Gmail authorization URL',
-      });
+      return res.status(500).json(
+        {
+          success: false,
+          error:
+            'Failed to generate Gmail authorization URL',
+        }
+      );
     }
   }
 );
@@ -107,11 +172,6 @@ router.get(
 // GMAIL OAUTH CALLBACK
 // ============================================================
 
-/**
- * GET /api/google/callback
- *
- * Gmail OAuth callback only.
- */
 router.get(
   '/callback',
   async (req, res) => {
@@ -137,39 +197,25 @@ router.get(
       );
 
       console.log(
-        'State:',
-        state
+        'State exists:',
+        Boolean(state)
       );
 
       console.log(
-        'Error:',
+        'Google error:',
         error
-      );
-
-      console.log(
-        'Redirect URI:',
-        process.env.GOOGLE_GMAIL_REDIRECT_URI ||
-          process.env.GOOGLE_REDIRECT_URI
       );
 
       console.log(
         '=========================================='
       );
 
-      // --------------------------------------------------------
-      // GOOGLE RETURNED ERROR
-      // --------------------------------------------------------
-
       if (error) {
         const description =
           error_description ||
-          getGoogleOAuthErrorDescription(error);
-
-        console.error(
-          'Google Gmail OAuth error:',
-          error,
-          description
-        );
+          getGoogleOAuthErrorDescription(
+            error
+          );
 
         return res.redirect(
           `${FRONTEND_URL}/gmail?google_error=${encodeURIComponent(
@@ -180,10 +226,6 @@ router.get(
         );
       }
 
-      // --------------------------------------------------------
-      // MISSING CODE
-      // --------------------------------------------------------
-
       if (!code) {
         return res.redirect(
           `${FRONTEND_URL}/gmail?google_error=missing_code&error_description=${encodeURIComponent(
@@ -191,10 +233,6 @@ router.get(
           )}`
         );
       }
-
-      // --------------------------------------------------------
-      // MISSING STATE
-      // --------------------------------------------------------
 
       if (!state) {
         return res.redirect(
@@ -204,14 +242,23 @@ router.get(
         );
       }
 
-      // --------------------------------------------------------
-      // EXCHANGE GMAIL CODE
-      // --------------------------------------------------------
+      const userId =
+        gmailService.verifyOAuthState(
+          state
+        );
+
+      if (!userId) {
+        return res.redirect(
+          `${FRONTEND_URL}/gmail?google_error=invalid_state&error_description=${encodeURIComponent(
+            'Invalid or expired Gmail OAuth state. Please try again.'
+          )}`
+        );
+      }
 
       const tokens =
         await gmailService.exchangeCodeForTokens(
           code,
-          state
+          userId
         );
 
       console.log(
@@ -224,39 +271,13 @@ router.get(
 
       console.log(
         'User ID:',
-        state
+        userId
       );
 
       console.log(
-        'OAuth scopes received:',
-        tokens?.scope || 'Not returned'
-      );
-
-      console.log(
-        'Gmail readonly scope:',
-        tokens?.scope?.includes(
-          'gmail.readonly'
-        )
-          ? 'YES'
-          : 'NO'
-      );
-
-      console.log(
-        'Gmail send scope:',
-        tokens?.scope?.includes(
-          'gmail.send'
-        )
-          ? 'YES'
-          : 'NO'
-      );
-
-      console.log(
-        'Calendar scope:',
-        tokens?.scope?.includes(
-          'calendar'
-        )
-          ? 'YES'
-          : 'NO'
+        'OAuth scopes:',
+        tokens?.scope ||
+          'Not returned'
       );
 
       console.log(
@@ -273,7 +294,9 @@ router.get(
       );
 
       const errorText =
-        getErrorMessage(error).toLowerCase();
+        getErrorMessage(
+          error
+        ).toLowerCase();
 
       let errorMessage =
         'callback_failed';
@@ -282,13 +305,15 @@ router.get(
         'Failed to complete Gmail authorization. Please try again.';
 
       if (
-        errorText.includes('access blocked')
+        errorText.includes(
+          'access blocked'
+        )
       ) {
         errorMessage =
           'access_blocked';
 
         errorDescription =
-          'Your Google account is not configured as a test user for this application. Add your Google email to the Google Cloud Console test users list.';
+          'Your Google account is not configured as a test user for this application.';
       } else if (
         errorText.includes(
           'redirect_uri_mismatch'
@@ -300,7 +325,9 @@ router.get(
         errorDescription =
           'The Gmail redirect URI does not match the Google OAuth configuration.';
       } else if (
-        errorText.includes('invalid_grant')
+        errorText.includes(
+          'invalid_grant'
+        )
       ) {
         errorMessage =
           'invalid_grant';
@@ -321,75 +348,22 @@ router.get(
 );
 
 // ============================================================
-// LEGACY GMAIL POST CALLBACK
-// ============================================================
-
-router.post(
-  '/auth/callback',
-  authenticate,
-  async (req, res) => {
-    try {
-      const {
-        code,
-        state,
-      } = req.body;
-
-      if (!code || !state) {
-        return res.status(400).json({
-          success: false,
-          error:
-            'Code and state are required',
-        });
-      }
-
-      const tokens =
-        await gmailService.exchangeCodeForTokens(
-          code,
-          state
-        );
-
-      return res.json({
-        success: true,
-        message:
-          'Gmail connected successfully',
-        scopes:
-          tokens?.scope || null,
-      });
-    } catch (error) {
-      console.error(
-        'Error handling Gmail OAuth POST callback:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error:
-          'Failed to connect Gmail',
-      });
-    }
-  }
-);
-
-// ============================================================
-// GMAIL CONNECTION STATUS
+// GMAIL STATUS
 // ============================================================
 
 router.get(
-  '/auth/status',
+  '/gmail/status',
   authenticate,
   async (req, res) => {
     try {
-      const tokens =
-        await gmailService.getTokens(
+      const connected =
+        await gmailService.isConnected(
           req.user.id
         );
 
       return res.json({
         success: true,
-        connected:
-          Boolean(tokens),
-        scopes:
-          tokens?.scope || null,
+        connected,
       });
     } catch (error) {
       console.error(
@@ -408,20 +382,42 @@ router.get(
 );
 
 // ============================================================
-// CALENDAR OAUTH
+// GMAIL REVOKE
 // ============================================================
 
-/**
- * GET /api/google/calendar/auth/url
- *
- * Calendar OAuth ONLY.
- *
- * IMPORTANT:
- * This must use googleCalendarService.
- *
- * Gmail service must never generate the Calendar
- * authorization URL.
- */
+router.delete(
+  '/gmail/revoke',
+  authenticate,
+  async (req, res) => {
+    try {
+      await gmailService.revokeTokens(
+        req.user.id
+      );
+
+      return res.json({
+        success: true,
+        message:
+          'Gmail disconnected successfully',
+      });
+    } catch (error) {
+      console.error(
+        'Error revoking Gmail:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to disconnect Gmail',
+      });
+    }
+  }
+);
+
+// ============================================================
+// CALENDAR OAUTH URL
+// ============================================================
+
 router.get(
   '/calendar/auth/url',
   authenticate,
@@ -451,9 +447,8 @@ router.get(
       );
 
       console.log(
-        'Redirect URI:',
-        process.env.GOOGLE_CALENDAR_REDIRECT_URI ||
-          'http://localhost:3001/api/google/calendar/callback'
+        'Calendar Redirect URI:',
+        config.googleCalendarRedirectUri
       );
 
       console.log(
@@ -483,17 +478,6 @@ router.get(
 // CALENDAR OAUTH CALLBACK
 // ============================================================
 
-/**
- * GET /api/google/calendar/callback
- *
- * Calendar OAuth callback ONLY.
- *
- * Calendar tokens are stored by:
- *
- * googleCalendarService
- *
- * GmailService is NOT involved here.
- */
 router.get(
   '/calendar/callback',
   async (req, res) => {
@@ -514,18 +498,33 @@ router.get(
       );
 
       console.log(
+        'Request URL:',
+        req.originalUrl
+      );
+
+      console.log(
+        'Request path:',
+        req.path
+      );
+
+      console.log(
         'Code exists:',
         Boolean(code)
       );
 
       console.log(
-        'State:',
-        state
+        'State exists:',
+        Boolean(state)
       );
 
       console.log(
-        'Error:',
+        'Google error:',
         error
+      );
+
+      console.log(
+        'Calendar Redirect URI:',
+        config.googleCalendarRedirectUri
       );
 
       console.log(
@@ -539,7 +538,9 @@ router.get(
       if (error) {
         const description =
           error_description ||
-          getGoogleOAuthErrorDescription(error);
+          getGoogleOAuthErrorDescription(
+            error
+          );
 
         console.error(
           'Google Calendar OAuth error:',
@@ -584,10 +585,26 @@ router.get(
       // VERIFY STATE
       // --------------------------------------------------------
 
+      console.log(
+        'Verifying Calendar OAuth state...'
+      );
+
       const userId =
         googleCalendarService.verifyOAuthState(
           state
         );
+
+      console.log(
+        'Calendar OAuth state verification result:',
+        userId ? 'SUCCESS' : 'FAILED'
+      );
+
+      if (userId) {
+        console.log(
+          'User ID extracted from state:',
+          userId
+        );
+      }
 
       if (!userId) {
         return res.redirect(
@@ -598,14 +615,22 @@ router.get(
       }
 
       // --------------------------------------------------------
-      // EXCHANGE CALENDAR CODE
+      // EXCHANGE CODE
       // --------------------------------------------------------
+
+      console.log(
+        'Exchanging Calendar authorization code for tokens...'
+      );
 
       const tokens =
         await googleCalendarService.exchangeCodeForTokens(
           code,
           userId
         );
+
+      console.log(
+        'Calendar token exchange completed'
+      );
 
       console.log(
         '=========================================='
@@ -622,11 +647,12 @@ router.get(
 
       console.log(
         'OAuth scopes received:',
-        tokens?.scope || 'Not returned'
+        tokens?.scope ||
+          'Not returned'
       );
 
       console.log(
-        'Calendar scope:',
+        'Calendar scope present:',
         tokens?.scope?.includes(
           'calendar'
         )
@@ -635,12 +661,22 @@ router.get(
       );
 
       console.log(
-        'Gmail scope:',
+        'Gmail scope present:',
         tokens?.scope?.includes(
           'gmail'
         )
           ? 'YES'
           : 'NO'
+      );
+
+      console.log(
+        'Token has access_token:',
+        Boolean(tokens?.access_token)
+      );
+
+      console.log(
+        'Token has refresh_token:',
+        Boolean(tokens?.refresh_token)
       );
 
       console.log(
@@ -657,13 +693,14 @@ router.get(
       );
 
       const errorText =
-        getErrorMessage(error).toLowerCase();
+        getErrorMessage(
+          error
+        ).toLowerCase();
 
       let errorMessage =
         'calendar_callback_failed';
 
       let errorDescription =
-        error?.message ||
         'Failed to complete Google Calendar authorization. Please try again.';
 
       if (
@@ -675,7 +712,7 @@ router.get(
           'access_blocked';
 
         errorDescription =
-          'Your Google account is not configured as a test user for this application. Add your Google email to the Google Cloud Console test users list.';
+          'Your Google account is not configured as a test user for this application.';
       } else if (
         errorText.includes(
           'redirect_uri_mismatch'
@@ -710,7 +747,7 @@ router.get(
 );
 
 // ============================================================
-// CALENDAR CONNECTION STATUS
+// CALENDAR STATUS
 // ============================================================
 
 router.get(
@@ -777,6 +814,98 @@ router.delete(
 );
 
 // ============================================================
+// CALENDAR EVENTS
+// ============================================================
+
+router.get(
+  '/calendar/events',
+  authenticate,
+  async (req, res) => {
+    try {
+      const {
+        startDate,
+        endDate,
+      } = req.query;
+
+      if (
+        !startDate ||
+        !endDate
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Start date and end date are required',
+        });
+      }
+
+      const events =
+        await googleCalendarService.getEvents(
+          req.user.id,
+          startDate,
+          endDate
+        );
+
+      return res.json({
+        success: true,
+        events,
+      });
+    } catch (error) {
+      console.error(
+        'Error getting calendar events:',
+        error
+      );
+
+      const errorCode =
+        getErrorCode(error);
+
+      if (
+        errorCode ===
+        'GOOGLE_CALENDAR_NOT_CONNECTED'
+      ) {
+        return res.status(401).json({
+          success: false,
+          code:
+            'GOOGLE_CALENDAR_NOT_CONNECTED',
+          error:
+            'Google Calendar is not connected.',
+        });
+      }
+
+      if (
+        errorCode ===
+        'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
+      ) {
+        return res.status(401).json({
+          success: false,
+          code:
+            'GOOGLE_CALENDAR_RECONNECT_REQUIRED',
+          error:
+            'Google Calendar authorization has expired. Please reconnect.',
+        });
+      }
+
+      if (
+        isPermissionError(error)
+      ) {
+        return res.status(403).json({
+          success: false,
+          code:
+            'GOOGLE_CALENDAR_PERMISSION_REQUIRED',
+          error:
+            'Google Calendar permission is missing. Please reconnect Google Calendar.',
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to get calendar events',
+      });
+    }
+  }
+);
+
+// ============================================================
 // CALENDAR CONFLICTS
 // ============================================================
 
@@ -823,12 +952,12 @@ router.get(
 
       if (
         errorCode ===
-        'GOOGLE_NOT_CONNECTED'
+        'GOOGLE_CALENDAR_NOT_CONNECTED'
       ) {
         return res.status(401).json({
           success: false,
           code:
-            'GOOGLE_NOT_CONNECTED',
+            'GOOGLE_CALENDAR_NOT_CONNECTED',
           error:
             'Google Calendar is not connected.',
         });
@@ -836,12 +965,12 @@ router.get(
 
       if (
         errorCode ===
-        'GOOGLE_RECONNECT_REQUIRED'
+        'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
       ) {
         return res.status(401).json({
           success: false,
           code:
-            'GOOGLE_RECONNECT_REQUIRED',
+            'GOOGLE_CALENDAR_RECONNECT_REQUIRED',
           error:
             'Google Calendar authorization has expired. Please reconnect.',
         });
@@ -851,96 +980,6 @@ router.get(
         success: false,
         error:
           'Failed to check calendar conflicts',
-      });
-    }
-  }
-);
-
-// ============================================================
-// GET CALENDAR EVENTS
-// ============================================================
-
-router.get(
-  '/calendar/events',
-  authenticate,
-  async (req, res) => {
-    try {
-      const {
-        startDate,
-        endDate,
-      } = req.query;
-
-      if (
-        !startDate ||
-        !endDate
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            'Start date and end date are required',
-        });
-      }
-
-      const events =
-        await googleCalendarService.getEvents(
-          req.user.id,
-          startDate,
-          endDate
-        );
-
-      return res.json({
-        success: true,
-        events,
-      });
-    } catch (error) {
-      console.error(
-        'Error getting calendar events:',
-        error
-      );
-
-      const errorCode =
-        getErrorCode(error);
-
-      if (
-        errorCode ===
-        'GOOGLE_NOT_CONNECTED'
-      ) {
-        return res.status(401).json({
-          success: false,
-          code:
-            'GOOGLE_NOT_CONNECTED',
-          error:
-            'Google Calendar is not connected.',
-        });
-      }
-
-      if (
-        errorCode ===
-        'GOOGLE_RECONNECT_REQUIRED'
-      ) {
-        return res.status(401).json({
-          success: false,
-          code:
-            'GOOGLE_RECONNECT_REQUIRED',
-          error:
-            'Google Calendar authorization has expired. Please reconnect.',
-        });
-      }
-
-      if (isPermissionError(error)) {
-        return res.status(403).json({
-          success: false,
-          code:
-            'GOOGLE_CALENDAR_PERMISSION_REQUIRED',
-          error:
-            'Google Calendar permission is missing. Please reconnect your Google Calendar.',
-        });
-      }
-
-      return res.status(500).json({
-        success: false,
-        error:
-          'Failed to get calendar events',
       });
     }
   }
@@ -960,7 +999,8 @@ router.post(
 
       if (
         !eventData ||
-        typeof eventData !== 'object'
+        typeof eventData !==
+          'object'
       ) {
         return res.status(400).json({
           success: false,
@@ -990,24 +1030,39 @@ router.post(
 
       if (
         errorCode ===
-        'GOOGLE_NOT_CONNECTED'
+        'GOOGLE_CALENDAR_NOT_CONNECTED'
       ) {
         return res.status(401).json({
           success: false,
           code:
-            'GOOGLE_NOT_CONNECTED',
+            'GOOGLE_CALENDAR_NOT_CONNECTED',
           error:
             'Google Calendar is not connected.',
         });
       }
 
-      if (isPermissionError(error)) {
+      if (
+        errorCode ===
+        'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
+      ) {
+        return res.status(401).json({
+          success: false,
+          code:
+            'GOOGLE_CALENDAR_RECONNECT_REQUIRED',
+          error:
+            'Google Calendar authorization has expired. Please reconnect.',
+        });
+      }
+
+      if (
+        isPermissionError(error)
+      ) {
         return res.status(403).json({
           success: false,
           code:
             'GOOGLE_CALENDAR_PERMISSION_REQUIRED',
           error:
-            'Google Calendar permission is missing. Please reconnect your Google Calendar.',
+            'Google Calendar permission is missing. Please reconnect Google Calendar.',
         });
       }
 
@@ -1021,7 +1076,174 @@ router.post(
 );
 
 // ============================================================
-// GMAIL - SEND EMAIL
+// GMAIL RECENT EMAILS
+// ============================================================
+
+router.get(
+  '/gmail/recent',
+  authenticate,
+  async (req, res) => {
+    try {
+      const maxResults =
+        Number(
+          req.query.maxResults
+        ) || 10;
+
+      const emails =
+        await gmailService.getRecentEmails(
+          req.user.id,
+          maxResults
+        );
+
+      return res.json({
+        success: true,
+        emails,
+      });
+    } catch (error) {
+      console.error(
+        'Error getting recent emails:',
+        error
+      );
+
+      const errorCode =
+        getErrorCode(error);
+
+      if (
+        errorCode ===
+        'GOOGLE_GMAIL_NOT_CONNECTED'
+      ) {
+        return res.status(401).json({
+          success: false,
+          code:
+            'GOOGLE_GMAIL_NOT_CONNECTED',
+          error:
+            'Gmail is not connected.',
+        });
+      }
+
+      if (
+        errorCode ===
+        'GOOGLE_GMAIL_RECONNECT_REQUIRED'
+      ) {
+        return res.status(401).json({
+          success: false,
+          code:
+            'GOOGLE_GMAIL_RECONNECT_REQUIRED',
+          error:
+            'Gmail authorization has expired. Please reconnect Gmail.',
+        });
+      }
+
+      if (
+        isPermissionError(error)
+      ) {
+        return res.status(403).json({
+          success: false,
+          code:
+            'GOOGLE_GMAIL_PERMISSION_REQUIRED',
+          error:
+            'Gmail permission is missing. Please reconnect Gmail.',
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to get recent emails',
+      });
+    }
+  }
+);
+
+// ============================================================
+// GMAIL GET EMAIL
+// ============================================================
+
+router.get(
+  '/gmail/:messageId',
+  authenticate,
+  async (req, res) => {
+    try {
+      const {
+        messageId,
+      } = req.params;
+
+      if (!messageId) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Message ID is required',
+        });
+      }
+
+      const email =
+        await gmailService.getEmailById(
+          req.user.id,
+          messageId
+        );
+
+      return res.json({
+        success: true,
+        email,
+      });
+    } catch (error) {
+      console.error(
+        'Error getting email by ID:',
+        error
+      );
+
+      const errorCode =
+        getErrorCode(error);
+
+      if (
+        errorCode ===
+        'GOOGLE_GMAIL_NOT_CONNECTED'
+      ) {
+        return res.status(401).json({
+          success: false,
+          code:
+            'GOOGLE_GMAIL_NOT_CONNECTED',
+          error:
+            'Gmail is not connected.',
+        });
+      }
+
+      if (
+        errorCode ===
+        'GOOGLE_GMAIL_RECONNECT_REQUIRED'
+      ) {
+        return res.status(401).json({
+          success: false,
+          code:
+            'GOOGLE_GMAIL_RECONNECT_REQUIRED',
+          error:
+            'Gmail authorization has expired. Please reconnect Gmail.',
+        });
+      }
+
+      if (
+        isPermissionError(error)
+      ) {
+        return res.status(403).json({
+          success: false,
+          code:
+            'GOOGLE_GMAIL_PERMISSION_REQUIRED',
+          error:
+            'Gmail permission is missing. Please reconnect Gmail.',
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Failed to get email',
+      });
+    }
+  }
+);
+
+// ============================================================
+// GMAIL SEND
 // ============================================================
 
 router.post(
@@ -1073,7 +1295,8 @@ router.post(
         getErrorCode(error);
 
       if (
-        errorCode === 403 ||
+        errorCode ===
+          403 ||
         isPermissionError(error)
       ) {
         return res.status(403).json({
@@ -1081,18 +1304,18 @@ router.post(
           code:
             'GOOGLE_GMAIL_PERMISSION_REQUIRED',
           error:
-            'Gmail permission is missing. Please reconnect Gmail and grant Gmail permissions.',
+            'Gmail permission is missing. Please reconnect Gmail.',
         });
       }
 
       if (
         errorCode ===
-        'GOOGLE_NOT_CONNECTED'
+        'GOOGLE_GMAIL_NOT_CONNECTED'
       ) {
         return res.status(401).json({
           success: false,
           code:
-            'GOOGLE_NOT_CONNECTED',
+            'GOOGLE_GMAIL_NOT_CONNECTED',
           error:
             'Gmail is not connected.',
         });
@@ -1100,12 +1323,12 @@ router.post(
 
       if (
         errorCode ===
-        'GOOGLE_RECONNECT_REQUIRED'
+        'GOOGLE_GMAIL_RECONNECT_REQUIRED'
       ) {
         return res.status(401).json({
           success: false,
           code:
-            'GOOGLE_RECONNECT_REQUIRED',
+            'GOOGLE_GMAIL_RECONNECT_REQUIRED',
           error:
             'Gmail authorization has expired. Please reconnect Gmail.',
         });
@@ -1119,261 +1342,5 @@ router.post(
     }
   }
 );
-
-// ============================================================
-// GMAIL - GET RECENT EMAILS
-// ============================================================
-
-router.get(
-  '/gmail/recent',
-  authenticate,
-  async (req, res) => {
-    try {
-      const maxResults =
-        parseInt(
-          req.query.maxResults,
-          10
-        ) || 10;
-
-      const emails =
-        await gmailService.getRecentEmails(
-          req.user.id,
-          maxResults
-        );
-
-      return res.json({
-        success: true,
-        emails,
-      });
-    } catch (error) {
-      console.error(
-        'Error getting recent emails:',
-        error
-      );
-
-      const errorCode =
-        getErrorCode(error);
-
-      const errorReason =
-        getErrorMessage(error);
-
-      // --------------------------------------------------------
-      // GMAIL PERMISSION
-      // --------------------------------------------------------
-
-      if (
-        errorCode === 403 ||
-        errorReason
-          .toLowerCase()
-          .includes(
-            'insufficient permission'
-          )
-      ) {
-        return res.status(403).json({
-          success: false,
-          code:
-            'GOOGLE_GMAIL_PERMISSION_REQUIRED',
-          error:
-            'Gmail permission is missing. Please reconnect Gmail and grant Gmail access.',
-        });
-      }
-
-      // --------------------------------------------------------
-      // NOT CONNECTED
-      // --------------------------------------------------------
-
-      if (
-        errorCode ===
-        'GOOGLE_NOT_CONNECTED'
-      ) {
-        return res.status(401).json({
-          success: false,
-          code:
-            'GOOGLE_NOT_CONNECTED',
-          error:
-            'Gmail is not connected.',
-        });
-      }
-
-      // --------------------------------------------------------
-      // RECONNECT
-      // --------------------------------------------------------
-
-      if (
-        errorCode ===
-        'GOOGLE_RECONNECT_REQUIRED'
-      ) {
-        return res.status(401).json({
-          success: false,
-          code:
-            'GOOGLE_RECONNECT_REQUIRED',
-          error:
-            'Gmail authorization has expired. Please reconnect Gmail.',
-        });
-      }
-
-      return res.status(500).json({
-        success: false,
-        error:
-          'Failed to get recent emails',
-      });
-    }
-  }
-);
-
-// ============================================================
-// GMAIL - GET EMAIL BY ID
-// ============================================================
-
-router.get(
-  '/gmail/:messageId',
-  authenticate,
-  async (req, res) => {
-    try {
-      const {
-        messageId,
-      } = req.params;
-
-      const email =
-        await gmailService.getEmailById(
-          req.user.id,
-          messageId
-        );
-
-      return res.json({
-        success: true,
-        email,
-      });
-    } catch (error) {
-      console.error(
-        'Error getting email by ID:',
-        error
-      );
-
-      const errorCode =
-        getErrorCode(error);
-
-      const errorReason =
-        getErrorMessage(error);
-
-      if (
-        errorCode === 403 ||
-        errorReason
-          .toLowerCase()
-          .includes(
-            'insufficient permission'
-          )
-      ) {
-        return res.status(403).json({
-          success: false,
-          code:
-            'GOOGLE_GMAIL_PERMISSION_REQUIRED',
-          error:
-            'Gmail permission is missing. Please reconnect Gmail.',
-        });
-      }
-
-      if (
-        errorCode ===
-        'GOOGLE_NOT_CONNECTED'
-      ) {
-        return res.status(401).json({
-          success: false,
-          code:
-            'GOOGLE_NOT_CONNECTED',
-          error:
-            'Gmail is not connected.',
-        });
-      }
-
-      if (
-        errorCode ===
-        'GOOGLE_RECONNECT_REQUIRED'
-      ) {
-        return res.status(401).json({
-          success: false,
-          code:
-            'GOOGLE_RECONNECT_REQUIRED',
-          error:
-            'Gmail authorization has expired. Please reconnect Gmail.',
-        });
-      }
-
-      return res.status(500).json({
-        success: false,
-        error:
-          'Failed to get email',
-      });
-    }
-  }
-);
-
-// ============================================================
-// GMAIL REVOKE
-// ============================================================
-
-router.delete(
-  '/auth/revoke',
-  authenticate,
-  async (req, res) => {
-    try {
-      await gmailService.revokeTokens(
-        req.user.id
-      );
-
-      return res.json({
-        success: true,
-        message:
-          'Gmail disconnected successfully',
-      });
-    } catch (error) {
-      console.error(
-        'Error revoking Gmail tokens:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        error:
-          'Failed to disconnect Gmail',
-      });
-    }
-  }
-);
-
-// ============================================================
-// GOOGLE OAUTH ERROR DESCRIPTION
-// ============================================================
-
-function getGoogleOAuthErrorDescription(
-  error
-) {
-  switch (error) {
-    case 'access_denied':
-      return 'You denied access to Google. Please try again and grant the required permissions.';
-
-    case 'invalid_request':
-      return 'Invalid Google OAuth request. Please try again.';
-
-    case 'unauthorized_client':
-      return 'The application is not authorized. Please check your Google OAuth configuration.';
-
-    case 'invalid_client':
-      return 'The Google OAuth client configuration is invalid.';
-
-    case 'redirect_uri_mismatch':
-      return 'The redirect URI does not match the Google OAuth configuration.';
-
-    case 'invalid_grant':
-      return 'The Google authorization code is invalid or expired. Please reconnect.';
-
-    default:
-      return 'Google authorization failed. Please try again.';
-  }
-}
-
-// ============================================================
-// EXPORT ROUTER
-// ============================================================
 
 export default router;

@@ -158,4 +158,19 @@ CREATE TABLE IF NOT EXISTS google_oauth_tokens (
 
 CREATE INDEX IF NOT EXISTS google_oauth_tokens_user_idx ON google_oauth_tokens(user_id);
 
+-- Google Calendar OAuth tokens table (separate from Gmail)
+CREATE TABLE IF NOT EXISTS google_calendar_oauth_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    token_type VARCHAR(50) DEFAULT 'Bearer',
+    expires_at TIMESTAMP,
+    scope TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS google_calendar_oauth_tokens_user_idx ON google_calendar_oauth_tokens(user_id);
+
 
