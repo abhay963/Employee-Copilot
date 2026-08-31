@@ -137,10 +137,10 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
 
   const getStatusBadge = (status) => {
     const styles = {
-      pending: 'bg-amber-50 text-amber-700 border-amber-200',
-      approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      rejected: 'bg-rose-50 text-rose-700 border-rose-200',
-      cancelled: 'bg-gray-50 text-gray-700 border-gray-200'
+      pending: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800',
+      approved: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800',
+      rejected: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800',
+      cancelled: 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
     };
     const icons = {
       pending: <Clock size={12} />,
@@ -167,9 +167,9 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
 
   const getLeaveTypeColor = (type) => {
     const colors = {
-      annual: 'bg-blue-50 text-blue-700',
-      sick: 'bg-rose-50 text-rose-700',
-      personal: 'bg-purple-50 text-purple-700'
+      annual: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400',
+      sick: 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400',
+      personal: 'bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-400'
     };
     return colors[type] || colors.annual;
   };
@@ -211,15 +211,15 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
+      className="bg-surface rounded-2xl p-6 shadow-sm border border-default hover:shadow-md transition-shadow"
     >
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
-          <p className="text-3xl font-bold text-gray-900">{value}</p>
+          <p className="text-sm font-medium text-secondary mb-1">{title}</p>
+          <p className="text-3xl font-bold text-primary">{value}</p>
         </div>
         <div className={`w-12 h-12 rounded-xl ${color} flex items-center justify-center`}>
-          <Icon size={24} className="text-white" />
+          <Icon size={24} className="text-inverse" />
         </div>
       </div>
     </motion.div>
@@ -231,7 +231,7 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full"
+          className="w-10 h-10 border-4 border-light border-t-accent-primary rounded-full"
         />
       </div>
     );
@@ -245,13 +245,13 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3"
+            className="p-4 bg-danger-light border border-danger rounded-xl flex items-start gap-3"
           >
-            <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-rose-700">{error}</p>
+            <AlertCircle className="w-5 h-5 text-danger flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-danger">{error}</p>
             <button
               onClick={() => setError('')}
-              className="ml-auto text-rose-400 hover:text-rose-600"
+              className="ml-auto text-danger/70 hover:text-danger"
             >
               <X size={16} />
             </button>
@@ -263,13 +263,13 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3"
+            className="p-4 bg-success-light border border-success rounded-xl flex items-start gap-3"
           >
-            <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-emerald-700">{success}</p>
+            <CheckCircle className="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-success">{success}</p>
             <button
               onClick={() => setSuccess('')}
-              className="ml-auto text-emerald-400 hover:text-emerald-600"
+              className="ml-auto text-success/70 hover:text-success"
             >
               <X size={16} />
             </button>
@@ -311,19 +311,19 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+                className="bg-surface rounded-2xl shadow-sm border border-default overflow-hidden"
               >
-                <div className="p-6 border-b border-gray-100">
-                  <h3 className="text-lg font-semibold text-gray-900">New Leave Request</h3>
-                  <p className="text-sm text-gray-500 mt-1">Submit a new leave request for approval</p>
+                <div className="p-6 border-b border-light">
+                  <h3 className="text-lg font-semibold text-primary">New Leave Request</h3>
+                  <p className="text-sm text-secondary mt-1">Submit a new leave request for approval</p>
                 </div>
                 <form onSubmit={handleCreateRequest} className="p-6 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Leave Type</label>
+                    <label className="block text-sm font-medium text-primary mb-2">Leave Type</label>
                     <select
                       value={formData.leave_type}
                       onChange={(e) => setFormData({ ...formData, leave_type: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
+                      className="w-full px-4 py-2.5 border border-default rounded-xl focus:ring-2 focus:ring-accent-primary focus:border-transparent outline-none transition-all bg-surface text-primary"
                     >
                       <option value="annual">Annual Leave</option>
                       <option value="sick">Sick Leave</option>
@@ -332,47 +332,47 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                      <label className="block text-sm font-medium text-primary mb-2">Start Date</label>
                       <input
                         type="date"
                         value={formData.start_date}
                         onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                         required
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
+                        className="w-full px-4 py-2.5 border border-default rounded-xl focus:ring-2 focus:ring-accent-primary focus:border-transparent outline-none transition-all bg-input text-primary"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                      <label className="block text-sm font-medium text-primary mb-2">End Date</label>
                       <input
                         type="date"
                         value={formData.end_date}
                         onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                         required
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
+                        className="w-full px-4 py-2.5 border border-default rounded-xl focus:ring-2 focus:ring-accent-primary focus:border-transparent outline-none transition-all bg-input text-primary"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Reason (Optional)</label>
+                    <label className="block text-sm font-medium text-primary mb-2">Reason (Optional)</label>
                     <textarea
                       value={formData.reason}
                       onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                       rows={3}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all resize-none"
+                      className="w-full px-4 py-2.5 border border-default rounded-xl focus:ring-2 focus:ring-accent-primary focus:border-transparent outline-none transition-all resize-none bg-input text-primary"
                       placeholder="Optional reason for leave request"
                     />
                   </div>
                   <div className="flex gap-3 pt-2">
                     <button
                       type="submit"
-                      className="flex-1 bg-gradient-to-r from-violet-600 to-indigo-600 text-white py-2.5 rounded-xl font-medium hover:from-violet-700 hover:to-indigo-700 transition-all shadow-lg shadow-violet-200"
+                      className="flex-1 bg-gradient-to-r from-violet-600 to-indigo-600 text-inverse py-2.5 rounded-xl font-medium hover:from-violet-700 hover:to-indigo-700 transition-all shadow-lg shadow-violet-200"
                     >
                       Submit Request
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowRequestForm(false)}
-                      className="px-6 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all font-medium"
+                      className="px-6 py-2.5 border border-default rounded-xl hover:bg-hover transition-all font-medium text-primary"
                     >
                       Cancel
                     </button>
@@ -387,7 +387,7 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               onClick={() => setShowRequestForm(true)}
-              className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white py-3 rounded-xl font-medium hover:from-violet-700 hover:to-indigo-700 transition-all shadow-lg shadow-violet-200 flex items-center justify-center gap-2"
+              className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-inverse py-3 rounded-xl font-medium hover:from-violet-700 hover:to-indigo-700 transition-all shadow-lg shadow-violet-200 flex items-center justify-center gap-2"
             >
               <Plus size={20} />
               New Leave Request
@@ -395,10 +395,10 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
           )}
 
           {/* My Leave Requests */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-900">My Leave Requests</h3>
-              <p className="text-sm text-gray-500 mt-1">View and track your leave requests</p>
+          <div className="bg-surface rounded-2xl shadow-sm border border-default overflow-hidden">
+            <div className="p-6 border-b border-light">
+              <h3 className="text-lg font-semibold text-primary">My Leave Requests</h3>
+              <p className="text-sm text-secondary mt-1">View and track your leave requests</p>
             </div>
             <div className="p-6">
               {requests.length > 0 ? (
@@ -409,7 +409,7 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className="border border-gray-100 rounded-xl p-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                      className="border border-light rounded-xl p-4 hover:bg-hover transition-colors cursor-pointer"
                       onClick={() => {
                         setSelectedRequest(request);
                         setShowDetailModal(true);
@@ -421,13 +421,13 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getLeaveTypeColor(request.leave_type)}`}>
                               {getLeaveTypeLabel(request.leave_type)}
                             </span>
-                            <span className="text-sm text-gray-600">
+                            <span className="text-sm text-secondary">
                               {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-600">{request.number_of_days} day(s)</p>
+                          <p className="text-sm text-secondary">{request.number_of_days} day(s)</p>
                           {request.reason && (
-                            <p className="text-sm text-gray-500 mt-1 line-clamp-1">{request.reason}</p>
+                            <p className="text-sm text-tertiary mt-1 line-clamp-1">{request.reason}</p>
                           )}
                         </div>
                         {getStatusBadge(request.status)}
@@ -436,8 +436,8 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                   ))}
                 </div>
               ) : (
-                <div className="text-center text-gray-500 py-12">
-                  <Calendar size={48} className="mx-auto mb-4 text-gray-300" />
+                <div className="text-center text-secondary py-12">
+                  <Calendar size={48} className="mx-auto mb-4 text-tertiary" />
                   <p className="text-sm">No leave requests found</p>
                 </div>
               )}
@@ -478,23 +478,23 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
           </div>
 
           {/* Filters and Search */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <div className="bg-surface rounded-2xl shadow-sm border border-default p-4">
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary" size={18} />
                 <input
                   type="text"
                   placeholder="Search employees..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 border border-default rounded-xl focus:ring-2 focus:ring-accent-primary focus:border-transparent outline-none transition-all bg-input text-primary"
                 />
               </div>
               <div className="flex gap-3">
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all bg-white"
+                  className="px-4 py-2.5 border border-default rounded-xl focus:ring-2 focus:ring-accent-primary focus:border-transparent outline-none transition-all bg-surface text-primary"
                 >
                   <option value="all">All Status</option>
                   <option value="pending">Pending</option>
@@ -504,7 +504,7 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                 <select
                   value={leaveTypeFilter}
                   onChange={(e) => setLeaveTypeFilter(e.target.value)}
-                  className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all bg-white"
+                  className="px-4 py-2.5 border border-default rounded-xl focus:ring-2 focus:ring-accent-primary focus:border-transparent outline-none transition-all bg-surface text-primary"
                 >
                   <option value="all">All Types</option>
                   <option value="annual">Annual</option>
@@ -520,7 +520,7 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                       setSortOrder('desc');
                     }
                   }}
-                  className="px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all flex items-center gap-2"
+                  className="px-4 py-2.5 border border-default rounded-xl hover:bg-hover transition-all flex items-center gap-2"
                 >
                   <ArrowUpDown size={16} />
                   <span className="hidden sm:inline">Sort</span>
@@ -530,14 +530,14 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
           </div>
 
           {/* Leave Requests Table */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-100">
+          <div className="bg-surface rounded-2xl shadow-sm border border-default overflow-hidden">
+            <div className="p-6 border-b border-light">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Leave Management</h3>
-                  <p className="text-sm text-gray-500 mt-1">Manage and review employee leave requests</p>
+                  <h3 className="text-lg font-semibold text-primary">Leave Management</h3>
+                  <p className="text-sm text-secondary mt-1">Manage and review employee leave requests</p>
                 </div>
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-secondary">
                   {filteredRequests.length} of {requests.length} requests
                 </span>
               </div>
@@ -545,17 +545,17 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
             
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50">
+                <thead className="bg-surface-secondary">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Employee</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Leave Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Dates</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Days</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-tertiary uppercase tracking-wider">Employee</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-tertiary uppercase tracking-wider">Leave Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-tertiary uppercase tracking-wider">Dates</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-tertiary uppercase tracking-wider">Days</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-tertiary uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-tertiary uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-light">
                   {filteredRequests.length > 0 ? (
                     filteredRequests.map((request, index) => (
                       <motion.tr
@@ -563,17 +563,17 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.03 }}
-                        className="hover:bg-gray-50 transition-colors"
+                        className="hover:bg-hover transition-colors"
                       >
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white font-semibold text-sm">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-inverse font-semibold text-sm">
                               {request.user_name?.charAt(0).toUpperCase() || 'U'}
                             </div>
                             <div>
-                              <p className="font-medium text-gray-900">{request.user_name}</p>
-                              <p className="text-sm text-gray-500">{request.user_email}</p>
-                              <p className="text-xs text-gray-400">{request.user_employee_id}</p>
+                              <p className="font-medium text-primary">{request.user_name}</p>
+                              <p className="text-sm text-secondary">{request.user_email}</p>
+                              <p className="text-xs text-tertiary">{request.user_employee_id}</p>
                             </div>
                           </div>
                         </td>
@@ -583,12 +583,12 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <p className="text-sm text-gray-700">
+                          <p className="text-sm text-primary">
                             {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()}
                           </p>
                         </td>
                         <td className="px-6 py-4">
-                          <p className="text-sm text-gray-700">{request.number_of_days} day(s)</p>
+                          <p className="text-sm text-primary">{request.number_of_days} day(s)</p>
                         </td>
                         <td className="px-6 py-4">
                           {getStatusBadge(request.status)}
@@ -602,7 +602,7 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                                     setSelectedRequest(request);
                                     setShowApproveModal(true);
                                   }}
-                                  className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-medium"
+                                  className="px-3 py-1.5 bg-success-light text-success rounded-lg hover:bg-success transition-colors text-sm font-medium"
                                 >
                                   Approve
                                 </button>
@@ -611,7 +611,7 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                                     setSelectedRequest(request);
                                     setShowRejectModal(true);
                                   }}
-                                  className="px-3 py-1.5 bg-rose-50 text-rose-700 rounded-lg hover:bg-rose-100 transition-colors text-sm font-medium"
+                                  className="px-3 py-1.5 bg-danger-light text-danger rounded-lg hover:bg-danger transition-colors text-sm font-medium"
                                 >
                                   Reject
                                 </button>
@@ -622,9 +622,9 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                                 setSelectedRequest(request);
                                 setShowDetailModal(true);
                               }}
-                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              className="p-2 hover:bg-hover rounded-lg transition-colors"
                             >
-                              <Eye size={16} className="text-gray-500" />
+                              <Eye size={16} className="text-tertiary" />
                             </button>
                           </div>
                         </td>
@@ -632,9 +632,9 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                      <td colSpan={6} className="px-6 py-12 text-center text-secondary">
                         <div className="flex flex-col items-center">
-                          <Calendar size={48} className="mb-4 text-gray-300" />
+                          <Calendar size={48} className="mb-4 text-tertiary" />
                           <p className="text-sm">No leave requests found</p>
                         </div>
                       </td>
@@ -662,82 +662,82 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl"
+              className="bg-surface rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl"
             >
-              <div className="p-6 border-b border-gray-100">
+              <div className="p-6 border-b border-light">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900">Leave Request Details</h3>
+                  <h3 className="text-lg font-semibold text-primary">Leave Request Details</h3>
                   <button
                     onClick={() => setShowDetailModal(false)}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    className="p-2 hover:bg-hover rounded-lg transition-colors"
                   >
-                    <X size={20} className="text-gray-500" />
+                    <X size={20} className="text-tertiary" />
                   </button>
                 </div>
               </div>
               <div className="p-6 space-y-4">
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-inverse font-bold text-xl">
                     {selectedRequest.user_name?.charAt(0).toUpperCase() || 'U'}
                   </div>
                   <div>
-                    <h4 className="text-lg font-semibold text-gray-900">{selectedRequest.user_name}</h4>
-                    <p className="text-sm text-gray-500">{selectedRequest.user_email}</p>
-                    <p className="text-xs text-gray-400">{selectedRequest.user_employee_id} • {selectedRequest.user_department}</p>
+                    <h4 className="text-lg font-semibold text-primary">{selectedRequest.user_name}</h4>
+                    <p className="text-sm text-secondary">{selectedRequest.user_email}</p>
+                    <p className="text-xs text-tertiary">{selectedRequest.user_employee_id} • {selectedRequest.user_department}</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 mb-1">Leave Type</p>
-                    <p className="font-medium text-gray-900">{getLeaveTypeLabel(selectedRequest.leave_type)}</p>
+                  <div className="bg-surface-tertiary rounded-xl p-4">
+                    <p className="text-xs text-tertiary mb-1">Leave Type</p>
+                    <p className="font-medium text-primary">{getLeaveTypeLabel(selectedRequest.leave_type)}</p>
                   </div>
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 mb-1">Number of Days</p>
-                    <p className="font-medium text-gray-900">{selectedRequest.number_of_days} day(s)</p>
+                  <div className="bg-surface-tertiary rounded-xl p-4">
+                    <p className="text-xs text-tertiary mb-1">Number of Days</p>
+                    <p className="font-medium text-primary">{selectedRequest.number_of_days} day(s)</p>
                   </div>
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 mb-1">Start Date</p>
-                    <p className="font-medium text-gray-900">{new Date(selectedRequest.start_date).toLocaleDateString()}</p>
+                  <div className="bg-surface-tertiary rounded-xl p-4">
+                    <p className="text-xs text-tertiary mb-1">Start Date</p>
+                    <p className="font-medium text-primary">{new Date(selectedRequest.start_date).toLocaleDateString()}</p>
                   </div>
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 mb-1">End Date</p>
-                    <p className="font-medium text-gray-900">{new Date(selectedRequest.end_date).toLocaleDateString()}</p>
+                  <div className="bg-surface-tertiary rounded-xl p-4">
+                    <p className="text-xs text-tertiary mb-1">End Date</p>
+                    <p className="font-medium text-primary">{new Date(selectedRequest.end_date).toLocaleDateString()}</p>
                   </div>
                 </div>
 
                 {selectedRequest.reason && (
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 mb-1">Reason</p>
-                    <p className="text-sm text-gray-700">{selectedRequest.reason}</p>
+                  <div className="bg-surface-tertiary rounded-xl p-4">
+                    <p className="text-xs text-tertiary mb-1">Reason</p>
+                    <p className="text-sm text-primary">{selectedRequest.reason}</p>
                   </div>
                 )}
 
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-1">Status</p>
+                <div className="bg-surface-tertiary rounded-xl p-4">
+                  <p className="text-xs text-tertiary mb-1">Status</p>
                   {getStatusBadge(selectedRequest.status)}
                 </div>
 
                 {selectedRequest.reviewed_by && (
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 mb-1">Reviewed By</p>
-                    <p className="text-sm text-gray-700">{selectedRequest.approver_name} ({selectedRequest.approver_email})</p>
-                    <p className="text-xs text-gray-500 mt-1">
+                  <div className="bg-surface-tertiary rounded-xl p-4">
+                    <p className="text-xs text-tertiary mb-1">Reviewed By</p>
+                    <p className="text-sm text-primary">{selectedRequest.approver_name} ({selectedRequest.approver_email})</p>
+                    <p className="text-xs text-tertiary mt-1">
                       {selectedRequest.updated_at ? new Date(selectedRequest.updated_at).toLocaleString() : 'N/A'}
                     </p>
                   </div>
                 )}
 
                 {selectedRequest.review_comment && (
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 mb-1">Review Comment</p>
-                    <p className="text-sm text-gray-700">{selectedRequest.review_comment}</p>
+                  <div className="bg-surface-tertiary rounded-xl p-4">
+                    <p className="text-xs text-tertiary mb-1">Review Comment</p>
+                    <p className="text-sm text-primary">{selectedRequest.review_comment}</p>
                   </div>
                 )}
 
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-1">Requested On</p>
-                  <p className="text-sm text-gray-700">
+                <div className="bg-surface-tertiary rounded-xl p-4">
+                  <p className="text-xs text-tertiary mb-1">Requested On</p>
+                  <p className="text-sm text-primary">
                     {selectedRequest.created_at ? new Date(selectedRequest.created_at).toLocaleString() : 'N/A'}
                   </p>
                 </div>
@@ -762,35 +762,35 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl max-w-md w-full shadow-xl"
+              className="bg-surface rounded-2xl max-w-md w-full shadow-xl"
             >
               <div className="p-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
-                    <CheckCircle size={24} className="text-emerald-600" />
+                  <div className="w-12 h-12 rounded-full bg-success-light flex items-center justify-center">
+                    <CheckCircle size={24} className="text-success" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Approve Leave Request</h3>
-                    <p className="text-sm text-gray-500">Confirm approval for {selectedRequest.user_name}</p>
+                    <h3 className="text-lg font-semibold text-primary">Approve Leave Request</h3>
+                    <p className="text-sm text-secondary">Confirm approval for {selectedRequest.user_name}</p>
                   </div>
                 </div>
-                <div className="bg-gray-50 rounded-xl p-4 mb-6">
-                  <p className="font-medium text-gray-900">{selectedRequest.user_name}</p>
-                  <p className="text-sm text-gray-500">{getLeaveTypeLabel(selectedRequest.leave_type)} • {selectedRequest.number_of_days} day(s)</p>
-                  <p className="text-sm text-gray-600">
+                <div className="bg-surface-tertiary rounded-xl p-4 mb-6">
+                  <p className="font-medium text-primary">{selectedRequest.user_name}</p>
+                  <p className="text-sm text-secondary">{getLeaveTypeLabel(selectedRequest.leave_type)} • {selectedRequest.number_of_days} day(s)</p>
+                  <p className="text-sm text-secondary">
                     {new Date(selectedRequest.start_date).toLocaleDateString()} - {new Date(selectedRequest.end_date).toLocaleDateString()}
                   </p>
                 </div>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setShowApproveModal(false)}
-                    className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all font-medium"
+                    className="flex-1 px-4 py-2.5 border border-default rounded-xl hover:bg-hover transition-all font-medium text-primary"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => handleApprove(selectedRequest.id)}
-                    className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all font-medium"
+                    className="flex-1 px-4 py-2.5 bg-success text-inverse rounded-xl hover:bg-success/90 transition-all font-medium"
                   >
                     Approve
                   </button>
@@ -816,35 +816,35 @@ const LeaveManagement = ({ isHR, isAdmin }) => {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl max-w-md w-full shadow-xl"
+              className="bg-surface rounded-2xl max-w-md w-full shadow-xl"
             >
               <div className="p-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center">
-                    <XCircle size={24} className="text-rose-600" />
+                  <div className="w-12 h-12 rounded-full bg-danger-light flex items-center justify-center">
+                    <XCircle size={24} className="text-danger" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Reject Leave Request</h3>
-                    <p className="text-sm text-gray-500">Confirm rejection for {selectedRequest.user_name}</p>
+                    <h3 className="text-lg font-semibold text-primary">Reject Leave Request</h3>
+                    <p className="text-sm text-secondary">Confirm rejection for {selectedRequest.user_name}</p>
                   </div>
                 </div>
-                <div className="bg-gray-50 rounded-xl p-4 mb-6">
-                  <p className="font-medium text-gray-900">{selectedRequest.user_name}</p>
-                  <p className="text-sm text-gray-500">{getLeaveTypeLabel(selectedRequest.leave_type)} • {selectedRequest.number_of_days} day(s)</p>
-                  <p className="text-sm text-gray-600">
+                <div className="bg-surface-tertiary rounded-xl p-4 mb-6">
+                  <p className="font-medium text-primary">{selectedRequest.user_name}</p>
+                  <p className="text-sm text-secondary">{getLeaveTypeLabel(selectedRequest.leave_type)} • {selectedRequest.number_of_days} day(s)</p>
+                  <p className="text-sm text-secondary">
                     {new Date(selectedRequest.start_date).toLocaleDateString()} - {new Date(selectedRequest.end_date).toLocaleDateString()}
                   </p>
                 </div>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setShowRejectModal(false)}
-                    className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all font-medium"
+                    className="flex-1 px-4 py-2.5 border border-default rounded-xl hover:bg-hover transition-all font-medium text-primary"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => handleReject(selectedRequest.id)}
-                    className="flex-1 px-4 py-2.5 bg-rose-600 text-white rounded-xl hover:bg-rose-700 transition-all font-medium"
+                    className="flex-1 px-4 py-2.5 bg-danger text-inverse rounded-xl hover:bg-danger/90 transition-all font-medium"
                   >
                     Reject
                   </button>

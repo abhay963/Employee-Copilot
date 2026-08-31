@@ -6,7 +6,8 @@ import {
   Clock, 
   AlertTriangle,
   Sparkles,
-  User
+  User,
+  Info
 } from 'lucide-react';
 
 const ActionCard = ({ 
@@ -25,7 +26,8 @@ const ActionCard = ({
     date,
     time,
     hasConflicts,
-    conflictDetails
+    conflictDetails,
+    calendarStatus
   } = actionMetadata;
 
   const formatDate = (dateStr) => {
@@ -69,70 +71,113 @@ const ActionCard = ({
     }
   };
 
+  const getCalendarStatusMessage = () => {
+    if (calendarStatus === 'NOT_CONNECTED') {
+      return {
+        icon: <Info size={16} className="text-info flex-shrink-0 mt-0.5" />,
+        message: 'Google Calendar isn\'t connected, so I couldn\'t check for schedule conflicts. Your leave request can still continue.',
+        color: 'text-info',
+        borderColor: 'border-info'
+      };
+    }
+    
+    if (calendarStatus === 'TEMPORARILY_UNAVAILABLE') {
+      return {
+        icon: <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-0.5" />,
+        message: 'Google Calendar is temporarily unavailable, so I couldn\'t check for schedule conflicts. Your leave request can still continue.',
+        color: 'text-warning',
+        borderColor: 'border-warning'
+      };
+    }
+    
+    return null;
+  };
+
   const getConflictMessage = () => {
     if (!hasConflicts || !conflictDetails) return null;
     
     if (Array.isArray(conflictDetails) && conflictDetails.length > 0) {
-      const conflict = conflictDetails[0];
-      const start = new Date(conflict.start);
-      const end = new Date(conflict.end);
-      return `Conflict: ${start.toLocaleTimeString()} - ${end.toLocaleTimeString()}`;
+      const conflicts = conflictDetails.slice(0, 3); // Show max 3 conflicts
+      return conflicts.map((conflict, index) => {
+        const start = new Date(conflict.start);
+        const end = new Date(conflict.end);
+        const timeStr = `${start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+        return `• ${conflict.summary || 'Event'} — ${timeStr}`;
+      }).join('\n');
     }
     
     return 'You have calendar conflicts during this time.';
   };
+
+  const calendarStatusMessage = getCalendarStatusMessage();
+  const conflictMessage = getConflictMessage();
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="my-4 rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 shadow-sm"
+      className="my-4 action-card p-4"
     >
       {/* Header */}
       <div className="flex items-center gap-3 mb-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500 text-white">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-primary text-inverse">
           {getActionIcon()}
         </div>
         <div className="flex-1">
-          <h4 className="font-semibold text-gray-900">
+          <h4 className="font-semibold text-primary">
             {getActionTitle()}
           </h4>
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-secondary">
             I'm ready to execute this action
           </p>
         </div>
       </div>
 
       {/* Details */}
-      <div className="mb-4 space-y-2 rounded-lg bg-white/50 p-3">
+      <div className="mb-4 space-y-2 rounded-lg bg-surface-tertiary p-3">
         {title && (
           <div className="flex items-start gap-2">
-            <span className="text-xs font-medium text-gray-500 w-20">Title:</span>
-            <span className="text-sm text-gray-900 flex-1">{title}</span>
+            <span className="text-xs font-medium text-tertiary w-20">Title:</span>
+            <span className="text-sm text-primary flex-1">{title}</span>
           </div>
         )}
         
         {date && (
           <div className="flex items-start gap-2">
-            <span className="text-xs font-medium text-gray-500 w-20">Date:</span>
-            <span className="text-sm text-gray-900 flex-1">{formatDate(date)}</span>
+            <span className="text-xs font-medium text-tertiary w-20">Date:</span>
+            <span className="text-sm text-primary flex-1">{formatDate(date)}</span>
           </div>
         )}
         
         {time && (
           <div className="flex items-start gap-2">
-            <span className="text-xs font-medium text-gray-500 w-20">Time:</span>
-            <span className="text-sm text-gray-900 flex-1">{formatTime(time)}</span>
+            <span className="text-xs font-medium text-tertiary w-20">Time:</span>
+            <span className="text-sm text-primary flex-1">{formatTime(time)}</span>
           </div>
         )}
 
-        {hasConflicts && (
-          <div className="flex items-start gap-2 mt-3 pt-3 border-t border-yellow-200">
-            <AlertTriangle size={16} className="text-yellow-600 flex-shrink-0 mt-0.5" />
-            <span className="text-xs text-yellow-700">
-              {getConflictMessage()}
+        {/* Calendar Status Warning */}
+        {calendarStatusMessage && (
+          <div className={`flex items-start gap-2 mt-3 pt-3 border-t ${calendarStatusMessage.borderColor}`}>
+            {calendarStatusMessage.icon}
+            <span className={`text-xs ${calendarStatusMessage.color} whitespace-pre-line`}>
+              {calendarStatusMessage.message}
             </span>
+          </div>
+        )}
+
+        {/* Calendar Conflicts */}
+        {hasConflicts && conflictMessage && (
+          <div className="flex items-start gap-2 mt-3 pt-3 border-t border-warning">
+            <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-warning">
+              <div className="font-medium mb-1">⚠️ Calendar conflicts found</div>
+              <div className="whitespace-pre-line">{conflictMessage}</div>
+              <div className="mt-2 text-xs text-warning">
+                Your leave request is still possible.
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -144,11 +189,11 @@ const ActionCard = ({
           whileTap={{ scale: 0.98 }}
           onClick={onConfirm}
           disabled={isLoading}
-          className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-accent-primary px-4 py-2.5 text-sm font-medium text-inverse shadow-sm transition-colors hover:bg-accent-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isLoading ? (
             <>
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
               Processing...
             </>
           ) : (
@@ -164,7 +209,7 @@ const ActionCard = ({
           whileTap={{ scale: 0.98 }}
           onClick={onCancel}
           disabled={isLoading}
-          className="flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex items-center justify-center gap-2 rounded-lg border border-default bg-surface px-4 py-2.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           <X size={16} />
           Cancel
@@ -176,7 +221,7 @@ const ActionCard = ({
             whileTap={{ scale: 0.98 }}
             onClick={onEdit}
             disabled={isLoading}
-            className="flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center justify-center gap-2 rounded-lg border border-default bg-surface px-4 py-2.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50"
             title="Edit details"
           >
             <User size={16} />

@@ -1,4 +1,5 @@
 import conversationService from '../services/conversationService.js';
+import conversationStateService from '../services/conversationStateService.js';
 
 export const createConversation = async (req, res) => {
   try {
@@ -159,5 +160,70 @@ export const executePendingAction = async (req, res) => {
       return res.status(404).json({ error: error.message });
     }
     res.status(500).json({ error: 'Failed to execute action' });
+  }
+};
+
+export const getConversationState = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Verify conversation ownership
+    await conversationService.validateConversationForController(id, userId);
+
+    const state = await conversationStateService.findByConversationId(id);
+    
+    if (!state) {
+      return res.json({
+        success: true,
+        pendingAction: null,
+        workflowStep: null,
+        calendarStatus: null
+      });
+    }
+
+    res.json({
+      success: true,
+      pendingAction: state.pending_action,
+      actionId: state.action_id,
+      workflowStep: state.workflow_step,
+      calendarStatus: state.calendar_status,
+      context: state.context
+    });
+  } catch (error) {
+    console.error('Error getting conversation state:', error);
+    if (error.message === 'Conversation not found' || error.message === 'Access denied') {
+      return res.status(404).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to get conversation state' });
+  }
+};
+
+export const cancelPendingAction = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { actionId } = req.body;
+
+    if (!actionId) {
+      return res.status(400).json({ error: 'Action ID is required' });
+    }
+
+    // Verify conversation ownership
+    await conversationService.validateConversationForController(id, userId);
+
+    // Cancel the workflow
+    await conversationStateService.cancelWorkflow(id);
+
+    res.json({
+      success: true,
+      message: 'Action cancelled successfully'
+    });
+  } catch (error) {
+    console.error('Error cancelling pending action:', error);
+    if (error.message === 'Conversation not found' || error.message === 'Access denied') {
+      return res.status(404).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to cancel action' });
   }
 };

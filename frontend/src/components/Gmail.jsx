@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
+import { Unlink } from 'lucide-react';
 import { googleAPI } from '../services/api';
+import ConfirmationModal from './ConfirmationModal';
 
 const Gmail = () => {
   // ============================================================
@@ -26,6 +28,7 @@ const Gmail = () => {
 
   const [sendingEmail, setSendingEmail] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [showDisconnectModal, setShowDisconnectModal] = useState(false);
 
   // ============================================================
   // CHECK GOOGLE CONNECTION
@@ -132,13 +135,11 @@ const Gmail = () => {
   // ============================================================
 
   const handleDisconnect = async () => {
-    const confirmed = window.confirm(
-      'Disconnect Gmail from Employee Copilot?'
-    );
+    setShowDisconnectModal(true);
+  };
 
-    if (!confirmed) {
-      return;
-    }
+  const handleConfirmDisconnect = async () => {
+    setShowDisconnectModal(false);
 
     try {
       setDisconnecting(true);
@@ -617,6 +618,19 @@ const Gmail = () => {
           </div>
         </div>
       )}
+
+      {/* Disconnect Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDisconnectModal}
+        onClose={() => setShowDisconnectModal(false)}
+        onConfirm={handleConfirmDisconnect}
+        title="Disconnect Gmail?"
+        description="Are you sure you want to disconnect Gmail from Employee Copilot? You will need to reconnect to access your emails."
+        confirmText="Disconnect"
+        cancelText="Cancel"
+        variant="danger"
+        icon={Unlink}
+      />
     </div>
   );
 };
@@ -704,7 +718,7 @@ const styles = {
     minHeight: '100%',
     padding: '24px',
     boxSizing: 'border-box',
-    background: '#ffffff',
+    background: 'var(--bg-background)',
   },
 
   surface: {
@@ -713,10 +727,10 @@ const styles = {
     boxSizing: 'border-box',
     padding: '28px 32px',
     borderRadius: '8px',
-    background: '#ffffff',
-    color: '#111827',
-    border: '1px solid #e5e7eb',
-    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+    background: 'var(--bg-surface)',
+    color: 'var(--text-primary)',
+    border: '1px solid var(--border-default)',
+    boxShadow: '0 1px 2px 0 var(--shadow-sm)',
   },
 
   // ----------------------------------------------------------
@@ -738,7 +752,7 @@ const styles = {
 
   title: {
     margin: 0,
-    color: '#111827',
+    color: 'var(--text-primary)',
     fontSize: '24px',
     fontWeight: 600,
     lineHeight: 1.25,
@@ -747,7 +761,7 @@ const styles = {
 
   subtitle: {
     margin: '6px 0 0',
-    color: '#6b7280',
+    color: 'var(--text-secondary)',
     fontSize: '14px',
     lineHeight: 1.5,
   },
@@ -757,10 +771,10 @@ const styles = {
     alignItems: 'center',
     gap: '6px',
     padding: '4px 10px',
-    border: '1px solid #e5e7eb',
+    border: '1px solid var(--border-default)',
     borderRadius: '6px',
-    color: '#059669',
-    background: '#ecfdf5',
+    color: 'var(--success)',
+    background: 'var(--success-light)',
     fontSize: '12px',
     fontWeight: 500,
   },
@@ -769,7 +783,7 @@ const styles = {
     width: '6px',
     height: '6px',
     borderRadius: '50%',
-    background: '#10b981',
+    background: 'var(--success)',
   },
 
   headerActions: {
@@ -785,20 +799,20 @@ const styles = {
     border: 'none',
     borderRadius: '6px',
     padding: '8px 14px',
-    background: '#4f46e5',
-    color: '#ffffff',
+    background: 'var(--accent-primary)',
+    color: 'var(--text-inverse)',
     fontSize: '13px',
     fontWeight: 500,
     cursor: 'pointer',
-    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+    boxShadow: '0 1px 2px 0 var(--shadow-sm)',
   },
 
   secondaryButton: {
-    border: '1px solid #e5e7eb',
+    border: '1px solid var(--border-default)',
     borderRadius: '6px',
     padding: '8px 14px',
-    background: '#ffffff',
-    color: '#374151',
+    background: 'var(--bg-surface)',
+    color: 'var(--text-primary)',
     fontSize: '13px',
     fontWeight: 500,
     cursor: 'pointer',
@@ -846,10 +860,10 @@ const styles = {
 
   inboxCard: {
     overflow: 'hidden',
-    border: '1px solid #e5e7eb',
+    border: '1px solid var(--border-default)',
     borderRadius: '8px',
-    background: '#ffffff',
-    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+    background: 'var(--bg-surface)',
+    boxShadow: '0 1px 2px 0 var(--shadow-sm)',
   },
 
   inboxHeader: {
@@ -857,29 +871,29 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '16px 20px',
-    borderBottom: '1px solid #e5e7eb',
+    borderBottom: '1px solid var(--border-default)',
   },
 
   sectionTitle: {
     margin: 0,
-    color: '#111827',
+    color: 'var(--text-primary)',
     fontSize: '15px',
     fontWeight: 600,
   },
 
   sectionSubtitle: {
     margin: '4px 0 0',
-    color: '#9ca3af',
+    color: 'var(--text-tertiary)',
     fontSize: '12px',
   },
 
   emailCount: {
     padding: '4px 8px',
     borderRadius: '6px',
-    background: '#f9fafb',
-    color: '#6b7280',
+    background: 'var(--bg-surface-tertiary)',
+    color: 'var(--text-secondary)',
     fontSize: '12px',
-    border: '1px solid #e5e7eb',
+    border: '1px solid var(--border-default)',
   },
 
   // ----------------------------------------------------------
@@ -892,9 +906,9 @@ const styles = {
     boxSizing: 'border-box',
     padding: '14px 18px',
     border: 'none',
-    borderBottom: '1px solid #f3f4f6',
+    borderBottom: '1px solid var(--border-light)',
     background: 'transparent',
-    color: '#111827',
+    color: 'var(--text-primary)',
     textAlign: 'left',
     cursor: 'pointer',
     gap: '12px',
@@ -908,9 +922,9 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: '6px',
-    background: '#f5f3ff',
-    border: '1px solid #e5e7eb',
-    color: '#4f46e5',
+    background: 'var(--accent-primary-light)',
+    border: '1px solid var(--border-default)',
+    color: 'var(--accent-primary)',
     fontSize: '13px',
     fontWeight: 600,
   },
@@ -929,7 +943,7 @@ const styles = {
 
   sender: {
     overflow: 'hidden',
-    color: '#111827',
+    color: 'var(--text-primary)',
     fontSize: '13px',
     fontWeight: 500,
     textOverflow: 'ellipsis',
@@ -938,13 +952,13 @@ const styles = {
 
   emailDate: {
     flexShrink: 0,
-    color: '#9ca3af',
+    color: 'var(--text-tertiary)',
     fontSize: '12px',
   },
 
   subject: {
     overflow: 'hidden',
-    color: '#6b7280',
+    color: 'var(--text-secondary)',
     fontSize: '13px',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -952,7 +966,7 @@ const styles = {
 
   arrow: {
     flexShrink: 0,
-    color: '#d1d5db',
+    color: 'var(--border-medium)',
     fontSize: '14px',
   },
 
@@ -962,10 +976,10 @@ const styles = {
   emailDetailCard: {
     minWidth: 0,
     padding: '20px',
-    border: '1px solid #e5e7eb',
+    border: '1px solid var(--border-default)',
     borderRadius: '8px',
-    background: '#ffffff',
-    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+    background: 'var(--bg-surface)',
+    boxShadow: '0 1px 2px 0 var(--shadow-sm)',
   },
 
   emailDetailHeader: {
@@ -978,7 +992,7 @@ const styles = {
   backButton: {
     border: 'none',
     background: 'transparent',
-    color: '#4f46e5',
+    color: 'var(--accent-primary)',
     fontSize: '13px',
     fontWeight: 500,
     cursor: 'pointer',
@@ -986,13 +1000,13 @@ const styles = {
   },
 
   detailLabel: {
-    color: '#9ca3af',
+    color: 'var(--text-tertiary)',
     fontSize: '12px',
   },
 
   detailSubject: {
     margin: '0 0 12px',
-    color: '#111827',
+    color: 'var(--text-primary)',
     fontSize: '18px',
     fontWeight: 600,
     lineHeight: 1.4,
@@ -1000,15 +1014,15 @@ const styles = {
 
   detailMeta: {
     paddingBottom: '16px',
-    borderBottom: '1px solid #e5e7eb',
-    color: '#6b7280',
+    borderBottom: '1px solid var(--border-default)',
+    color: 'var(--text-secondary)',
     fontSize: '13px',
     lineHeight: 1.7,
   },
 
   emailBody: {
     marginTop: '16px',
-    color: '#374151',
+    color: 'var(--text-primary)',
     fontSize: '14px',
     lineHeight: 1.7,
     whiteSpace: 'pre-wrap',
@@ -1028,15 +1042,15 @@ const styles = {
 
   loadingText: {
     marginTop: '12px',
-    color: '#6b7280',
+    color: 'var(--text-secondary)',
     fontSize: '13px',
   },
 
   spinner: {
     width: '24px',
     height: '24px',
-    border: '2px solid #e5e7eb',
-    borderTop: '2px solid #4f46e5',
+    border: '2px solid var(--border-default)',
+    borderTop: '2px solid var(--accent-primary)',
     borderRadius: '50%',
     animation: 'gmail-spin 0.8s linear infinite',
   },
@@ -1061,15 +1075,15 @@ const styles = {
     justifyContent: 'center',
     marginBottom: '12px',
     borderRadius: '8px',
-    background: '#f9fafb',
-    border: '1px solid #e5e7eb',
-    color: '#4f46e5',
+    background: 'var(--bg-surface-tertiary)',
+    border: '1px solid var(--border-default)',
+    color: 'var(--accent-primary)',
     fontSize: '18px',
   },
 
   emptyTitle: {
     margin: 0,
-    color: '#111827',
+    color: 'var(--text-primary)',
     fontSize: '14px',
     fontWeight: 500,
   },
@@ -1077,7 +1091,7 @@ const styles = {
   emptyText: {
     maxWidth: '280px',
     margin: '6px 0 0',
-    color: '#9ca3af',
+    color: 'var(--text-tertiary)',
     fontSize: '13px',
     textAlign: 'center',
     lineHeight: 1.5,
@@ -1092,11 +1106,11 @@ const styles = {
     margin: '48px auto 56px',
     padding: '36px 32px',
     boxSizing: 'border-box',
-    border: '1px solid #e5e7eb',
+    border: '1px solid var(--border-default)',
     borderRadius: '8px',
-    background: '#ffffff',
+    background: 'var(--bg-surface)',
     textAlign: 'center',
-    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+    boxShadow: '0 1px 2px 0 var(--shadow-sm)',
   },
 
   gmailIcon: {
@@ -1107,19 +1121,19 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: '8px',
-    background: '#f5f3ff',
-    border: '1px solid #e5e7eb',
+    background: 'var(--accent-primary-light)',
+    border: '1px solid var(--border-default)',
   },
 
   gmailIconLetter: {
-    color: '#4f46e5',
+    color: 'var(--accent-primary)',
     fontSize: '20px',
     fontWeight: 600,
   },
 
   connectTitle: {
     margin: 0,
-    color: '#111827',
+    color: 'var(--text-primary)',
     fontSize: '18px',
     fontWeight: 600,
   },
@@ -1127,7 +1141,7 @@ const styles = {
   connectDescription: {
     maxWidth: '360px',
     margin: '10px auto 24px',
-    color: '#6b7280',
+    color: 'var(--text-secondary)',
     fontSize: '14px',
     lineHeight: 1.6,
   },
@@ -1139,14 +1153,14 @@ const styles = {
     gap: '8px',
     minWidth: '180px',
     padding: '10px 16px',
-    border: '1px solid #e5e7eb',
+    border: '1px solid var(--border-default)',
     borderRadius: '6px',
-    background: '#ffffff',
-    color: '#111827',
+    background: 'var(--bg-surface)',
+    color: 'var(--text-primary)',
     fontSize: '13px',
     fontWeight: 500,
     cursor: 'pointer',
-    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+    boxShadow: '0 1px 2px 0 var(--shadow-sm)',
   },
 
   googleLogo: {
@@ -1157,7 +1171,7 @@ const styles = {
 
   permissionText: {
     margin: '14px 0 0',
-    color: '#9ca3af',
+    color: 'var(--text-tertiary)',
     fontSize: '12px',
   },
 
@@ -1181,10 +1195,10 @@ const styles = {
     maxWidth: '560px',
     padding: '24px',
     boxSizing: 'border-box',
-    border: '1px solid #e5e7eb',
+    border: '1px solid var(--border-default)',
     borderRadius: '8px',
-    background: '#ffffff',
-    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)',
+    background: 'var(--bg-surface)',
+    boxShadow: '0 4px 6px -1px var(--shadow-md), 0 2px 4px -2px var(--shadow-sm)',
   },
 
   modalHeader: {
@@ -1196,21 +1210,21 @@ const styles = {
 
   modalTitle: {
     margin: 0,
-    color: '#111827',
+    color: 'var(--text-primary)',
     fontSize: '18px',
     fontWeight: 600,
   },
 
   modalSubtitle: {
     margin: '4px 0 0',
-    color: '#6b7280',
+    color: 'var(--text-secondary)',
     fontSize: '13px',
   },
 
   closeButton: {
     border: 'none',
     background: 'transparent',
-    color: '#9ca3af',
+    color: 'var(--text-tertiary)',
     fontSize: '22px',
     cursor: 'pointer',
     lineHeight: 1,
@@ -1222,11 +1236,11 @@ const styles = {
     boxSizing: 'border-box',
     marginBottom: '12px',
     padding: '10px 12px',
-    border: '1px solid #e5e7eb',
+    border: '1px solid var(--border-default)',
     borderRadius: '6px',
     outline: 'none',
-    background: '#ffffff',
-    color: '#111827',
+    background: 'var(--bg-input)',
+    color: 'var(--text-primary)',
     fontSize: '13px',
   },
 
@@ -1235,12 +1249,12 @@ const styles = {
     boxSizing: 'border-box',
     marginBottom: '16px',
     padding: '10px 12px',
-    border: '1px solid #e5e7eb',
+    border: '1px solid var(--border-default)',
     borderRadius: '6px',
     outline: 'none',
     resize: 'vertical',
-    background: '#ffffff',
-    color: '#111827',
+    background: 'var(--bg-input)',
+    color: 'var(--text-primary)',
     fontFamily: 'inherit',
     fontSize: '13px',
     lineHeight: 1.5,
@@ -1253,11 +1267,11 @@ const styles = {
   },
 
   cancelButton: {
-    border: '1px solid #e5e7eb',
+    border: '1px solid var(--border-default)',
     borderRadius: '6px',
     padding: '8px 14px',
-    background: '#ffffff',
-    color: '#374151',
+    background: 'var(--bg-surface)',
+    color: 'var(--text-primary)',
     fontSize: '13px',
     fontWeight: 500,
     cursor: 'pointer',
@@ -1282,8 +1296,8 @@ if (
 
     input:focus,
     textarea:focus {
-      border-color: #4f46e5 !important;
-      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+      border-color: var(--accent-primary) !important;
+      box-shadow: 0 0 0 3px var(--focus-ring);
     }
 
     button:hover:not(:disabled) {

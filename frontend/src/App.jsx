@@ -7,6 +7,7 @@ import {
 } from 'react-router-dom';
 
 import { useUser } from './context/UserContext';
+import { ThemeProvider } from './context/ThemeContext';
 
 import Landing from './pages/Landing';
 import EmployeeDashboard from './pages/EmployeeDashboard';
@@ -42,8 +43,9 @@ function App() {
   }
 
   return (
-    <Router>
-      <Routes>
+    <ThemeProvider>
+      <Router>
+        <Routes>
 
         {/* =====================================================
             PUBLIC ROUTES
@@ -183,6 +185,7 @@ function App() {
 
       </Routes>
     </Router>
+    </ThemeProvider>
   );
 }
 

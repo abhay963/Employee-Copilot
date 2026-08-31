@@ -6,7 +6,9 @@ import {
   sendMessage,
   deleteConversation,
   updateConversationTitle,
-  executePendingAction
+  executePendingAction,
+  getConversationState,
+  cancelPendingAction
 } from '../controllers/conversationController.js';
 import { authenticate } from '../middleware/auth.js';
 
@@ -32,6 +34,12 @@ router.patch('/:id/title', updateConversationTitle);
 
 // Execute pending action (Human-in-the-Loop approval)
 router.post('/:id/actions', executePendingAction);
+
+// Cancel pending action
+router.post('/:id/actions/cancel', cancelPendingAction);
+
+// Get conversation state (for workflow recovery)
+router.get('/:id/state', getConversationState);
 
 // Delete conversation
 router.delete('/:id', deleteConversation);

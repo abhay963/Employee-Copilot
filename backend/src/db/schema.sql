@@ -224,4 +224,23 @@ CREATE TABLE IF NOT EXISTS valid_employee_ids (
 CREATE INDEX IF NOT EXISTS valid_employee_ids_employee_id_idx ON valid_employee_ids(employee_id);
 CREATE INDEX IF NOT EXISTS valid_employee_ids_created_by_idx ON valid_employee_ids(created_by);
 
+-- Conversation state table for persistent workflow management
+CREATE TABLE IF NOT EXISTS conversation_state (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL UNIQUE REFERENCES conversations(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    intent VARCHAR(100),
+    pending_action JSONB,
+    action_id VARCHAR(255),
+    workflow_step VARCHAR(100) DEFAULT 'IDLE' CHECK (workflow_step IN ('IDLE', 'COLLECTING_DETAILS', 'VALIDATING', 'CALENDAR_CHECK', 'READY_FOR_CONFIRMATION', 'CONFIRMED', 'SUBMITTED', 'CANCELLED', 'CANCELLED')),
+    context JSONB DEFAULT '{}',
+    calendar_status VARCHAR(50) DEFAULT 'UNKNOWN' CHECK (calendar_status IN ('UNKNOWN', 'CONNECTED', 'NOT_CONNECTED', 'TEMPORARILY_UNAVAILABLE')),
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS conversation_state_conversation_idx ON conversation_state(conversation_id);
+CREATE INDEX IF NOT EXISTS conversation_state_user_idx ON conversation_state(user_id);
+CREATE INDEX IF NOT EXISTS conversation_state_action_idx ON conversation_state(action_id);
+
 

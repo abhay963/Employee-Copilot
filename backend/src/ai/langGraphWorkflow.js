@@ -9,8 +9,14 @@ import { config } from '../config/index.js';
 
 import googleCalendarService from '../services/googleCalendarService.js';
 import gmailService from '../services/gmailService.js';
+import conversationStateService, { WORKFLOW_STEPS, CALENDAR_STATUS } from '../services/conversationStateService.js';
+import leaveWorkflowService from '../services/leaveWorkflowService.js';
+import loggingService from '../services/loggingService.js';
 
 import tavilyTool from './tools/tavilyTool.js';
+
+// Re-export for use in this file
+const { IDLE, COLLECTING_DETAILS, VALIDATING, CALENDAR_CHECK, READY_FOR_CONFIRMATION, CONFIRMED, SUBMITTED, CANCELLED } = WORKFLOW_STEPS;
 
 // ============================================================
 // GEMINI
@@ -210,6 +216,37 @@ function addDays(date, days) {
   );
 
   return result;
+}
+
+// ============================================================
+// VAGUE CONFIRMATION DETECTOR
+// ============================================================
+
+function isVagueConfirmation(message) {
+  const text = String(message || '').trim().toLowerCase();
+  
+  const confirmations = [
+    'yes', 'yeah', 'yep', 'sure', 'okay', 'ok', 'alright', 
+    'do it', 'submit', 'confirm', 'go ahead', 'proceed', 'continue'
+  ];
+  
+  const cancellations = [
+    'no', 'nope', 'cancel', 'stop', 'never mind', 'forget it', 'dont'
+  ];
+  
+  for (const confirmation of confirmations) {
+    if (text === confirmation || text.startsWith(confirmation + ' ') || text.endsWith(' ' + confirmation)) {
+      return 'confirm';
+    }
+  }
+  
+  for (const cancellation of cancellations) {
+    if (text === cancellation || text.startsWith(cancellation + ' ') || text.endsWith(' ' + cancellation)) {
+      return 'cancel';
+    }
+  }
+  
+  return null;
 }
 
 // ============================================================
@@ -2622,7 +2659,8 @@ ${userMessage}
 // ============================================================
 
 function buildActionMetadata(
-  pendingAction
+  pendingAction,
+  context = {}
 ) {
   if (!pendingAction) {
     return null;
@@ -2653,7 +2691,13 @@ function buildActionMetadata(
       null,
 
     hasConflicts:
-      false,
+      context.hasConflicts || false,
+
+    conflictDetails:
+      context.calendarConflicts || null,
+
+    calendarStatus:
+      context.calendarStatus || null,
   };
 }
 
@@ -2665,10 +2709,13 @@ export async function runLangGraphWorkflow(
   userMessage,
   userId,
   userRole,
+  conversationId = null,
   actionId = null,
   isConfirmed = false,
   actionData = null
 ) {
+  let intent = 'general'; // Initialize with default value for error handling
+
   try {
     // --------------------------------------------------------
     // Validate input
@@ -2678,6 +2725,113 @@ export async function runLangGraphWorkflow(
       validateUserInput(
         userMessage
       );
+
+    // --------------------------------------------------------
+    // CHECK FOR PENDING ACTIONS FIRST (Intent Routing Guardrail)
+    // --------------------------------------------------------
+    
+    if (conversationId) {
+      const hasPendingAction = await conversationStateService.hasPendingAction(conversationId);
+      
+      if (hasPendingAction && !isConfirmed) {
+        // Handle vague responses against pending workflow
+        const vagueResponse = isVagueConfirmation(sanitizedInput);
+        
+        if (vagueResponse) {
+          const pendingActionState = await conversationStateService.getPendingAction(conversationId);
+          
+          if (pendingActionState) {
+            console.log('[LangGraph] Resolving vague response against pending action:', pendingActionState.actionId);
+            
+            // Verify the action is still in valid state before executing
+            const stateByActionId = await conversationStateService.getStateByActionId(pendingActionState.actionId);
+            
+            if (!stateByActionId || String(stateByActionId.user_id) !== String(userId)) {
+              console.log('[LangGraph] Invalid or expired pending action, clearing state');
+              await conversationStateService.clearPendingAction(conversationId);
+              
+              return {
+                response: 'The pending action has expired or is no longer valid. Please submit your request again.',
+                sources: [],
+                requiresConfirmation: false,
+                pendingAction: null,
+                actionMetadata: null,
+                error: null
+              };
+            }
+            
+            // Execute the pending action based on vague response
+            if (vagueResponse === 'confirm') {
+              const result = await leaveWorkflowService.confirmAndSubmitLeaveRequest(
+                conversationId,
+                userId,
+                pendingActionState.actionId
+              );
+              
+              return {
+                response: result.message,
+                sources: [],
+                requiresConfirmation: false,
+                pendingAction: null,
+                actionMetadata: null,
+                error: result.success ? null : result.error
+              };
+            } else if (vagueResponse === 'cancel') {
+              const result = await leaveWorkflowService.cancelLeaveRequest(
+                conversationId,
+                userId,
+                pendingActionState.actionId
+              );
+              
+              return {
+                response: result.message,
+                sources: [],
+                requiresConfirmation: false,
+                pendingAction: null,
+                actionMetadata: null,
+                error: result.success ? null : result.error
+              };
+            }
+          }
+        } else {
+          // User sent an unrelated question while pending action exists
+          const pendingActionState = await conversationStateService.getPendingAction(conversationId);
+          
+          if (pendingActionState) {
+            console.log('[LangGraph] Unrelated question with pending action, preserving workflow');
+            
+            // Verify the action is still valid
+            const stateByActionId = await conversationStateService.getStateByActionId(pendingActionState.actionId);
+            
+            if (!stateByActionId || String(stateByActionId.user_id) !== String(userId)) {
+              console.log('[LangGraph] Invalid or expired pending action, clearing state');
+              await conversationStateService.clearPendingAction(conversationId);
+              
+              // Fall through to normal intent processing
+            } else {
+              return {
+                response: `You still have a leave request waiting for confirmation:\n\n` +
+                         `**Leave type:** ${pendingActionState.actionData.leave_type}\n` +
+                         `**Dates:** ${pendingActionState.actionData.start_date} → ${pendingActionState.actionData.end_date}\n` +
+                         `**Days:** ${pendingActionState.actionData.number_of_days}\n\n` +
+                         `Would you like to continue with this request or cancel it?`,
+                sources: [],
+                requiresConfirmation: true,
+                pendingAction: pendingActionState.actionData,
+                actionMetadata: {
+                  actionId: pendingActionState.actionId,
+                  actionType: pendingActionState.actionData.type,
+                  title: pendingActionState.actionData.leave_type,
+                  date: pendingActionState.actionData.start_date,
+                  hasConflicts: false
+                },
+                error: null
+              };
+            }
+          }
+        }
+      }
+    }
 
     // --------------------------------------------------------
     // Initial state
@@ -2898,10 +3052,12 @@ export async function runLangGraphWorkflow(
     // NORMAL REQUEST
     // ========================================================
 
-    const intent =
+    intent =
       await classifyIntent(
         sanitizedInput
       );
+
+    loggingService.logAIRequest(userId, conversationId, intent, sanitizedInput);
 
     console.log(
       '[Copilot] Intent:',
@@ -2937,6 +3093,38 @@ export async function runLangGraphWorkflow(
       // ======================================================
 
       case 'leave_request': {
+        // Check if there's an incomplete request to continue
+        if (conversationId) {
+          const existingState = await conversationStateService.findByConversationId(conversationId);
+          
+          if (existingState && existingState.workflow_step === COLLECTING_DETAILS) {
+            // Continue the incomplete request
+            const details = await extractLeaveDetails(sanitizedInput);
+            const workflowResult = await leaveWorkflowService.continueIncompleteRequest(
+              conversationId,
+              userId,
+              details
+            );
+
+            if (workflowResult.success) {
+              state.requiresConfirmation = true;
+              state.pendingAction = workflowResult.pendingAction;
+              state.toolResult = workflowResult.message;
+              state.hasConflicts = workflowResult.calendarConflicts ? true : false;
+              state.context = {
+                ...state.context,
+                calendarStatus: workflowResult.calendarStatus,
+                calendarConflicts: workflowResult.calendarConflicts
+              };
+            } else {
+              state.requiresConfirmation = false;
+              state.pendingAction = null;
+              state.toolResult = workflowResult.message;
+            }
+            break;
+          }
+        }
+
         const details =
           await extractLeaveDetails(
             sanitizedInput
@@ -2959,59 +3147,85 @@ export async function runLangGraphWorkflow(
           break;
         }
 
-        const numberOfDays =
-          await calculateLeaveDays(
-            details.start_date,
-            details.end_date
+        // Use the new leave workflow service
+        if (conversationId) {
+          const workflowResult = await leaveWorkflowService.initializeLeaveWorkflow(
+            conversationId,
+            userId,
+            details
           );
 
-        const pendingAction = {
-          type:
-            'leave_request',
+          if (workflowResult.success) {
+            state.requiresConfirmation = true;
+            state.pendingAction = workflowResult.pendingAction;
+            state.toolResult = workflowResult.message;
+            state.hasConflicts = workflowResult.calendarConflicts ? true : false;
+            state.context = {
+              ...state.context,
+              calendarStatus: workflowResult.calendarStatus,
+              calendarConflicts: workflowResult.calendarConflicts
+            };
+          } else {
+            state.requiresConfirmation = false;
+            state.pendingAction = null;
+            state.toolResult = workflowResult.message;
+          }
+        } else {
+          // Fallback to old logic if no conversationId
+          const numberOfDays =
+            await calculateLeaveDays(
+              details.start_date,
+              details.end_date
+            );
 
-          actionId:
-            `leave_request_${Date.now()}_${Math.random()
-              .toString(36)
-              .slice(2, 8)}`,
+          const pendingAction = {
+            type:
+              'leave_request',
 
-          leave_type:
-            details.leave_type,
+            actionId:
+              `leave_request_${Date.now()}_${Math.random()
+                .toString(36)
+                .slice(2, 8)}`,
 
-          start_date:
-            details.start_date,
+            leave_type:
+              details.leave_type,
 
-          end_date:
-            details.end_date,
+            start_date:
+              details.start_date,
 
-          reason:
-            details.reason ||
-            null,
+            end_date:
+              details.end_date,
 
-          number_of_days:
-            numberOfDays,
-        };
+            reason:
+              details.reason ||
+              null,
 
-        state.pendingAction =
-          pendingAction;
+            number_of_days:
+              numberOfDays,
+          };
 
-        state =
-          await validateLeaveRequest(
-            state
-          );
+          state.pendingAction =
+            pendingAction;
 
-        if (
-          state.requiresConfirmation
-        ) {
-          state.toolResult =
-            `Please review your leave request:\n\n` +
-            `**Leave type:** ${pendingAction.leave_type}\n` +
-            `**Dates:** ${pendingAction.start_date} → ${pendingAction.end_date}\n` +
-            `**Days:** ${pendingAction.number_of_days}\n` +
-            `**Reason:** ${
-              pendingAction.reason ||
-              'Not specified'
-            }\n\n` +
-            `Would you like me to submit this leave request?`;
+          state =
+            await validateLeaveRequest(
+              state
+            );
+
+          if (
+            state.requiresConfirmation
+          ) {
+            state.toolResult =
+              `Please review your leave request:\n\n` +
+              `**Leave type:** ${pendingAction.leave_type}\n` +
+              `**Dates:** ${pendingAction.start_date} → ${pendingAction.end_date}\n` +
+              `**Days:** ${pendingAction.number_of_days}\n` +
+              `**Reason:** ${
+                pendingAction.reason ||
+                'Not specified'
+              }\n\n` +
+              `Would you like me to submit this leave request?`;
+          }
         }
 
         break;
@@ -3147,6 +3361,12 @@ export async function runLangGraphWorkflow(
             }` +
             conflictText +
             `\n\nWould you like me to schedule it?`;
+
+          state.context = {
+            ...state.context,
+            calendarStatus: state.hasConflicts ? 'CONNECTED' : 'CONNECTED',
+            calendarConflicts: state.context?.calendarConflicts || null
+          };
         }
 
         break;
@@ -3208,7 +3428,7 @@ export async function runLangGraphWorkflow(
           'I could not generate a response.'
       );
 
-    return {
+    const result = {
       response,
 
       sources:
@@ -3228,27 +3448,24 @@ export async function runLangGraphWorkflow(
 
       actionMetadata:
         state.requiresConfirmation
-          ? {
-              ...buildActionMetadata(
-                state.pendingAction
-              ),
-
-              hasConflicts:
-                Boolean(
-                  state.hasConflicts
-                ),
-
-              conflictDetails:
-                state.context
-                  ?.calendarConflicts ||
-                null,
-            }
+          ? buildActionMetadata(
+              state.pendingAction,
+              state.context
+            )
           : null,
 
       error:
         null,
     };
+
+    loggingService.logAIResponse(userId, conversationId, intent, response, {
+      requiresConfirmation: result.requiresConfirmation,
+      hasPendingAction: !!result.pendingAction
+    });
+
+    return result;
   } catch (error) {
+    loggingService.logAIError(userId, conversationId, error, { intent });
     console.error(
       '[LangGraphWorkflow]',
       error

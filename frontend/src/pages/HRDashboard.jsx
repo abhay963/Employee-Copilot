@@ -27,6 +27,7 @@ import {
 import Copilot from '../components/Copilot';
 import Documents from '../components/Documents';
 import ConversationList from '../components/ConversationList';
+import ThemeToggle from '../components/ThemeToggle';
 import LeaveManagement from '../components/LeaveManagement';
 import EmployeeCalendar from '../components/EmployeeCalendar';
 import Profile from '../components/Profile';
@@ -36,6 +37,11 @@ const HRDashboard = () => {
   const { user, isHR, logout } = useUser();
 
   const [activeTab, setActiveTab] = useState('copilot');
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
+
+  // Generate DiceBear avatar URL
+  const avatarSeed = user?.uid || user?.email || "guest";
+  const avatarUrl = `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(avatarSeed)}&backgroundColor=09090b,18181b,1e1b4b,312e81&radius=22`;
 
   const [documents, setDocuments] = useState([]);
   const [conversations, setConversations] = useState([]);
@@ -592,23 +598,23 @@ const HRDashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f8f9fb] flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center transition-colors duration-300">
         <div className="flex flex-col items-center">
 
           <div className="relative">
 
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-200">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-200 dark:shadow-violet-900/30">
               <Sparkles
                 size={24}
                 className="text-white"
               />
             </div>
 
-            <div className="absolute -inset-1 rounded-2xl border-2 border-violet-200 animate-pulse" />
+            <div className="absolute -inset-1 rounded-2xl border-2 border-violet-200 dark:border-violet-700 animate-pulse" />
 
           </div>
 
-          <p className="mt-5 text-sm font-medium text-gray-600">
+          <p className="mt-5 text-sm font-medium text-secondary">
             Loading HR Dashboard...
           </p>
 
@@ -622,7 +628,7 @@ const HRDashboard = () => {
   // ============================================================
 
   return (
-    <div className="h-screen bg-[#f8f9fb] flex overflow-hidden text-gray-900">
+    <div className="h-screen bg-background flex overflow-hidden text-primary transition-colors duration-300">
 
       {/* ========================================================
           LEFT SIDEBAR
@@ -633,9 +639,7 @@ const HRDashboard = () => {
           hidden md:flex
           flex-col
           shrink-0
-          bg-white
-          border-r
-          border-gray-200
+          sidebar
           transition-all
           duration-300
           ${
@@ -655,8 +659,7 @@ const HRDashboard = () => {
             h-[76px]
             flex
             items-center
-            border-b
-            border-gray-100
+            border-b border-light
             ${
               sidebarCollapsed
                 ? 'justify-center'
@@ -677,11 +680,11 @@ const HRDashboard = () => {
           {!sidebarCollapsed && (
             <div className="min-w-0">
 
-              <h1 className="font-bold text-[15px] text-gray-900 truncate">
+              <h1 className="font-bold text-[15px] text-primary truncate">
                 HR Dashboard
               </h1>
 
-              <p className="text-xs text-gray-500 truncate">
+              <p className="text-xs text-secondary truncate">
                 Employee Copilot
               </p>
 
@@ -697,7 +700,7 @@ const HRDashboard = () => {
         <nav className="flex-1 px-3 py-5 overflow-y-auto">
 
           {!sidebarCollapsed && (
-            <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">
+            <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-tertiary">
               Workspace
             </p>
           )}
@@ -742,8 +745,8 @@ const HRDashboard = () => {
 
                       ${
                         active
-                          ? 'bg-violet-50 text-violet-700 shadow-sm'
-                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                          ? 'sidebar-item active'
+                          : 'sidebar-item'
                       }
                     `}
                   >
@@ -753,11 +756,7 @@ const HRDashboard = () => {
                       strokeWidth={
                         active ? 2.3 : 2
                       }
-                      className={
-                        active
-                          ? 'text-violet-600'
-                          : 'text-gray-500 group-hover:text-gray-700'
-                      }
+                      className="current-color"
                     />
 
                     {!sidebarCollapsed && (
@@ -789,7 +788,7 @@ const HRDashboard = () => {
           <div className="mt-7">
 
             {!sidebarCollapsed && (
-              <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">
+              <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-tertiary">
                 Quick Action
               </p>
             )}
@@ -807,12 +806,11 @@ const HRDashboard = () => {
                 items-center
                 rounded-xl
                 border
-                border-dashed
-                border-gray-300
-                text-gray-600
-                hover:border-violet-300
-                hover:bg-violet-50
-                hover:text-violet-700
+                border-dashed border-default
+                text-secondary
+                hover:border-violet-400
+                hover:bg-violet-50 dark:hover:bg-violet-900/20
+                hover:text-violet-600 dark:hover:text-violet-400
                 transition-all
 
                 ${
@@ -841,7 +839,7 @@ const HRDashboard = () => {
             USER / LOGOUT
         ====================================================== */}
 
-        <div className="border-t border-gray-100 p-3">
+        <div className="border-t border-light p-3">
 
           <div
             className={`
@@ -855,24 +853,33 @@ const HRDashboard = () => {
             `}
           >
 
-            <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold">
-              {(
-                user?.name ||
-                user?.email ||
-                'H'
-              )
-                .charAt(0)
-                .toUpperCase()}
-            </div>
+            {avatarLoadError ? (
+              <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold">
+                {(
+                  user?.name ||
+                  user?.email ||
+                  'H'
+                )
+                  .charAt(0)
+                  .toUpperCase()}
+              </div>
+            ) : (
+              <img
+                src={avatarUrl}
+                alt={`${user?.name || "User"} avatar`}
+                className="w-9 h-9 shrink-0 rounded-full object-cover"
+                onError={() => setAvatarLoadError(true)}
+              />
+            )}
 
             {!sidebarCollapsed && (
               <div className="flex-1 min-w-0">
 
-                <p className="text-sm font-semibold text-gray-800 truncate">
+                <p className="text-sm font-semibold text-primary truncate">
                   {user?.name || 'HR User'}
                 </p>
 
-                <p className="text-xs text-gray-500 truncate">
+                <p className="text-xs text-secondary truncate">
                   {user?.email || 'HR'}
                 </p>
 
@@ -894,9 +901,9 @@ const HRDashboard = () => {
               flex
               items-center
               rounded-xl
-              text-gray-500
-              hover:bg-red-50
-              hover:text-red-600
+              text-tertiary
+              hover:bg-red-50 dark:hover:bg-red-900/20
+              hover:text-red-600 dark:hover:text-red-400
               transition
 
               ${
@@ -923,7 +930,7 @@ const HRDashboard = () => {
             COLLAPSE BUTTON
         ====================================================== */}
 
-        <div className="border-t border-gray-100 p-3">
+        <div className="border-t border-light p-3">
 
           <button
             onClick={() =>
@@ -941,9 +948,9 @@ const HRDashboard = () => {
               flex
               items-center
               rounded-xl
-              text-gray-500
-              hover:bg-gray-50
-              hover:text-gray-800
+              text-tertiary
+              hover:bg-surface-alt
+              hover:text-primary
               transition
 
               ${
@@ -982,7 +989,7 @@ const HRDashboard = () => {
             TOP HEADER
         ====================================================== */}
 
-        <header className="h-[76px] shrink-0 bg-white border-b border-gray-200 flex items-center justify-between px-5 lg:px-7">
+        <header className="h-[76px] shrink-0 header flex items-center justify-between px-5 lg:px-7 transition-colors duration-300">
 
           <div className="flex items-center gap-3">
 
@@ -999,11 +1006,11 @@ const HRDashboard = () => {
 
             <div>
 
-              <h2 className="text-[17px] font-semibold text-gray-900">
+              <h2 className="text-[17px] font-semibold text-primary">
                 {getPageTitle()}
               </h2>
 
-              <p className="hidden sm:block text-xs text-gray-500 mt-0.5">
+              <p className="hidden sm:block text-xs text-secondary mt-0.5">
                 {getPageDescription()}
               </p>
 
@@ -1011,13 +1018,16 @@ const HRDashboard = () => {
 
           </div>
 
-          <button
-            onClick={logout}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-medium"
-          >
-            <LogOut size={16} />
-            <span className="hidden sm:inline">Logout</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm font-medium"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+          </div>
 
         </header>
 
@@ -1025,7 +1035,7 @@ const HRDashboard = () => {
             MOBILE NAVIGATION
         ====================================================== */}
 
-        <div className="md:hidden shrink-0 bg-white border-b border-gray-200 overflow-x-auto">
+        <div className="md:hidden shrink-0 header overflow-x-auto transition-colors duration-300">
 
           <div className="flex items-center gap-1 p-2 min-w-max">
 

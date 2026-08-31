@@ -18,6 +18,7 @@ import { conversationAPI } from '../services/api';
 
 import Copilot from '../components/Copilot';
 import ConversationList from '../components/ConversationList';
+import ThemeToggle from '../components/ThemeToggle';
 import LeaveManagement from '../components/LeaveManagement';
 import Profile from '../components/Profile';
 import EmployeeCalendar from '../components/EmployeeCalendar';
@@ -27,6 +28,11 @@ const EmployeeDashboard = () => {
   const { user, isEmployee, logout } = useUser();
 
   const [activeTab, setActiveTab] = useState('copilot');
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
+
+  // Generate DiceBear avatar URL
+  const avatarSeed = user?.uid || user?.email || "guest";
+  const avatarUrl = `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(avatarSeed)}&backgroundColor=09090b,18181b,1e1b4b,312e81&radius=22`;
 
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] =
@@ -429,21 +435,21 @@ const EmployeeDashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f8f9fb] flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center transition-colors duration-300">
         <div className="flex flex-col items-center">
 
           <div className="relative">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-200">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-200 dark:shadow-violet-900/30">
               <Sparkles
                 size={24}
                 className="text-white"
               />
             </div>
 
-            <div className="absolute -inset-1 rounded-2xl border-2 border-violet-200 animate-pulse" />
+            <div className="absolute -inset-1 rounded-2xl border-2 border-violet-200 dark:border-violet-700 animate-pulse" />
           </div>
 
-          <p className="mt-5 text-sm font-medium text-gray-600">
+          <p className="mt-5 text-sm font-medium text-secondary">
             Loading Employee Copilot...
           </p>
 
@@ -457,7 +463,7 @@ const EmployeeDashboard = () => {
   // ============================================================
 
   return (
-    <div className="h-screen bg-[#f8f9fb] flex overflow-hidden text-gray-900">
+    <div className="h-screen bg-background flex overflow-hidden text-primary transition-colors duration-300">
 
       {/* ========================================================
           LEFT SIDEBAR
@@ -468,9 +474,7 @@ const EmployeeDashboard = () => {
           hidden md:flex
           flex-col
           shrink-0
-          bg-white
-          border-r
-          border-gray-200
+          sidebar
           transition-all
           duration-300
           ${
@@ -490,8 +494,7 @@ const EmployeeDashboard = () => {
             h-[76px]
             flex
             items-center
-            border-b
-            border-gray-100
+            border-b border-light
             ${
               sidebarCollapsed
                 ? 'justify-center'
@@ -510,11 +513,11 @@ const EmployeeDashboard = () => {
           {!sidebarCollapsed && (
             <div className="min-w-0">
 
-              <h1 className="font-bold text-[15px] text-gray-900 truncate">
+              <h1 className="font-bold text-[15px] text-primary truncate">
                 Employee Copilot
               </h1>
 
-              <p className="text-xs text-gray-500 truncate">
+              <p className="text-xs text-secondary truncate">
                 Your workspace
               </p>
 
@@ -530,7 +533,7 @@ const EmployeeDashboard = () => {
         <nav className="flex-1 px-3 py-5 overflow-y-auto">
 
           {!sidebarCollapsed && (
-            <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">
+            <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-tertiary">
               Workspace
             </p>
           )}
@@ -575,8 +578,8 @@ const EmployeeDashboard = () => {
 
                       ${
                         active
-                          ? 'bg-violet-50 text-violet-700 shadow-sm'
-                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                          ? 'sidebar-item active'
+                          : 'sidebar-item'
                       }
                     `}
                   >
@@ -586,11 +589,7 @@ const EmployeeDashboard = () => {
                       strokeWidth={
                         active ? 2.3 : 2
                       }
-                      className={
-                        active
-                          ? 'text-violet-600'
-                          : 'text-gray-500 group-hover:text-gray-700'
-                      }
+                      className="current-color"
                     />
 
                     {!sidebarCollapsed && (
@@ -622,7 +621,7 @@ const EmployeeDashboard = () => {
           <div className="mt-7">
 
             {!sidebarCollapsed && (
-              <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">
+              <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-tertiary">
                 Quick Action
               </p>
             )}
@@ -642,12 +641,11 @@ const EmployeeDashboard = () => {
                 items-center
                 rounded-xl
                 border
-                border-dashed
-                border-gray-300
-                text-gray-600
-                hover:border-violet-300
-                hover:bg-violet-50
-                hover:text-violet-700
+                border-dashed border-default
+                text-secondary
+                hover:border-violet-400
+                hover:bg-violet-50 dark:hover:bg-violet-900/20
+                hover:text-violet-600 dark:hover:text-violet-400
                 transition-all
 
                 ${
@@ -676,7 +674,7 @@ const EmployeeDashboard = () => {
             USER / LOGOUT
         ------------------------------------------------------ */}
 
-        <div className="border-t border-gray-100 p-3">
+        <div className="border-t border-light p-3">
 
           <div
             className={`
@@ -691,24 +689,33 @@ const EmployeeDashboard = () => {
             `}
           >
 
-            <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold">
-              {(
-                user?.name ||
-                user?.email ||
-                'E'
-              )
-                .charAt(0)
-                .toUpperCase()}
-            </div>
+            {avatarLoadError ? (
+              <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold">
+                {(
+                  user?.name ||
+                  user?.email ||
+                  'E'
+                )
+                  .charAt(0)
+                  .toUpperCase()}
+              </div>
+            ) : (
+              <img
+                src={avatarUrl}
+                alt={`${user?.name || "User"} avatar`}
+                className="w-9 h-9 shrink-0 rounded-full object-cover"
+                onError={() => setAvatarLoadError(true)}
+              />
+            )}
 
             {!sidebarCollapsed && (
               <div className="flex-1 min-w-0">
 
-                <p className="text-sm font-semibold text-gray-800 truncate">
+                <p className="text-sm font-semibold text-primary truncate">
                   {user?.name || 'Employee'}
                 </p>
 
-                <p className="text-xs text-gray-500 truncate">
+                <p className="text-xs text-secondary truncate">
                   {user?.email || 'Employee'}
                 </p>
 
@@ -730,9 +737,9 @@ const EmployeeDashboard = () => {
               flex
               items-center
               rounded-xl
-              text-gray-500
-              hover:bg-red-50
-              hover:text-red-600
+              text-tertiary
+              hover:bg-red-50 dark:hover:bg-red-900/20
+              hover:text-red-600 dark:hover:text-red-400
               transition
 
               ${
@@ -759,7 +766,7 @@ const EmployeeDashboard = () => {
             COLLAPSE BUTTON
         ------------------------------------------------------ */}
 
-        <div className="border-t border-gray-100 p-3">
+        <div className="border-t border-light p-3">
 
           <button
             onClick={() =>
@@ -777,9 +784,9 @@ const EmployeeDashboard = () => {
               flex
               items-center
               rounded-xl
-              text-gray-500
-              hover:bg-gray-50
-              hover:text-gray-800
+              text-tertiary
+              hover:bg-surface-alt
+              hover:text-primary
               transition
 
               ${
@@ -818,7 +825,7 @@ const EmployeeDashboard = () => {
             TOP HEADER
         ====================================================== */}
 
-        <header className="h-[76px] shrink-0 bg-white border-b border-gray-200 flex items-center justify-between px-5 lg:px-7">
+        <header className="h-[76px] shrink-0 header flex items-center justify-between px-5 lg:px-7 transition-colors duration-300">
 
           <div className="flex items-center gap-3">
 
@@ -835,11 +842,11 @@ const EmployeeDashboard = () => {
 
             <div>
 
-              <h2 className="text-[17px] font-semibold text-gray-900">
+              <h2 className="text-[17px] font-semibold text-primary">
                 {pageTitles[activeTab]?.title}
               </h2>
 
-              <p className="hidden sm:block text-xs text-gray-500 mt-0.5">
+              <p className="hidden sm:block text-xs text-secondary mt-0.5">
                 {pageTitles[activeTab]?.description}
               </p>
 
@@ -851,11 +858,13 @@ const EmployeeDashboard = () => {
 
           <div className="flex items-center gap-3">
 
-            <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100">
+            <ThemeToggle />
 
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-alt border border-light">
 
-              <span className="text-xs font-medium text-gray-600">
+              <span className="w-2 h-2 rounded-full status-online" />
+
+              <span className="text-xs font-medium text-secondary">
                 Copilot ready
               </span>
 
@@ -863,7 +872,7 @@ const EmployeeDashboard = () => {
 
             <button
               onClick={logout}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-danger-light text-danger hover:bg-danger transition-colors text-sm font-medium"
             >
               <LogOut size={16} />
               <span className="hidden sm:inline">Logout</span>
@@ -877,7 +886,7 @@ const EmployeeDashboard = () => {
             MOBILE NAVIGATION
         ====================================================== */}
 
-        <div className="md:hidden shrink-0 bg-white border-b border-gray-200 overflow-x-auto">
+        <div className="md:hidden shrink-0 header overflow-x-auto transition-colors duration-300">
 
           <div className="flex items-center gap-1 p-2 min-w-max">
 
@@ -911,8 +920,8 @@ const EmployeeDashboard = () => {
 
                       ${
                         active
-                          ? 'bg-violet-50 text-violet-700'
-                          : 'text-gray-500 hover:bg-gray-50'
+                          ? 'sidebar-item active'
+                          : 'sidebar-item'
                       }
                     `}
                   >
@@ -947,7 +956,7 @@ const EmployeeDashboard = () => {
                   CHATGPT STYLE CONVERSATION SIDEBAR
               ================================================== */}
 
-              <section className="hidden sm:flex w-[280px] lg:w-[310px] shrink-0 bg-[#f7f7f8] border-r border-gray-200 flex-col">
+              <section className="hidden sm:flex w-[280px] lg:w-[310px] shrink-0 conversation-sidebar flex-col">
 
                 {/* Conversation header */}
 
@@ -966,16 +975,10 @@ const EmployeeDashboard = () => {
                       px-4
                       py-2.5
                       rounded-xl
-                      bg-white
-                      border
-                      border-gray-200
+                      new-conversation-btn
                       shadow-sm
                       text-sm
                       font-medium
-                      text-gray-700
-                      hover:border-violet-300
-                      hover:text-violet-700
-                      hover:bg-violet-50
                       transition-all
                     "
                   >
@@ -1019,7 +1022,7 @@ const EmployeeDashboard = () => {
                   CHAT AREA
               ================================================== */}
 
-              <section className="flex-1 min-w-0 min-h-0 bg-white">
+              <section className="flex-1 min-w-0 min-h-0 bg-surface">
 
                 <div className="h-full w-full">
 

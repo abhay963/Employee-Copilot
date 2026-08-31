@@ -358,19 +358,16 @@ const ConversationItem = ({
           ${
             isActive
               ? `
-                border-violet-200
-                bg-gradient-to-r
-                from-violet-50
-                via-indigo-50/70
-                to-white
+                border-accent-primary
+                bg-accent-primary-light
                 shadow-sm
               `
               : `
                 border-transparent
                 bg-transparent
-                hover:border-gray-200
-                hover:bg-white
-                hover:shadow-[0_4px_18px_rgba(15,23,42,0.05)]
+                hover:border-default
+                hover:bg-hover
+                hover:shadow-md
               `
           }
         `}
@@ -447,15 +444,15 @@ const ConversationItem = ({
                     from-violet-500
                     via-indigo-500
                     to-blue-600
-                    text-white
+                    text-inverse
                     shadow-md
                     shadow-violet-500/20
                   `
                   : `
-                    bg-gray-100
-                    text-gray-500
-                    group-hover:bg-violet-50
-                    group-hover:text-violet-600
+                    bg-surface-tertiary
+                    text-secondary
+                    group-hover:bg-accent-primary-lighter
+                    group-hover:text-accent-primary
                   `
               }
             `}
@@ -477,8 +474,8 @@ const ConversationItem = ({
                   w-2
                   rounded-full
                   border-2
-                  border-white
-                  bg-emerald-500
+                  border-inverse
+                  bg-success
                 "
               />
             )}
@@ -512,16 +509,16 @@ const ConversationItem = ({
                     flex-1
                     rounded-lg
                     border
-                    border-violet-300
-                    bg-white
+                    border-accent-primary
+                    bg-surface
                     px-2.5
                     py-1.5
                     text-xs
                     font-medium
-                    text-gray-900
+                    text-primary
                     outline-none
                     ring-4
-                    ring-violet-500/10
+                    ring-focus-ring
                   "
                 />
 
@@ -536,9 +533,9 @@ const ConversationItem = ({
                     items-center
                     justify-center
                     rounded-lg
-                    text-emerald-600
+                    text-success
                     transition
-                    hover:bg-emerald-50
+                    hover:bg-success-light
                   "
                   title="Save"
                 >
@@ -563,10 +560,10 @@ const ConversationItem = ({
                     items-center
                     justify-center
                     rounded-lg
-                    text-gray-400
+                    text-tertiary
                     transition
-                    hover:bg-gray-100
-                    hover:text-gray-700
+                    hover:bg-hover
+                    hover:text-secondary
                   "
                   title="Cancel"
                 >
@@ -651,8 +648,8 @@ const ConversationItem = ({
                       leading-5
                       ${
                         isActive
-                          ? 'font-semibold text-gray-900'
-                          : 'font-medium text-gray-700 group-hover:text-gray-900'
+                          ? 'font-semibold text-primary'
+                          : 'font-medium text-secondary group-hover:text-primary'
                       }
                     `}
                   >
@@ -671,8 +668,8 @@ const ConversationItem = ({
                     size={11}
                     className={
                       isActive
-                        ? 'text-violet-400'
-                        : 'text-gray-300'
+                        ? 'text-accent-primary'
+                        : 'text-tertiary'
                     }
                   />
 
@@ -682,8 +679,8 @@ const ConversationItem = ({
                       text-[10px]
                       ${
                         isActive
-                          ? 'font-medium text-violet-500'
-                          : 'text-gray-400'
+                          ? 'font-medium text-accent-primary'
+                          : 'text-tertiary'
                       }
                     `}
                   >
@@ -692,9 +689,9 @@ const ConversationItem = ({
 
                   {isActive && (
                     <>
-                      <span className="h-1 w-1 rounded-full bg-violet-300" />
+                      <span className="h-1 w-1 rounded-full bg-accent-primary" />
 
-                      <span className="text-[10px] font-semibold text-violet-500">
+                      <span className="text-[10px] font-semibold text-accent-primary">
                         Active
                       </span>
                     </>
@@ -739,10 +736,10 @@ const ConversationItem = ({
                   items-center
                   justify-center
                   rounded-lg
-                  text-gray-400
+                  text-tertiary
                   transition-all
-                  hover:bg-violet-50
-                  hover:text-violet-600
+                  hover:bg-accent-primary-lighter
+                  hover:text-accent-primary
                 "
                 title="Rename"
               >
@@ -760,10 +757,10 @@ const ConversationItem = ({
                   items-center
                   justify-center
                   rounded-lg
-                  text-gray-400
+                  text-tertiary
                   transition-all
-                  hover:bg-red-50
-                  hover:text-red-500
+                  hover:bg-danger-light
+                  hover:text-danger
                   disabled:cursor-not-allowed
                   disabled:opacity-50
                 "
@@ -882,7 +879,7 @@ const ConversationList = ({
         w-full
         flex-col
         overflow-hidden
-        bg-[#f8f9fc]
+        bg-surface-secondary
       "
     >
 
@@ -894,8 +891,8 @@ const ConversationList = ({
         className="
           shrink-0
           border-b
-          border-gray-200/80
-          bg-white
+          border-default
+          bg-surface
         "
       >
         <div className="px-4 pb-4 pt-4">
@@ -948,13 +945,13 @@ const ConversationList = ({
                   text-[13px]
                   font-bold
                   tracking-tight
-                  text-gray-900
+                  text-primary
                 "
               >
                 Employee Copilot
               </h2>
 
-              <p className="mt-0.5 truncate text-[10px] text-gray-400">
+              <p className="mt-0.5 truncate text-[10px] text-secondary">
                 Intelligent workspace
               </p>
 
@@ -1015,7 +1012,7 @@ const ConversationList = ({
                 left-3
                 top-1/2
                 -translate-y-1/2
-                text-gray-400
+                text-tertiary
               "
             />
 
@@ -1033,20 +1030,20 @@ const ConversationList = ({
                 w-full
                 rounded-xl
                 border
-                border-gray-200
-                bg-gray-50/80
+                border-default
+                bg-input
                 pl-9
                 pr-9
                 text-xs
                 font-medium
-                text-gray-800
+                text-primary
                 outline-none
                 transition-all
-                placeholder:text-gray-400
-                focus:border-violet-300
-                focus:bg-white
+                placeholder:text-muted
+                focus:border-accent-primary
+                focus:bg-input-focus
                 focus:ring-4
-                focus:ring-violet-500/10
+                focus:ring-focus-ring
               "
             />
 
@@ -1080,10 +1077,10 @@ const ConversationList = ({
                     items-center
                     justify-center
                     rounded-md
-                    text-gray-400
+                    text-tertiary
                     transition
-                    hover:bg-gray-200
-                    hover:text-gray-700
+                    hover:bg-hover
+                    hover:text-secondary
                   "
                   title="Clear search"
                 >
@@ -1110,7 +1107,7 @@ const ConversationList = ({
               font-bold
               uppercase
               tracking-[0.14em]
-              text-gray-400
+              text-tertiary
             "
           >
             Conversations
@@ -1125,11 +1122,11 @@ const ConversationList = ({
                 items-center
                 justify-center
                 rounded-full
-                bg-violet-50
+                bg-accent-primary-light
                 px-1.5
                 text-[9px]
                 font-bold
-                text-violet-500
+                text-accent-primary
               "
             >
               {conversations.length}
@@ -1139,7 +1136,7 @@ const ConversationList = ({
         </div>
 
         {search && (
-          <span className="text-[9px] font-medium text-gray-400">
+          <span className="text-[9px] font-medium text-tertiary">
             {visibleConversationCount}{' '}
             result
             {visibleConversationCount !== 1
@@ -1228,21 +1225,21 @@ const ConversationList = ({
                 items-center
                 justify-center
                 rounded-2xl
-                bg-white
-                text-gray-400
+                bg-surface
+                text-tertiary
                 shadow-sm
                 ring-1
-                ring-gray-200
+                ring-default
               "
             >
               <Search size={19} />
             </div>
 
-            <h3 className="text-xs font-semibold text-gray-800">
+            <h3 className="text-xs font-semibold text-primary">
               No conversations found
             </h3>
 
-            <p className="mt-1.5 text-[10px] leading-5 text-gray-400">
+            <p className="mt-1.5 text-[10px] leading-5 text-tertiary">
               Try another keyword or clear
               your search.
             </p>
@@ -1255,14 +1252,14 @@ const ConversationList = ({
               className="
                 mt-4
                 rounded-lg
-                bg-violet-50
+                bg-accent-primary-light
                 px-3
                 py-2
                 text-[10px]
                 font-semibold
-                text-violet-600
+                text-accent-primary
                 transition
-                hover:bg-violet-100
+                hover:bg-accent-primary-lighter
               "
             >
               Clear search
@@ -1310,10 +1307,10 @@ const ConversationList = ({
                 from-violet-50
                 via-indigo-50
                 to-blue-50
-                text-violet-500
+                text-accent-primary
                 shadow-sm
                 ring-1
-                ring-violet-100
+                ring-accent-primary-light
               "
             >
               <MessageSquare
@@ -1322,11 +1319,11 @@ const ConversationList = ({
               />
             </motion.div>
 
-            <h3 className="text-xs font-semibold text-gray-800">
+            <h3 className="text-xs font-semibold text-primary">
               No conversations yet
             </h3>
 
-            <p className="mx-auto mt-1.5 max-w-[190px] text-[10px] leading-5 text-gray-400">
+            <p className="mx-auto mt-1.5 max-w-[190px] text-[10px] leading-5 text-tertiary">
               Start a conversation and your
               AI workspace will appear here.
             </p>
@@ -1375,8 +1372,8 @@ const ConversationList = ({
         className="
           shrink-0
           border-t
-          border-gray-200/80
-          bg-white
+          border-default
+          bg-surface
           px-4
           py-3
         "
@@ -1399,7 +1396,7 @@ const ConversationList = ({
                 absolute
                 inset-0
                 rounded-full
-                bg-emerald-400
+                bg-success
               "
             />
 
@@ -1409,25 +1406,25 @@ const ConversationList = ({
                 h-2
                 w-2
                 rounded-full
-                bg-emerald-500
+                bg-success
               "
             />
 
           </span>
 
-          <span className="text-[10px] font-medium text-gray-500">
+          <span className="text-[10px] font-medium text-secondary">
             Copilot ready
           </span>
 
           <div className="ml-auto flex items-center gap-1">
 
-            <span className="text-[9px] text-gray-300">
+            <span className="text-[9px] text-muted">
               AI
             </span>
 
             <MoreHorizontal
               size={13}
-              className="text-gray-300"
+              className="text-muted"
             />
 
           </div>

@@ -1,6 +1,8 @@
 import { Conversation } from '../models/Conversation.js';
 import { Message } from '../models/Message.js';
 import { runLangGraphWorkflow } from '../ai/langGraphWorkflow.js';
+import conversationStateService from './conversationStateService.js';
+import leaveWorkflowService from './leaveWorkflowService.js';
 
 class ConversationService {
   // ============================================================
@@ -138,6 +140,20 @@ class ConversationService {
   }
 
   // ============================================================
+  // PUBLIC VALIDATE METHOD (for controller use)
+  // ============================================================
+
+  async validateConversationForController(
+    conversationId,
+    userId
+  ) {
+    return await this.validateConversation(
+      conversationId,
+      userId
+    );
+  }
+
+  // ============================================================
   // CREATE CONVERSATION TITLE
   // ============================================================
 
@@ -206,6 +222,12 @@ class ConversationService {
       );
 
       // --------------------------------------------------------
+      // Initialize conversation state
+      // --------------------------------------------------------
+
+      await conversationStateService.getOrCreateState(conversationId, userId);
+
+      // --------------------------------------------------------
       // Save user message
       // --------------------------------------------------------
 
@@ -231,14 +253,15 @@ class ConversationService {
       );
 
       // --------------------------------------------------------
-      // Run AI workflow
+      // Run AI workflow with conversationId for state management
       // --------------------------------------------------------
 
       const result =
         await runLangGraphWorkflow(
           cleanQuestion,
           userId,
-          userRole
+          userRole,
+          conversationId
         );
 
       const {
@@ -247,6 +270,7 @@ class ConversationService {
         error = null,
         requiresConfirmation = false,
         pendingAction = null,
+        actionMetadata = null,
       } = result || {};
 
       // --------------------------------------------------------
@@ -291,6 +315,8 @@ class ConversationService {
         requiresConfirmation,
 
         pendingAction,
+
+        actionMetadata,
 
         error,
       };
@@ -354,6 +380,12 @@ class ConversationService {
         conversationId,
         userId
       );
+
+      // --------------------------------------------------------
+      // Initialize conversation state
+      // --------------------------------------------------------
+
+      await conversationStateService.getOrCreateState(conversationId, userId);
 
       // --------------------------------------------------------
       // Save user message
@@ -425,7 +457,8 @@ class ConversationService {
         await runLangGraphWorkflow(
           cleanQuestion,
           userId,
-          userRole
+          userRole,
+          conversationId
         );
 
       const {
@@ -434,6 +467,7 @@ class ConversationService {
         error = null,
         requiresConfirmation = false,
         pendingAction = null,
+        actionMetadata = null,
       } = result || {};
 
       // --------------------------------------------------------
@@ -476,6 +510,8 @@ class ConversationService {
         requiresConfirmation,
 
         pendingAction,
+
+        actionMetadata,
 
         error,
 
@@ -583,12 +619,61 @@ class ConversationService {
       );
 
       // --------------------------------------------------------
-      // Import action handlers
+      // Use new workflow services for leave requests
+      // --------------------------------------------------------
+
+      let result;
+
+      if (
+        actionId.startsWith(
+          'leave_request_'
+        )
+      ) {
+        result =
+          await leaveWorkflowService.confirmAndSubmitLeaveRequest(
+            conversationId,
+            userId,
+            actionId
+          );
+
+        if (!result.success) {
+          throw new Error(result.message || 'Leave request submission failed');
+        }
+
+        return {
+          success: true,
+
+          assistantMessage:
+            await Message.create({
+              conversation_id:
+                conversationId,
+
+              role: 'assistant',
+
+              content: result.message,
+
+              sources: [],
+            }),
+
+          conversation:
+            await Conversation.findById(
+              conversationId
+            ),
+
+          requiresConfirmation: false,
+
+          pendingAction: null,
+
+          actionMetadata: null,
+        };
+      }
+
+      // --------------------------------------------------------
+      // Import action handlers for other types
       // --------------------------------------------------------
 
       const {
         createCalendarEvent,
-        submitLeaveRequest,
         sendGmail,
       } = await import(
         '../ai/langGraphWorkflow.js'
@@ -598,8 +683,6 @@ class ConversationService {
       // Determine action type
       // --------------------------------------------------------
 
-      let result;
-
       if (
         actionId.startsWith(
           'calendar_create_'
@@ -607,24 +690,6 @@ class ConversationService {
       ) {
         result =
           await createCalendarEvent({
-            userId,
-
-            pendingAction: {
-              ...actionData,
-              actionId,
-            },
-
-            context: {
-              userRole,
-            },
-          });
-      } else if (
-        actionId.startsWith(
-          'leave_request_'
-        )
-      ) {
-        result =
-          await submitLeaveRequest({
             userId,
 
             pendingAction: {
@@ -707,6 +772,8 @@ class ConversationService {
         requiresConfirmation: false,
 
         pendingAction: null,
+
+        actionMetadata: null,
       };
     } catch (error) {
       console.error(

@@ -40,6 +40,11 @@ const Profile = () => {
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
+
+  // Generate DiceBear avatar URL
+  const avatarSeed = user?.uid || user?.email || "guest";
+  const avatarUrl = `https://api.dicebear.com/9.x/pixel-art/svg?seed=${encodeURIComponent(avatarSeed)}&backgroundColor=09090b,18181b,1e1b4b,312e81&radius=22`;
 
   useEffect(() => {
     if (user) {
@@ -125,23 +130,23 @@ const Profile = () => {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-gray-50 rounded-xl p-4 hover:bg-gray-100 transition-colors"
+      className="bg-surface-tertiary rounded-xl p-4 hover:bg-hover transition-colors"
     >
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
-          <Icon size={18} className="text-violet-600" />
+        <div className="w-10 h-10 rounded-lg bg-surface flex items-center justify-center shadow-sm">
+          <Icon size={18} className="text-accent-primary" />
         </div>
         <div className="flex-1">
-          <p className="text-xs text-gray-500 mb-1">{label}</p>
+          <p className="text-xs text-tertiary mb-1">{label}</p>
           {editing ? (
             <input
               type="text"
               value={formData[field] || ''}
               onChange={(e) => onChange(field, e.target.value)}
-              className="w-full text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+              className="w-full text-sm font-medium text-primary bg-surface border border-default rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-accent-primary focus:border-transparent outline-none"
             />
           ) : (
-            <p className="text-sm font-medium text-gray-900">{value || 'Not specified'}</p>
+            <p className="text-sm font-medium text-primary">{value || 'Not specified'}</p>
           )}
         </div>
       </div>
@@ -149,12 +154,12 @@ const Profile = () => {
   );
 
   const SkeletonCard = () => (
-    <div className="bg-gray-50 rounded-xl p-4">
+    <div className="bg-surface-tertiary rounded-xl p-4">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-gray-200 animate-pulse" />
+        <div className="w-10 h-10 rounded-lg bg-surface-secondary animate-pulse" />
         <div className="flex-1 space-y-2">
-          <div className="h-3 bg-gray-200 rounded animate-pulse w-20" />
-          <div className="h-4 bg-gray-200 rounded animate-pulse w-32" />
+          <div className="h-3 bg-surface-secondary rounded animate-pulse w-20" />
+          <div className="h-4 bg-surface-secondary rounded animate-pulse w-32" />
         </div>
       </div>
     </div>
@@ -180,13 +185,13 @@ const Profile = () => {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3"
+            className="p-4 bg-danger-light border border-danger rounded-xl flex items-start gap-3"
           >
-            <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-rose-700">{error}</p>
+            <AlertCircle className="w-5 h-5 text-danger flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-danger">{error}</p>
             <button
               onClick={() => setError('')}
-              className="ml-auto text-rose-400 hover:text-rose-600"
+              className="ml-auto text-danger/70 hover:text-danger"
             >
               <X size={16} />
             </button>
@@ -198,13 +203,13 @@ const Profile = () => {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3"
+            className="p-4 bg-success-light border border-success rounded-xl flex items-start gap-3"
           >
-            <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-emerald-700">{success}</p>
+            <CheckCircle className="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-success">{success}</p>
             <button
               onClick={() => setSuccess('')}
-              className="ml-auto text-emerald-400 hover:text-emerald-600"
+              className="ml-auto text-success/70 hover:text-success"
             >
               <X size={16} />
             </button>
@@ -216,7 +221,7 @@ const Profile = () => {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+        className="bg-surface rounded-2xl shadow-sm border border-default overflow-hidden"
       >
         <div className="p-6 md:p-8">
           <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
@@ -226,13 +231,22 @@ const Profile = () => {
               animate={{ scale: 1, opacity: 1 }}
               className="relative group"
             >
-              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg shadow-violet-200">
-                {user.name?.charAt(0).toUpperCase() || 'U'}
-              </div>
+              {avatarLoadError ? (
+                <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-inverse text-3xl font-bold shadow-lg shadow-violet-200">
+                  {user.name?.charAt(0).toUpperCase() || 'U'}
+                </div>
+              ) : (
+                <img
+                  src={avatarUrl}
+                  alt={`${user?.name || "User"} avatar`}
+                  className="w-24 h-24 rounded-2xl shadow-lg shadow-violet-200 object-cover"
+                  onError={() => setAvatarLoadError(true)}
+                />
+              )}
               <motion.button
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
-                className="absolute -bottom-2 -right-2 w-8 h-8 bg-white rounded-full shadow-lg border border-gray-200 flex items-center justify-center text-violet-600 hover:bg-violet-50 transition-colors"
+                className="absolute -bottom-2 -right-2 w-8 h-8 bg-surface rounded-full shadow-lg border border-default flex items-center justify-center text-accent-primary hover:bg-accent-primary-light transition-colors"
               >
                 <Camera size={16} />
               </motion.button>
@@ -241,12 +255,12 @@ const Profile = () => {
             {/* User Info */}
             <div className="flex-1">
               <div className="flex flex-col md:flex-row md:items-center gap-3 mb-3">
-                <h2 className="text-2xl font-bold text-gray-900">{user.name}</h2>
+                <h2 className="text-2xl font-bold text-primary">{user.name}</h2>
                 {getRoleBadge(user.role)}
                 {getStatusBadge(user.is_blocked)}
               </div>
-              <p className="text-gray-600 mb-1">{user.email}</p>
-              <div className="flex items-center gap-4 text-sm text-gray-500">
+              <p className="text-secondary mb-1">{user.email}</p>
+              <div className="flex items-center gap-4 text-sm text-tertiary">
                 <span className="flex items-center gap-1">
                   <Briefcase size={14} />
                   {user.department || 'Not assigned'}
@@ -270,7 +284,7 @@ const Profile = () => {
                 }
               }}
               disabled={saving}
-              className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl hover:from-violet-700 hover:to-indigo-700 transition-all shadow-lg shadow-violet-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-inverse rounded-xl hover:from-violet-700 hover:to-indigo-700 transition-all shadow-lg shadow-violet-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isEditing ? (
                 <>
@@ -295,16 +309,16 @@ const Profile = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+          className="bg-surface rounded-2xl shadow-sm border border-default overflow-hidden"
         >
-          <div className="p-6 border-b border-gray-100">
+          <div className="p-6 border-b border-light">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center">
-                <User size={20} className="text-violet-600" />
+              <div className="w-10 h-10 rounded-xl bg-accent-primary-light flex items-center justify-center">
+                <User size={20} className="text-accent-primary" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Personal Information</h3>
-                <p className="text-sm text-gray-500">Your personal details</p>
+                <h3 className="text-lg font-semibold text-primary">Personal Information</h3>
+                <p className="text-sm text-secondary">Your personal details</p>
               </div>
             </div>
           </div>
@@ -347,16 +361,16 @@ const Profile = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+          className="bg-surface rounded-2xl shadow-sm border border-default overflow-hidden"
         >
-          <div className="p-6 border-b border-gray-100">
+          <div className="p-6 border-b border-light">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-                <Briefcase size={20} className="text-blue-600" />
+              <div className="w-10 h-10 rounded-xl bg-info-light flex items-center justify-center">
+                <Briefcase size={20} className="text-info" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Work Information</h3>
-                <p className="text-sm text-gray-500">Your work details</p>
+                <h3 className="text-lg font-semibold text-primary">Work Information</h3>
+                <p className="text-sm text-secondary">Your work details</p>
               </div>
             </div>
           </div>
@@ -395,16 +409,16 @@ const Profile = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+          className="bg-surface rounded-2xl shadow-sm border border-default overflow-hidden"
         >
-          <div className="p-6 border-b border-gray-100">
+          <div className="p-6 border-b border-light">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
-                <Clock size={20} className="text-emerald-600" />
+              <div className="w-10 h-10 rounded-xl bg-success-light flex items-center justify-center">
+                <Clock size={20} className="text-success" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Account Details</h3>
-                <p className="text-sm text-gray-500">Account information</p>
+                <h3 className="text-lg font-semibold text-primary">Account Details</h3>
+                <p className="text-sm text-secondary">Account information</p>
               </div>
             </div>
           </div>
@@ -435,16 +449,16 @@ const Profile = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+          className="bg-surface rounded-2xl shadow-sm border border-default overflow-hidden"
         >
-          <div className="p-6 border-b border-gray-100">
+          <div className="p-6 border-b border-light">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center">
-                <Lock size={20} className="text-rose-600" />
+              <div className="w-10 h-10 rounded-xl bg-danger-light flex items-center justify-center">
+                <Lock size={20} className="text-danger" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Security</h3>
-                <p className="text-sm text-gray-500">Password and security settings</p>
+                <h3 className="text-lg font-semibold text-primary">Security</h3>
+                <p className="text-sm text-secondary">Password and security settings</p>
               </div>
             </div>
           </div>
@@ -452,19 +466,19 @@ const Profile = () => {
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group"
+              className="w-full flex items-center justify-between p-4 bg-surface-tertiary rounded-xl hover:bg-hover transition-colors group"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
-                  <Key size={18} className="text-gray-600" />
+                <div className="w-10 h-10 rounded-lg bg-surface flex items-center justify-center shadow-sm">
+                  <Key size={18} className="text-tertiary" />
                 </div>
                 <div className="text-left">
-                  <p className="text-sm font-medium text-gray-900">Change Password</p>
-                  <p className="text-xs text-gray-500">Update your password</p>
+                  <p className="text-sm font-medium text-primary">Change Password</p>
+                  <p className="text-xs text-tertiary">Update your password</p>
                 </div>
               </div>
-              <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center shadow-sm group-hover:bg-violet-50 transition-colors">
-                <Key size={16} className="text-gray-400 group-hover:text-violet-600" />
+              <div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center shadow-sm group-hover:bg-accent-primary-light transition-colors">
+                <Key size={16} className="text-tertiary group-hover:text-accent-primary" />
               </div>
             </motion.button>
 
@@ -472,19 +486,19 @@ const Profile = () => {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={logout}
-              className="w-full flex items-center justify-between p-4 bg-rose-50 rounded-xl hover:bg-rose-100 transition-colors group"
+              className="w-full flex items-center justify-between p-4 bg-danger-light rounded-xl hover:bg-danger transition-colors group"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
-                  <LogOut size={18} className="text-rose-600" />
+                <div className="w-10 h-10 rounded-lg bg-surface flex items-center justify-center shadow-sm">
+                  <LogOut size={18} className="text-danger" />
                 </div>
                 <div className="text-left">
-                  <p className="text-sm font-medium text-rose-700">Sign Out</p>
-                  <p className="text-xs text-rose-500">Sign out of your account</p>
+                  <p className="text-sm font-medium text-danger">Sign Out</p>
+                  <p className="text-xs text-danger/70">Sign out of your account</p>
                 </div>
               </div>
-              <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center shadow-sm group-hover:bg-rose-100 transition-colors">
-                <LogOut size={16} className="text-rose-600" />
+              <div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center shadow-sm group-hover:bg-danger transition-colors">
+                <LogOut size={16} className="text-danger" />
               </div>
             </motion.button>
           </div>
@@ -504,7 +518,7 @@ const Profile = () => {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handleCancel}
-              className="px-8 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all font-medium text-gray-700"
+              className="px-8 py-2.5 border border-default rounded-xl hover:bg-hover transition-all font-medium text-primary"
             >
               Cancel Editing
             </motion.button>

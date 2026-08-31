@@ -27,6 +27,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import ActionCard from './ActionCard';
+import ConfirmationModal from './ConfirmationModal';
 
 // ============================================================
 // HELPERS
@@ -127,10 +128,9 @@ const ChatMessage = ({
             ${
               isUser
                 ? `
-                  bg-[#111827]
-                  text-white
+                  bg-accent-primary
+                  text-inverse
                   shadow-md
-                  shadow-gray-900/10
                 `
                 : `
                   bg-gradient-to-br
@@ -184,7 +184,7 @@ const ChatMessage = ({
               className="
                 text-[11px]
                 font-semibold
-                text-gray-500
+                text-secondary
               "
             >
               {isUser
@@ -196,14 +196,14 @@ const ChatMessage = ({
               <span
                 className="
                   rounded-full
-                  border border-blue-100
-                  bg-blue-50
+                  border border-light
+                  bg-surface-tertiary
                   px-1.5
                   py-0.5
                   text-[9px]
                   font-semibold
                   tracking-wide
-                  text-blue-600
+                  text-accent-primary
                 "
               >
                 AI
@@ -215,7 +215,7 @@ const ChatMessage = ({
                 className="
                   text-[10px]
                   font-medium
-                  text-blue-500
+                  text-accent-primary
                 "
               >
                 Generating
@@ -249,17 +249,12 @@ const ChatMessage = ({
                   isUser
                     ? `
                       rounded-tr-md
-                      bg-[#111827]
-                      text-white
+                      user-message
                       shadow-lg
-                      shadow-gray-900/10
                     `
                     : `
                       rounded-tl-md
-                      border
-                      border-gray-200
-                      bg-white
-                      text-gray-800
+                      ai-message
                       shadow-sm
                     `
                 }
@@ -276,13 +271,13 @@ const ChatMessage = ({
                   ${
                     isUser
                       ? `
-                        text-white
-                        [&_*]:text-white
+                        text-inverse
+                        [&_*]:text-inverse
                         [&_a]:text-blue-200
                       `
                       : `
-                        text-gray-800
-                        [&_*]:text-gray-800
+                        text-primary
+                        [&_*]:text-primary
                       `
                   }
                 `}
@@ -313,8 +308,8 @@ const ChatMessage = ({
                                 hover:text-blue-100
                               `
                               : `
-                                text-blue-600
-                                hover:text-blue-700
+                                text-accent-primary
+                                hover:text-accent-primary-hover
                               `
                           }
                         `}
@@ -345,12 +340,12 @@ const ChatMessage = ({
                               ${
                                 isUser
                                   ? `
-                                    bg-white/15
+                                    bg-white/10
                                     text-blue-100
                                   `
                                   : `
-                                    bg-gray-100
-                                    text-gray-800
+                                    bg-surface-tertiary
+                                    text-primary
                                   `
                               }
                             `}
@@ -367,8 +362,8 @@ const ChatMessage = ({
                             overflow-hidden
                             rounded-xl
                             border
-                            border-gray-800
-                            bg-[#111318]
+                            border-medium
+                            bg-surface-secondary
                           "
                         >
                           <div
@@ -377,7 +372,7 @@ const ChatMessage = ({
                               items-center
                               justify-between
                               border-b
-                              border-gray-800
+                              border-medium
                               px-3
                               py-2
                             "
@@ -398,7 +393,7 @@ const ChatMessage = ({
                               className="
                                 text-[10px]
                                 font-medium
-                                text-gray-500
+                                text-tertiary
                               "
                             >
                               code
@@ -411,7 +406,7 @@ const ChatMessage = ({
                               p-4
                               text-xs
                               leading-5
-                              text-gray-100
+                              text-primary
                             "
                           >
                             <code
@@ -447,8 +442,8 @@ const ChatMessage = ({
                                 text-blue-100
                               `
                               : `
-                                border-blue-500
-                                text-gray-600
+                                border-accent-primary
+                                text-secondary
                               `
                           }
                         `}
@@ -469,7 +464,7 @@ const ChatMessage = ({
                           overflow-x-auto
                           rounded-xl
                           border
-                          border-gray-200
+                          border-default
                         "
                       >
                         <table
@@ -490,7 +485,7 @@ const ChatMessage = ({
                       <thead
                         {...props}
                         className="
-                          bg-gray-50
+                          bg-surface-tertiary
                         "
                       />
                     ),
@@ -503,13 +498,13 @@ const ChatMessage = ({
                         {...props}
                         className="
                           border-b
-                          border-gray-200
+                          border-default
                           px-3
                           py-2
                           text-left
                           text-xs
                           font-semibold
-                          text-gray-700
+                          text-primary
                         "
                       />
                     ),
@@ -522,11 +517,11 @@ const ChatMessage = ({
                         {...props}
                         className="
                           border-b
-                          border-gray-100
+                          border-light
                           px-3
                           py-2
                           text-xs
-                          text-gray-700
+                          text-primary
                         "
                       />
                     ),
@@ -590,8 +585,8 @@ const ChatMessage = ({
                           last:mb-0
                           ${
                             isUser
-                              ? 'text-white'
-                              : 'text-gray-800'
+                              ? 'text-inverse'
+                              : 'text-primary'
                           }
                         `}
                       />
@@ -614,8 +609,8 @@ const ChatMessage = ({
                           font-bold
                           ${
                             isUser
-                              ? 'text-white'
-                              : 'text-gray-900'
+                              ? 'text-inverse'
+                              : 'text-primary'
                           }
                         `}
                       />
@@ -634,8 +629,8 @@ const ChatMessage = ({
                           font-bold
                           ${
                             isUser
-                              ? 'text-white'
-                              : 'text-gray-900'
+                              ? 'text-inverse'
+                              : 'text-primary'
                           }
                         `}
                       />
@@ -654,8 +649,8 @@ const ChatMessage = ({
                           font-bold
                           ${
                             isUser
-                              ? 'text-white'
-                              : 'text-gray-900'
+                              ? 'text-inverse'
+                              : 'text-primary'
                           }
                         `}
                       />
@@ -671,8 +666,8 @@ const ChatMessage = ({
                           font-semibold
                           ${
                             isUser
-                              ? 'text-white'
-                              : 'text-gray-900'
+                              ? 'text-inverse'
+                              : 'text-primary'
                           }
                         `}
                       />
@@ -722,7 +717,7 @@ const ChatMessage = ({
                       ${
                         isUser
                           ? 'border-white/10'
-                          : 'border-gray-100'
+                          : 'border-light'
                       }
                     `}
                   >
@@ -739,7 +734,7 @@ const ChatMessage = ({
                         ${
                           isUser
                             ? 'text-blue-100'
-                            : 'text-gray-500'
+                            : 'text-tertiary'
                         }
                       `}
                     >
@@ -772,9 +767,9 @@ const ChatMessage = ({
                                   `
                                   : `
                                     border
-                                    border-gray-100
-                                    bg-gray-50
-                                    text-gray-600
+                                    border-light
+                                    bg-surface-tertiary
+                                    text-secondary
                                   `
                               }
                             `}
@@ -784,7 +779,7 @@ const ChatMessage = ({
                               className={
                                 isUser
                                   ? 'text-blue-200'
-                                  : 'text-gray-400'
+                                  : 'text-tertiary'
                               }
                             />
 
@@ -805,7 +800,7 @@ const ChatMessage = ({
                                 className="
                                   flex-shrink-0
                                   text-[10px]
-                                  text-gray-400
+                                  text-tertiary
                                 "
                               >
                                 Chunk{' '}
@@ -841,11 +836,11 @@ const ChatMessage = ({
                     px-2
                     py-1
                     text-[10px]
-                    text-gray-400
+                    text-tertiary
                     opacity-0
                     transition-all
-                    hover:bg-gray-100
-                    hover:text-gray-600
+                    hover:bg-hover
+                    hover:text-secondary
                     group-hover:opacity-100
                   "
                 >
@@ -946,7 +941,7 @@ const TypingIndicator = () => {
             className="
               text-[11px]
               font-semibold
-              text-gray-500
+              text-secondary
             "
           >
             Employee Copilot
@@ -955,12 +950,12 @@ const TypingIndicator = () => {
           <span
             className="
               rounded-full
-              bg-blue-50
+              bg-surface-tertiary
               px-1.5
               py-0.5
               text-[9px]
               font-semibold
-              text-blue-500
+              text-accent-primary
             "
           >
             AI
@@ -977,8 +972,8 @@ const TypingIndicator = () => {
             rounded-2xl
             rounded-tl-md
             border
-            border-gray-200
-            bg-white
+            border-default
+            bg-surface
             px-4
             py-3.5
             shadow-sm
@@ -988,7 +983,7 @@ const TypingIndicator = () => {
             className="
               text-xs
               font-medium
-              text-gray-500
+              text-secondary
             "
           >
             Thinking
@@ -1142,7 +1137,7 @@ const EmptyState = ({
             text-2xl
             font-bold
             tracking-tight
-            text-gray-900
+            text-primary
           "
         >
           How can I help?
@@ -1155,7 +1150,7 @@ const EmptyState = ({
             max-w-md
             text-sm
             leading-6
-            text-gray-500
+            text-secondary
           "
         >
           Ask me about company policies,
@@ -1208,13 +1203,13 @@ const EmptyState = ({
                 className="
                   rounded-xl
                   border
-                  border-gray-200
-                  bg-white
+                  border-default
+                  bg-surface
                   p-3
                   text-left
                   shadow-sm
                   transition-all
-                  hover:border-blue-200
+                  hover:border-accent-primary
                   hover:shadow-md
                 "
               >
@@ -1222,7 +1217,7 @@ const EmptyState = ({
                   className="
                     text-xs
                     font-semibold
-                    text-gray-800
+                    text-primary
                   "
                 >
                   {suggestion.title}
@@ -1234,7 +1229,7 @@ const EmptyState = ({
                     line-clamp-2
                     text-[11px]
                     leading-4
-                    text-gray-400
+                    text-tertiary
                   "
                 >
                   {suggestion.text}
@@ -1269,6 +1264,66 @@ const Copilot = ({
 
   const [pendingAction, setPendingAction] =
     useState(null);
+
+  const [showDeleteModal, setShowDeleteModal] =
+    useState(false);
+
+  // ============================================================
+  // LOAD PENDING ACTION FROM CONVERSATION STATE
+  // ============================================================
+
+  useEffect(() => {
+    const loadPendingAction = async () => {
+      if (!conversation?.id) return;
+
+      try {
+        // Check if there's a pending action on the server
+        const response = await fetch(`/api/conversations/${conversation.id}/state`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.pendingAction && data.workflowStep === 'READY_FOR_CONFIRMATION') {
+            setPendingAction({
+              ...data.pendingAction,
+              actionId: data.actionId,
+              actionType: data.pendingAction.type,
+              calendarStatus: data.calendarStatus,
+              hasConflicts: data.context?.calendarConflicts ? true : false,
+              conflictDetails: data.context?.calendarConflicts || null
+            });
+
+            // Add recovery message to conversation if not already present
+            setLocalMessages(prev => {
+              const hasRecoveryMessage = prev.some(msg => msg.isRecovery);
+              if (!hasRecoveryMessage) {
+                const recoveryMessage = {
+                  id: `recovery-${Date.now()}`,
+                  role: 'assistant',
+                  content: `You have an unfinished leave request:\n\n` +
+                           `**Leave type:** ${data.pendingAction.leave_type}\n` +
+                           `**Dates:** ${data.pendingAction.start_date} → ${data.pendingAction.end_date}\n` +
+                           `**Days:** ${data.pendingAction.number_of_days}\n\n` +
+                           `Would you like to continue or cancel it?`,
+                  created_at: new Date().toISOString(),
+                  isRecovery: true
+                };
+                return [...prev, recoveryMessage];
+              }
+              return prev;
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error loading pending action:', error);
+      }
+    };
+
+    loadPendingAction();
+  }, [conversation?.id]);
 
   const [executingAction, setExecutingAction] =
     useState(false);
@@ -1933,14 +1988,11 @@ const Copilot = ({
       return;
     }
 
-    const confirmed =
-      window.confirm(
-        'Are you sure you want to delete this conversation?'
-      );
+    setShowDeleteModal(true);
+  };
 
-    if (!confirmed) {
-      return;
-    }
+  const handleConfirmDelete = async () => {
+    setShowDeleteModal(false);
 
     try {
       await onDeleteConversation(
@@ -2049,7 +2101,23 @@ const Copilot = ({
   // ============================================================
 
   const handleCancelAction =
-    () => {
+    async () => {
+      try {
+        // Call backend to cancel the workflow
+        await fetch(`/api/conversations/${conversation.id}/actions/cancel`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({
+            actionId: pendingAction.actionId
+          })
+        });
+      } catch (error) {
+        console.error('Error cancelling action on server:', error);
+      }
+
       setPendingAction(null);
 
       const cancelMessage =
@@ -2114,10 +2182,7 @@ const Copilot = ({
           h-full
           items-center
           justify-center
-          bg-gradient-to-br
-          from-gray-50
-          via-white
-          to-blue-50/30
+          bg-background
         "
       >
         <motion.div
@@ -2158,7 +2223,7 @@ const Copilot = ({
               text-xl
               font-bold
               tracking-tight
-              text-gray-900
+              text-primary
             "
           >
             Employee Copilot
@@ -2171,7 +2236,7 @@ const Copilot = ({
               max-w-sm
               text-sm
               leading-6
-              text-gray-500
+              text-secondary
             "
           >
             Select a conversation
@@ -2195,7 +2260,7 @@ const Copilot = ({
         h-full
         min-h-0
         flex-col
-        bg-[#fafafa]
+        bg-background
       "
     >
       {/* ======================================================
@@ -2210,8 +2275,8 @@ const Copilot = ({
           items-center
           justify-between
           border-b
-          border-gray-200/80
-          bg-white/90
+          border-default
+          bg-surface/90
           px-4
           py-3
           backdrop-blur-xl
@@ -2269,7 +2334,7 @@ const Copilot = ({
                 text-sm
                 font-bold
                 tracking-tight
-                text-gray-900
+                text-primary
                 sm:text-base
               "
             >
@@ -2289,7 +2354,7 @@ const Copilot = ({
                 className="
                   text-[11px]
                   font-medium
-                  text-emerald-600
+                  text-success
                 "
               >
                 Online
@@ -2300,14 +2365,14 @@ const Copilot = ({
                   h-1
                   w-1
                   rounded-full
-                  bg-gray-300
+                  bg-tertiary
                 "
               />
 
               <span
                 className="
                   text-[11px]
-                  text-gray-400
+                  text-tertiary
                 "
               >
                 AI Assistant
@@ -2327,10 +2392,10 @@ const Copilot = ({
             items-center
             justify-center
             rounded-lg
-            text-gray-400
+            text-tertiary
             transition-all
-            hover:bg-red-50
-            hover:text-red-500
+            hover:bg-danger-light
+            hover:text-danger
             disabled:cursor-not-allowed
             disabled:opacity-40
           "
@@ -2457,8 +2522,8 @@ const Copilot = ({
         className="
           flex-shrink-0
           border-t
-          border-gray-200/80
-          bg-white/90
+          border-default
+          bg-surface/90
           backdrop-blur-xl
         "
       >
@@ -2483,18 +2548,18 @@ const Copilot = ({
                 relative
                 rounded-2xl
                 border
-                border-gray-200
-                bg-gray-50
+                border-default
+                bg-input
                 p-2
                 shadow-sm
                 transition-all
                 duration-200
-                focus-within:border-blue-300
-                focus-within:bg-white
+                focus-within:border-accent-primary
+                focus-within:bg-input-focus
                 focus-within:shadow-lg
-                focus-within:shadow-blue-500/5
+                focus-within:shadow-accent-primary/5
                 focus-within:ring-4
-                focus-within:ring-blue-500/5
+                focus-within:ring-focus-ring
               "
             >
               <div
@@ -2582,9 +2647,9 @@ const Copilot = ({
                     py-2.5
                     text-sm
                     leading-5
-                    text-gray-900
+                    text-primary
                     outline-none
-                    placeholder:text-gray-400
+                    placeholder:text-muted
                     disabled:cursor-not-allowed
                     disabled:opacity-60
                   "
@@ -2623,14 +2688,14 @@ const Copilot = ({
                     items-center
                     justify-center
                     rounded-xl
-                    bg-gray-900
-                    text-white
+                    bg-accent-primary
+                    text-inverse
                     shadow-sm
                     transition-all
-                    hover:bg-gray-800
+                    hover:bg-accent-primary-hover
                     disabled:cursor-not-allowed
-                    disabled:bg-gray-200
-                    disabled:text-gray-400
+                    disabled:bg-surface-tertiary
+                    disabled:text-muted
                   "
                   aria-label="Send message"
                 >
@@ -2664,7 +2729,7 @@ const Copilot = ({
                     items-center
                     gap-2
                     text-[10px]
-                    text-gray-400
+                    text-muted
                   "
                 >
                   <span
@@ -2687,7 +2752,7 @@ const Copilot = ({
                   <span
                     className="
                       hidden
-                      text-gray-300
+                      text-muted
                       sm:block
                     "
                   >
@@ -2703,7 +2768,7 @@ const Copilot = ({
                 <span
                   className="
                     text-[10px]
-                    text-gray-300
+                    text-muted
                   "
                 >
                   {question.length >
@@ -2722,7 +2787,7 @@ const Copilot = ({
                 justify-center
                 gap-1
                 text-[10px]
-                text-gray-400
+                text-muted
               "
             >
               <Sparkles
@@ -2739,6 +2804,18 @@ const Copilot = ({
           </form>
         </div>
       </footer>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleConfirmDelete}
+        title="Delete conversation?"
+        description="Are you sure you want to delete this conversation? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 };
