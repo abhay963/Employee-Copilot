@@ -12,6 +12,7 @@ import {
   Edit3,
   Trash2,
 } from 'lucide-react';
+import ConfirmationModal from './ConfirmationModal';
 
 // ============================================================
 // HELPERS
@@ -115,6 +116,12 @@ const ConversationItem = ({
 
   const [isDeleting, setIsDeleting] =
     useState(false);
+
+  const [showDeleteModal, setShowDeleteModal] =
+    useState(false);
+
+  const [deleteError, setDeleteError] =
+    useState('');
 
   // ----------------------------------------------------------
   // TITLE HOVER / MARQUEE STATE
@@ -248,23 +255,27 @@ const ConversationItem = ({
   // DELETE
   // ----------------------------------------------------------
 
-  const handleDelete = async () => {
-    const confirmed = window.confirm(
-      'Delete this conversation? This action cannot be undone.'
-    );
+  const handleDelete = () => {
+    setShowDeleteModal(true);
+    setDeleteError('');
+  };
 
-    if (!confirmed) {
-      return;
-    }
-
+  const handleConfirmDelete = async () => {
     try {
       setIsDeleting(true);
+      setDeleteError('');
 
       await onDelete(conversation.id);
+
+      setShowDeleteModal(false);
     } catch (error) {
       console.error(
         'Failed to delete conversation:',
         error
+      );
+
+      setDeleteError(
+        error?.error || 'Failed to delete conversation. Please try again.'
       );
 
       setIsDeleting(false);
@@ -807,6 +818,23 @@ const ConversationItem = ({
           />
         )}
       </motion.div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setDeleteError('');
+        }}
+        onConfirm={handleConfirmDelete}
+        title="Delete conversation?"
+        description="Are you sure you want to delete this conversation? This action cannot be undone."
+        confirmText={isDeleting ? 'Deleting...' : 'Delete'}
+        cancelText="Cancel"
+        variant="danger"
+        disabled={isDeleting}
+        error={deleteError}
+      />
     </motion.div>
   );
 };
