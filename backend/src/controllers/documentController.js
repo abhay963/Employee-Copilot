@@ -39,11 +39,12 @@ export const getDocumentById = async (req, res) => {
       });
     }
 
-    // HR can access all documents.
+    // HR and Admin can access all documents.
     // Employees can access their own documents
     // and company-wide documents.
     if (
       userRole !== 'hr' &&
+      userRole !== 'admin' &&
       document.owner_id !== userId &&
       document.visibility !== 'company'
     ) {
@@ -112,7 +113,8 @@ export const uploadDocument = async (req, res) => {
     if (
       document_type &&
       ['hr', 'policy'].includes(document_type) &&
-      userRole !== 'hr'
+      userRole !== 'hr' &&
+      userRole !== 'admin'
     ) {
       if (fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
@@ -120,7 +122,7 @@ export const uploadDocument = async (req, res) => {
 
       return res.status(403).json({
         error:
-          'HR access required to upload HR/policy documents',
+          'HR or Admin access required to upload HR/policy documents',
       });
     }
 
@@ -129,7 +131,8 @@ export const uploadDocument = async (req, res) => {
     // --------------------------------------------------
     if (
       visibility === 'company' &&
-      userRole !== 'hr'
+      userRole !== 'hr' &&
+      userRole !== 'admin'
     ) {
       if (fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
@@ -137,7 +140,7 @@ export const uploadDocument = async (req, res) => {
 
       return res.status(403).json({
         error:
-          'HR access required to upload company-wide documents',
+          'HR or Admin access required to upload company-wide documents',
       });
     }
 
@@ -297,10 +300,11 @@ export const updateDocument = async (req, res) => {
     // --------------------------------------------------
     // 2. Check ownership
     // --------------------------------------------------
-    // HR can update any document.
+    // HR and Admin can update any document.
     // Employees can update only their own documents.
     if (
       userRole !== 'hr' &&
+      userRole !== 'admin' &&
       document.owner_id !== userId
     ) {
       return res.status(403).json({
@@ -313,11 +317,12 @@ export const updateDocument = async (req, res) => {
     // --------------------------------------------------
     if (
       document_type === 'hr' &&
-      userRole !== 'hr'
+      userRole !== 'hr' &&
+      userRole !== 'admin'
     ) {
       return res.status(403).json({
         error:
-          'HR access required to set HR document type',
+          'HR or Admin access required to set HR document type',
       });
     }
 
@@ -326,11 +331,12 @@ export const updateDocument = async (req, res) => {
     // --------------------------------------------------
     if (
       visibility === 'company' &&
-      userRole !== 'hr'
+      userRole !== 'hr' &&
+      userRole !== 'admin'
     ) {
       return res.status(403).json({
         error:
-          'HR access required to set company visibility',
+          'HR or Admin access required to set company visibility',
       });
     }
 
@@ -380,10 +386,11 @@ export const deleteDocument = async (req, res) => {
     // --------------------------------------------------
     // 2. Check ownership
     // --------------------------------------------------
-    // HR can delete any document.
+    // HR and Admin can delete any document.
     // Employees can delete only their own documents.
     if (
       userRole !== 'hr' &&
+      userRole !== 'admin' &&
       document.owner_id !== userId
     ) {
       return res.status(403).json({

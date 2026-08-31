@@ -195,6 +195,12 @@ export const adminAPI = {
       `/api/admin/users/${id}`
     ),
 
+  changeUserRole: (id, data) =>
+    api.patch(
+      `/api/admin/users/${id}/role`,
+      data
+    ),
+
   getUserStats: () =>
     api.get(
       '/api/admin/stats'

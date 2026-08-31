@@ -861,6 +861,14 @@ const EmployeeDashboard = () => {
 
             </div>
 
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-medium"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+
           </div>
 
         </header>

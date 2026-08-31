@@ -159,3 +159,53 @@ export const getUserStats = async (req, res) => {
     });
   }
 };
+
+export const changeUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    // Validate role
+    const validRoles = ['employee', 'hr', 'admin'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid role. Must be one of: employee, hr, admin'
+      });
+    }
+
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Prevent admin from changing their own role
+    if (user.id === req.user.id) {
+      return res.status(400).json({
+        success: false,
+        error: 'You cannot change your own role'
+      });
+    }
+
+    const updatedUser = await User.updateRole(id, role);
+
+    // Remove password hash from response
+    const { password_hash, ...userWithoutPassword } = updatedUser;
+
+    return res.status(200).json({
+      success: true,
+      user: userWithoutPassword,
+      message: 'User role changed successfully'
+    });
+  } catch (error) {
+    console.error('Change user role error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to change user role'
+    });
+  }
+};

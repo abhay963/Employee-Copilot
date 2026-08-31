@@ -467,6 +467,23 @@ const AdminDashboard = () => {
   };
 
   // ============================================================
+  // VIEW DOCUMENT
+  // ============================================================
+
+  const handleViewDocument = (document) => {
+    const preview =
+      document.content?.substring(0, 200) || '';
+
+    alert(
+      'Document: ' +
+        document.title +
+        '\n\nContent preview: ' +
+        preview +
+        '...'
+    );
+  };
+
+  // ============================================================
   // USER MANAGEMENT ACTIONS
   // ============================================================
 
@@ -482,6 +499,9 @@ const AdminDashboard = () => {
           break;
         case 'delete':
           response = await adminAPI.deleteUser(userId);
+          break;
+        case 'changeRole':
+          response = await adminAPI.changeUserRole(userId, data);
           break;
         default:
           throw new Error('Unknown action');
@@ -1079,6 +1099,14 @@ const AdminDashboard = () => {
               </div>
             )}
 
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-medium"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+
           </div>
 
         </header>
@@ -1087,7 +1115,7 @@ const AdminDashboard = () => {
             MAIN CONTENT AREA
         ====================================================== */}
 
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-y-auto">
           {activeTab === 'users' && (
             <UserManagement
               users={allUsers}
@@ -1102,25 +1130,103 @@ const AdminDashboard = () => {
           )}
 
           {activeTab === 'copilot' && (
-            <Copilot
-              conversations={conversations}
-              activeConversation={activeConversation}
-              onCreateConversation={handleCreateConversation}
-              onSelectConversation={handleSelectConversation}
-              onSendMessage={handleSendMessage}
-              onSendMessageStream={handleSendMessageStream}
-              onExecuteAction={handleExecuteAction}
-              onDeleteConversation={handleDeleteConversation}
-              onEditConversation={handleEditConversation}
-            />
+            <div className="h-full flex min-w-0">
+
+              {/* ==================================================
+                  CHATGPT STYLE CONVERSATION SIDEBAR
+              ================================================== */}
+
+              <section className="hidden sm:flex w-[280px] lg:w-[310px] shrink-0 bg-[#f7f7f8] border-r border-gray-200 flex-col">
+
+                {/* Conversation header */}
+
+                <div className="px-4 pt-4 pb-3">
+
+                  <button
+                    onClick={handleCreateConversation}
+                    className="
+                      w-full
+                      flex
+                      items-center
+                      justify-center
+                      gap-2
+                      px-4
+                      py-2.5
+                      rounded-xl
+                      bg-white
+                      border
+                      border-gray-200
+                      shadow-sm
+                      text-sm
+                      font-medium
+                      text-gray-700
+                      hover:border-violet-300
+                      hover:text-violet-700
+                      hover:bg-violet-50
+                      transition-all
+                    "
+                  >
+
+                    <Plus size={17} />
+
+                    New conversation
+
+                  </button>
+
+                </div>
+
+                {/* Conversation list */}
+
+                <div className="flex-1 min-h-0 overflow-hidden px-2 pb-3">
+
+                  <ConversationList
+                    conversations={conversations}
+                    activeConversation={activeConversation}
+                    onSelect={handleSelectConversation}
+                    onCreate={handleCreateConversation}
+                    onDelete={handleDeleteConversation}
+                    onEdit={handleEditConversation}
+                  />
+
+                </div>
+
+              </section>
+
+              {/* ==================================================
+                  CHAT AREA
+              ================================================== */}
+
+              <section className="flex-1 min-w-0 min-h-0 bg-white">
+
+                <div className="h-full w-full">
+
+                  <Copilot
+                    conversation={activeConversation}
+                    onSendMessage={handleSendMessage}
+                    onSendMessageStream={handleSendMessageStream}
+                    onExecuteAction={handleExecuteAction}
+                    onDeleteConversation={handleDeleteConversation}
+                  />
+
+                </div>
+
+              </section>
+
+            </div>
           )}
 
           {activeTab === 'documents' && (
-            <Documents
-              documents={documents}
-              onUploadDocument={handleUploadDocument}
-              onDeleteDocument={handleDeleteDocument}
-            />
+            <div className="h-full overflow-y-auto p-4 lg:p-7">
+              <div className="max-w-7xl mx-auto h-full">
+                <Documents
+                  documents={documents}
+                  onUpload={handleUploadDocument}
+                  onDelete={handleDeleteDocument}
+                  onView={handleViewDocument}
+                  isHR={true}
+                />
+              </div>
+            </div>
           )}
 
           {activeTab === 'gmail' && (
@@ -1132,7 +1238,11 @@ const AdminDashboard = () => {
           )}
 
           {activeTab === 'leave' && (
-            <LeaveManagement />
+            <div className="h-full overflow-y-auto p-4 lg:p-7">
+              <div className="max-w-7xl mx-auto">
+                <LeaveManagement isAdmin={true} />
+              </div>
+            </div>
           )}
 
           {activeTab === 'profile' && (

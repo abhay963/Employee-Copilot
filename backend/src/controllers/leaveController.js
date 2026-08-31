@@ -118,16 +118,30 @@ export const createLeaveRequest = async (req, res) => {
 
 export const getPendingLeaveRequests = async (req, res) => {
   try {
-    // Only HR can access pending requests
-    if (req.user.role !== 'hr') {
-      return res.status(403).json({ error: 'HR access required' });
+    // Only HR and Admin can access pending requests
+    if (req.user.role !== 'hr' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'HR or Admin access required' });
     }
 
     const pendingRequests = await LeaveRequest.getPendingRequests();
     
+    // Enrich with user details
+    const enrichedRequests = await Promise.all(
+      pendingRequests.map(async (request) => {
+        const user = await User.findById(request.user_id);
+        return {
+          ...request,
+          user_name: user?.name || 'Unknown',
+          user_email: user?.email || 'Unknown',
+          user_employee_id: user?.employee_id || 'Unknown',
+          user_department: user?.department || 'Unknown'
+        };
+      })
+    );
+    
     res.json({
       success: true,
-      leaveRequests: pendingRequests
+      leaveRequests: enrichedRequests
     });
   } catch (error) {
     console.error('Error getting pending leave requests:', error);
@@ -137,9 +151,9 @@ export const getPendingLeaveRequests = async (req, res) => {
 
 export const approveLeaveRequest = async (req, res) => {
   try {
-    // Only HR can approve requests
-    if (req.user.role !== 'hr') {
-      return res.status(403).json({ error: 'HR access required' });
+    // Only HR and Admin can approve requests
+    if (req.user.role !== 'hr' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'HR or Admin access required' });
     }
 
     const { id } = req.params;
@@ -226,9 +240,9 @@ export const approveLeaveRequest = async (req, res) => {
 
 export const rejectLeaveRequest = async (req, res) => {
   try {
-    // Only HR can reject requests
-    if (req.user.role !== 'hr') {
-      return res.status(403).json({ error: 'HR access required' });
+    // Only HR and Admin can reject requests
+    if (req.user.role !== 'hr' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'HR or Admin access required' });
     }
 
     const { id } = req.params;
@@ -323,16 +337,41 @@ export const getLeaveHistory = async (req, res) => {
 
 export const getAllLeaveRequests = async (req, res) => {
   try {
-    // Only HR can access all requests
-    if (req.user.role !== 'hr') {
-      return res.status(403).json({ error: 'HR access required' });
+    // Only HR and Admin can access all requests
+    if (req.user.role !== 'hr' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'HR or Admin access required' });
     }
 
     const leaveRequests = await LeaveRequest.findAll();
     
+    // Enrich with user details and approver details
+    const enrichedRequests = await Promise.all(
+      leaveRequests.map(async (request) => {
+        const user = await User.findById(request.user_id);
+        let approverName = null;
+        let approverEmail = null;
+        
+        if (request.reviewed_by) {
+          const approver = await User.findById(request.reviewed_by);
+          approverName = approver?.name || 'Unknown';
+          approverEmail = approver?.email || 'Unknown';
+        }
+        
+        return {
+          ...request,
+          user_name: user?.name || 'Unknown',
+          user_email: user?.email || 'Unknown',
+          user_employee_id: user?.employee_id || 'Unknown',
+          user_department: user?.department || 'Unknown',
+          approver_name: approverName,
+          approver_email: approverEmail
+        };
+      })
+    );
+    
     res.json({
       success: true,
-      leaveRequests
+      leaveRequests: enrichedRequests
     });
   } catch (error) {
     console.error('Error getting all leave requests:', error);

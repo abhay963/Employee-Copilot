@@ -32,7 +32,7 @@ export class Document {
 
   // Get documents accessible to a user
   //
-  // HR:
+  // HR and Admin:
   //   Can access every document.
   //
   // Employee:
@@ -46,7 +46,7 @@ export class Document {
     let queryText;
     let params;
 
-    if (userRole === 'hr') {
+    if (userRole === 'hr' || userRole === 'admin') {
       queryText = `
         SELECT *
         FROM documents

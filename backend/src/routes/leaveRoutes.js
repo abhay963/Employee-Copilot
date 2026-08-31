@@ -9,7 +9,7 @@ import {
   getLeaveHistory,
   getAllLeaveRequests
 } from '../controllers/leaveController.js';
-import { authenticate, requireHR } from '../middleware/auth.js';
+import { authenticate, requireHR, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -22,10 +22,33 @@ router.get('/balance', getLeaveBalance);
 router.post('/request', createLeaveRequest);
 router.get('/history', getLeaveHistory);
 
-// HR only routes
-router.get('/pending', requireHR, getPendingLeaveRequests);
-router.get('/all', requireHR, getAllLeaveRequests);
-router.put('/:id/approve', requireHR, approveLeaveRequest);
-router.put('/:id/reject', requireHR, rejectLeaveRequest);
+// HR and Admin routes
+router.get('/pending', (req, res, next) => {
+  if (req.user.role !== 'hr' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'HR or Admin access required' });
+  }
+  next();
+}, getPendingLeaveRequests);
+
+router.get('/all', (req, res, next) => {
+  if (req.user.role !== 'hr' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'HR or Admin access required' });
+  }
+  next();
+}, getAllLeaveRequests);
+
+router.put('/:id/approve', (req, res, next) => {
+  if (req.user.role !== 'hr' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'HR or Admin access required' });
+  }
+  next();
+}, approveLeaveRequest);
+
+router.put('/:id/reject', (req, res, next) => {
+  if (req.user.role !== 'hr' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'HR or Admin access required' });
+  }
+  next();
+}, rejectLeaveRequest);
 
 export default router;

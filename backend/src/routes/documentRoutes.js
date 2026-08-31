@@ -10,7 +10,7 @@ import {
   deleteDocument,
   getDocumentsByType
 } from '../controllers/documentController.js';
-import { authenticate, requireHR } from '../middleware/auth.js';
+import { authenticate, requireHR, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -47,8 +47,13 @@ router.use(authenticate);
 // Get all accessible documents
 router.get('/', getDocuments);
 
-// Get documents by type (HR only)
-router.get('/type/:type', requireHR, getDocumentsByType);
+// Get documents by type (HR and Admin only)
+router.get('/type/:type', (req, res, next) => {
+  if (req.user.role !== 'hr' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'HR or Admin access required' });
+  }
+  next();
+}, getDocumentsByType);
 
 // Get single document by ID
 router.get('/:id', getDocumentById);

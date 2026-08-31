@@ -4,7 +4,8 @@ import {
   blockUser,
   unblockUser,
   deleteUser,
-  getUserStats
+  getUserStats,
+  changeUserRole
 } from '../controllers/adminController.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 
@@ -25,6 +26,9 @@ router.patch('/users/:id/unblock', unblockUser);
 
 // Delete user
 router.delete('/users/:id', deleteUser);
+
+// Change user role
+router.patch('/users/:id/role', changeUserRole);
 
 // Get user statistics
 router.get('/stats', getUserStats);

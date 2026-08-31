@@ -8,6 +8,7 @@ import {
   XCircle,
   AlertTriangle,
   Briefcase,
+  Shield,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -16,6 +17,8 @@ const UserManagement = ({ users, onUserAction, onRefresh, currentUserId }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [showActionMenu, setShowActionMenu] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [selectedRole, setSelectedRole] = useState('');
 
   const filteredUsers = users.filter(user => {
     const searchLower = searchTerm.toLowerCase();
@@ -72,6 +75,26 @@ const UserManagement = ({ users, onUserAction, onRefresh, currentUserId }) => {
       }
     } catch (error) {
       toast.error('Failed to delete user');
+    }
+  };
+
+  const handleChangeRole = async () => {
+    if (!selectedUser || !selectedRole) return;
+
+    try {
+      const response = await onUserAction('changeRole', selectedUser.id, { role: selectedRole });
+      if (response?.success) {
+        toast.success('User role changed successfully');
+        setShowRoleModal(false);
+        setSelectedUser(null);
+        setSelectedRole('');
+        setShowActionMenu(null);
+        onRefresh();
+      } else {
+        toast.error(response?.error || 'Failed to change user role');
+      }
+    } catch (error) {
+      toast.error('Failed to change user role');
     }
   };
 
@@ -234,6 +257,24 @@ const UserManagement = ({ users, onUserAction, onRefresh, currentUserId }) => {
                           <button
                             onClick={() => {
                               setSelectedUser(user);
+                              setSelectedRole(user.role);
+                              setShowRoleModal(true);
+                            }}
+                            disabled={user.id === currentUserId}
+                            className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 ${
+                              user.id === currentUserId
+                                ? 'text-gray-400 cursor-not-allowed'
+                                : 'text-blue-600 hover:bg-blue-50'
+                            }`}
+                            title={user.id === currentUserId ? 'You cannot change your own role' : ''}
+                          >
+                            <Shield size={16} />
+                            Change Role
+                          </button>
+                          <div className="border-t border-gray-200 my-1" />
+                          <button
+                            onClick={() => {
+                              setSelectedUser(user);
                               setShowDeleteModal(true);
                             }}
                             disabled={user.id === currentUserId}
@@ -293,6 +334,92 @@ const UserManagement = ({ users, onUserAction, onRefresh, currentUserId }) => {
                 className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors"
               >
                 Delete User
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Role Modal */}
+      {showRoleModal && selectedUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <Shield size={20} className="text-blue-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Change User Role</h3>
+            </div>
+            <p className="text-gray-600 mb-4">
+              Select the new role for this user:
+            </p>
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <p className="font-medium text-gray-900">{selectedUser.name}</p>
+              <p className="text-sm text-gray-500">{selectedUser.email}</p>
+              {selectedUser.employee_id && (
+                <p className="text-sm text-gray-500">Employee ID: {selectedUser.employee_id}</p>
+              )}
+            </div>
+            <div className="space-y-3 mb-6">
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="radio"
+                  name="role"
+                  value="employee"
+                  checked={selectedRole === 'employee'}
+                  onChange={(e) => setSelectedRole(e.target.value)}
+                  className="w-4 h-4 text-violet-600"
+                />
+                <div>
+                  <p className="font-medium text-gray-900">Employee</p>
+                  <p className="text-xs text-gray-500">Standard employee access</p>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="radio"
+                  name="role"
+                  value="hr"
+                  checked={selectedRole === 'hr'}
+                  onChange={(e) => setSelectedRole(e.target.value)}
+                  className="w-4 h-4 text-violet-600"
+                />
+                <div>
+                  <p className="font-medium text-gray-900">HR</p>
+                  <p className="text-xs text-gray-500">HR management access</p>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="radio"
+                  name="role"
+                  value="admin"
+                  checked={selectedRole === 'admin'}
+                  onChange={(e) => setSelectedRole(e.target.value)}
+                  className="w-4 h-4 text-violet-600"
+                />
+                <div>
+                  <p className="font-medium text-gray-900">Admin</p>
+                  <p className="text-xs text-gray-500">Full administrative access</p>
+                </div>
+              </label>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowRoleModal(false);
+                  setSelectedUser(null);
+                  setSelectedRole('');
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleChangeRole}
+                className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors"
+              >
+                Change Role
               </button>
             </div>
           </div>
