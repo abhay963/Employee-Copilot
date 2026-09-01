@@ -129,7 +129,10 @@ router.get(
       );
 
       console.log(
-        'Gmail OAuth URL generated'
+        'GMAIL OAUTH URL GENERATION'
+      );
+      console.log(
+        '=========================================='
       );
 
       console.log(
@@ -138,9 +141,13 @@ router.get(
       );
 
       console.log(
-        'Gmail Redirect URI:',
-        process.env
-          .GOOGLE_GMAIL_REDIRECT_URI
+        'Gmail Redirect URI from config:',
+        config.googleGmailRedirectUri
+      );
+
+      console.log(
+        'Full Gmail Redirect URI:',
+        config.googleGmailRedirectUri
       );
 
       console.log(
@@ -188,7 +195,20 @@ router.get(
       );
 
       console.log(
-        'Gmail OAuth callback received'
+        'GMAIL OAUTH CALLBACK RECEIVED'
+      );
+      console.log(
+        '=========================================='
+      );
+
+      console.log(
+        'Request URL:',
+        req.originalUrl
+      );
+
+      console.log(
+        'Request path:',
+        req.path
       );
 
       console.log(
@@ -204,6 +224,11 @@ router.get(
       console.log(
         'Google error:',
         error
+      );
+
+      console.log(
+        'Gmail Redirect URI from config:',
+        config.googleGmailRedirectUri
       );
 
       console.log(
@@ -438,7 +463,10 @@ router.get(
       );
 
       console.log(
-        'Google Calendar OAuth URL generated'
+        'CALENDAR OAUTH URL GENERATION'
+      );
+      console.log(
+        '=========================================='
       );
 
       console.log(
@@ -447,7 +475,12 @@ router.get(
       );
 
       console.log(
-        'Calendar Redirect URI:',
+        'Calendar Redirect URI from config:',
+        config.googleCalendarRedirectUri
+      );
+
+      console.log(
+        'Full Calendar Redirect URI:',
         config.googleCalendarRedirectUri
       );
 
@@ -494,7 +527,10 @@ router.get(
       );
 
       console.log(
-        'Google Calendar OAuth callback received'
+        'CALENDAR OAUTH CALLBACK RECEIVED'
+      );
+      console.log(
+        '=========================================='
       );
 
       console.log(
@@ -523,7 +559,12 @@ router.get(
       );
 
       console.log(
-        'Calendar Redirect URI:',
+        'Calendar Redirect URI from config:',
+        config.googleCalendarRedirectUri
+      );
+
+      console.log(
+        'Full Calendar Redirect URI:',
         config.googleCalendarRedirectUri
       );
 
@@ -585,26 +626,10 @@ router.get(
       // VERIFY STATE
       // --------------------------------------------------------
 
-      console.log(
-        'Verifying Calendar OAuth state...'
-      );
-
       const userId =
         googleCalendarService.verifyOAuthState(
           state
         );
-
-      console.log(
-        'Calendar OAuth state verification result:',
-        userId ? 'SUCCESS' : 'FAILED'
-      );
-
-      if (userId) {
-        console.log(
-          'User ID extracted from state:',
-          userId
-        );
-      }
 
       if (!userId) {
         return res.redirect(
@@ -618,19 +643,11 @@ router.get(
       // EXCHANGE CODE
       // --------------------------------------------------------
 
-      console.log(
-        'Exchanging Calendar authorization code for tokens...'
-      );
-
       const tokens =
         await googleCalendarService.exchangeCodeForTokens(
           code,
           userId
         );
-
-      console.log(
-        'Calendar token exchange completed'
-      );
 
       console.log(
         '=========================================='
@@ -649,34 +666,6 @@ router.get(
         'OAuth scopes received:',
         tokens?.scope ||
           'Not returned'
-      );
-
-      console.log(
-        'Calendar scope present:',
-        tokens?.scope?.includes(
-          'calendar'
-        )
-          ? 'YES'
-          : 'NO'
-      );
-
-      console.log(
-        'Gmail scope present:',
-        tokens?.scope?.includes(
-          'gmail'
-        )
-          ? 'YES'
-          : 'NO'
-      );
-
-      console.log(
-        'Token has access_token:',
-        Boolean(tokens?.access_token)
-      );
-
-      console.log(
-        'Token has refresh_token:',
-        Boolean(tokens?.refresh_token)
       );
 
       console.log(

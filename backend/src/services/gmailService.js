@@ -15,11 +15,29 @@ class GmailService {
   // ============================================================
 
   initializeOAuth2Client() {
+    if (
+      !config.googleClientId ||
+      !config.googleClientSecret
+    ) {
+      throw new Error(
+        'Google OAuth client credentials are not configured'
+      );
+    }
+
+    if (!config.googleGmailRedirectUri) {
+      throw new Error(
+        'Google Gmail redirect URI is not configured'
+      );
+    }
+
     this.oauth2Client = new google.auth.OAuth2(
       config.googleClientId,
       config.googleClientSecret,
-      config.googleGmailRedirectUri
+      config.googleGmailRedirectUri.trim()
     );
+
+    // Ensure the redirect URI is properly set
+    this.oauth2Client.redirectUri = config.googleGmailRedirectUri.trim();
 
     this.gmail = google.gmail({
       version: 'v1',
@@ -394,24 +412,73 @@ class GmailService {
   // ============================================================
 
   getAuthUrl(state) {
-    if (!this.oauth2Client) {
-      this.initializeOAuth2Client();
+    if (!state) {
+      throw new Error(
+        'OAuth state is required'
+      );
     }
+
+    // Always reinitialize to ensure correct redirect URI
+    this.initializeOAuth2Client();
 
     const gmailScopes = [
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/gmail.send',
     ];
 
-    return this.oauth2Client.generateAuthUrl({
-      access_type: 'offline',
+    // Explicitly set redirect URI before generating auth URL
+    this.oauth2Client.redirectUri = config.googleGmailRedirectUri;
 
-      prompt: 'consent',
+    const authUrl = this.oauth2Client.generateAuthUrl(
+      {
+        access_type: 'offline',
 
-      scope: gmailScopes,
+        prompt: 'consent',
 
-      state,
-    });
+        scope: gmailScopes,
+
+        state,
+      }
+    );
+
+    // Extract redirect_uri from the generated auth URL for debugging
+    const redirectUriMatch = authUrl.match(/[?&]redirect_uri=([^&]+)/);
+    const redirectUriInUrl = redirectUriMatch
+      ? decodeURIComponent(redirectUriMatch[1])
+      : 'Could not extract';
+
+    console.log(
+      '=========================================='
+    );
+    console.log(
+      'GMAIL OAUTH REDIRECT URI INFO'
+    );
+    console.log(
+      '=========================================='
+    );
+    console.log(
+      'Config Gmail Redirect URI:',
+      config.googleGmailRedirectUri
+    );
+    console.log(
+      'OAuth Client Redirect URI:',
+      this.oauth2Client.redirectUri
+    );
+    console.log(
+      'Redirect URI in Generated Auth URL:',
+      redirectUriInUrl
+    );
+    console.log(
+      'Match Status:',
+      config.googleGmailRedirectUri === redirectUriInUrl
+        ? 'MATCH ✓'
+        : 'MISMATCH ✗'
+    );
+    console.log(
+      '=========================================='
+    );
+
+    return authUrl;
   }
 
   // ============================================================
@@ -435,9 +502,8 @@ class GmailService {
         );
       }
 
-      if (!this.oauth2Client) {
-        this.initializeOAuth2Client();
-      }
+      // Always reinitialize to ensure correct redirect URI
+      this.initializeOAuth2Client();
 
       const {
         tokens,
@@ -445,11 +511,6 @@ class GmailService {
         await this.oauth2Client.getToken(
           code
         );
-
-      console.log(
-        'Google Gmail OAuth scopes received:',
-        tokens.scope
-      );
 
       await this.storeTokens(
         userId,
