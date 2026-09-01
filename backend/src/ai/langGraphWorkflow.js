@@ -500,6 +500,102 @@ function getCalendarDateRange(
   }
 
   // ----------------------------
+  // Next N days
+  // ----------------------------
+
+  const nextDaysMatch =
+    message.match(/next\s+(\d+)\s+days?/i);
+
+  if (nextDaysMatch) {
+    const days =
+      Number(nextDaysMatch[1]);
+
+    if (days > 0 && days <= 365) {
+      const end =
+        addDays(today, days);
+
+      return {
+        startDate:
+          new Date(),
+        endDate:
+          getEndOfDay(end),
+        label: `next ${days} days`,
+      };
+    }
+  }
+
+  // ----------------------------
+  // Specific time check
+  // ----------------------------
+
+  const timeMatch =
+    message.match(/(?:am\s+I|am\s+i)\s+(?:free|available)\s+(?:on|at)\s+(.+?)(?:\s+(?:at|@)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?)?$/i);
+
+  if (timeMatch) {
+    const datePart =
+      timeMatch[1].trim();
+
+    const timePart =
+      timeMatch[2]?.trim() || null;
+
+    // Parse the date
+    let targetDate;
+
+    if (datePart.toLowerCase() === 'today') {
+      targetDate = today;
+    } else if (datePart.toLowerCase() === 'tomorrow') {
+      targetDate = addDays(today, 1);
+    } else {
+      // Try to parse as a specific date
+      const dateObj =
+        new Date(datePart);
+
+      if (!Number.isNaN(dateObj.getTime())) {
+        targetDate = dateObj;
+      } else {
+        // Default to today if date parsing fails
+        targetDate = today;
+      }
+    }
+
+    if (timePart) {
+      // If specific time is mentioned, check availability at that time
+      const parsedTime =
+        parseTime(timePart);
+
+      if (parsedTime) {
+        const [hours, minutes] =
+          parsedTime.split(':').map(Number);
+
+        const startCheck =
+          new Date(targetDate);
+
+        startCheck.setHours(hours, minutes, 0, 0);
+
+        const endCheck =
+          new Date(startCheck);
+
+        endCheck.setHours(hours + 1, minutes, 0, 0);
+
+        return {
+          startDate: startCheck,
+          endDate: endCheck,
+          label: `availability check at ${parsedTime}`,
+        };
+      }
+    }
+
+    // Check availability for the entire day
+    return {
+      startDate:
+        getStartOfDay(targetDate),
+      endDate:
+        getEndOfDay(targetDate),
+      label: 'availability check',
+    };
+  }
+
+  // ----------------------------
   // Default
   // ----------------------------
 
@@ -858,6 +954,79 @@ async function queryCalendarEvents(
       };
     }
 
+    // Special handling for availability check
+    if (label === 'availability check' || label.startsWith('availability check at')) {
+      const eventCount = formattedEvents.length;
+
+      if (eventCount === 0) {
+        return {
+          ...state,
+
+          toolResult:
+            'Yes, you are free during that time! No calendar events found.',
+
+          context: {
+            ...state.context,
+
+            calendarEvents: [],
+
+            calendarRange: {
+              startDate,
+              endDate,
+              label,
+            },
+          },
+
+          currentTool: null,
+        };
+      } else {
+        const lines =
+          formattedEvents.map(
+            (event, index) => {
+              let line =
+                `${index + 1}. **${event.title}**\n` +
+                `   ${formatEventTime(
+                  event
+                )}`;
+
+              if (event.location) {
+                line +=
+                  `\n   Location: ${event.location}`;
+              }
+
+              return line;
+            }
+          );
+
+        return {
+          ...state,
+
+          toolResult:
+            `No, you are not free. You have ${eventCount} calendar event${
+              eventCount === 1
+                ? ''
+                : 's'
+            } during that time:\n\n` +
+            lines.join('\n\n'),
+
+          context: {
+            ...state.context,
+
+            calendarEvents:
+              formattedEvents,
+
+            calendarRange: {
+              startDate,
+              endDate,
+              label,
+            },
+          },
+
+          currentTool: null,
+        };
+      }
+    }
+
     const lines =
       formattedEvents.map(
         (event, index) => {
@@ -910,9 +1079,9 @@ async function queryCalendarEvents(
 
     if (
       error.code ===
-        'GOOGLE_NOT_CONNECTED' ||
+        'GOOGLE_CALENDAR_NOT_CONNECTED' ||
       error.message ===
-        'GOOGLE_NOT_CONNECTED'
+        'GOOGLE_CALENDAR_NOT_CONNECTED'
     ) {
       return {
         ...state,
@@ -926,9 +1095,9 @@ async function queryCalendarEvents(
 
     if (
       error.code ===
-        'GOOGLE_RECONNECT_REQUIRED' ||
+        'GOOGLE_CALENDAR_RECONNECT_REQUIRED' ||
       error.message ===
-        'GOOGLE_RECONNECT_REQUIRED'
+        'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
     ) {
       return {
         ...state,
@@ -970,7 +1139,16 @@ function getNoCalendarEventsMessage(
     case 'this month':
       return "You don't have any meetings or calendar events this month.";
 
+    case 'upcoming':
+      return "You don't have any upcoming calendar events in the next 30 days.";
+
+    case 'availability check':
+      return "You have no calendar events during the specified time - you appear to be free.";
+
     default:
+      if (label.startsWith('next ') && label.includes(' days')) {
+        return `You don't have any calendar events in the ${label}.`;
+      }
       return "I couldn't find any upcoming calendar events.";
   }
 }
@@ -2499,9 +2677,9 @@ export async function createCalendarEvent(
 
     if (
       error.code ===
-        'GOOGLE_NOT_CONNECTED' ||
+        'GOOGLE_CALENDAR_NOT_CONNECTED' ||
       error.message ===
-        'GOOGLE_NOT_CONNECTED'
+        'GOOGLE_CALENDAR_NOT_CONNECTED'
     ) {
       return {
         ...state,
@@ -2573,6 +2751,32 @@ async function classifyIntent(userMessage) {
       return 'leave_request';
     }
 
+    // Calendar events - deterministic patterns
+    if (
+      /\b(meeting|calendar|schedule|appointment|event)\b/i.test(text) &&
+      (/\b(today|tomorrow|this week|next week|this month|upcoming|next \d+ days|am i free|am i available|do i have|show|what|list|check)\b/i.test(text) ||
+       /\b(in the next \d+ days|in the next week|in the next month)\b/i.test(text))
+    ) {
+      return 'calendar_events';
+    }
+
+    // Availability check patterns (these should take precedence)
+    if (
+      /\b(am i free|am i available|do i have any meetings|do i have any events|check my|show my|what meetings|what events|list my|my schedule|my calendar)\b/i.test(text) &&
+      /\b(today|tomorrow|this week|next week|this month|upcoming|next \d+ days|on|at|@)\b/i.test(text)
+    ) {
+      return 'calendar_events';
+    }
+
+    // Calendar create - deterministic patterns (must be more specific)
+    if (
+      /\b(schedule|create|add|set up|book|arrange)\b/i.test(text) &&
+      /\b(meeting|appointment|event|call|discussion)\b/i.test(text) &&
+      !/\b(do i have|am i free|am i available|show|what|list|check)\b/i.test(text)
+    ) {
+      return 'calendar_create';
+    }
+
     // ----------------------------------------------------------
     // GEMINI FALLBACK
     // ----------------------------------------------------------
@@ -2600,9 +2804,16 @@ leave_request
 
 calendar_events
 - User wants to check their own Google Calendar.
+- Availability checks: "Am I free on Friday at 3 PM?"
+- Meeting queries: "Do I have any meetings in the next 7 days?"
+- Schedule checks: "What meetings do I have tomorrow?"
+- Calendar reviews: "Show my calendar for this week"
 
 calendar_create
 - User wants to create/schedule a calendar event.
+- Meeting scheduling: "Schedule a team meeting tomorrow at 2 PM for 1 hour"
+- Event creation: "Add a meeting on September 10 at 11 AM"
+- Booking appointments: "Book a client call next Tuesday"
 
 gmail_read
 - User wants to read/search their own Gmail.
@@ -2625,7 +2836,11 @@ Important:
 - "I want to take leave" = leave_request
 - "Please give me leave" = leave_request
 - "Do I have a meeting today?" = calendar_events
+- "Am I free on Friday at 3 PM?" = calendar_events
+- "What meetings do I have tomorrow?" = calendar_events
+- "Do I have any meetings in the next 7 days?" = calendar_events
 - "Schedule a meeting tomorrow at 3 PM" = calendar_create
+- "Add a meeting on September 10 at 11 AM" = calendar_create
 - "Show my emails" = gmail_read
 - "Send an email to Rahul" = gmail_send
 - "What's the latest React version?" = web_search
