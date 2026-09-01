@@ -490,9 +490,10 @@ function buildContextString(context) {
 
 function buildRAGPrompt(
   question,
-  context
+  context,
+  enhancedSystemPrompt = null
 ) {
-  return `
+  const basePrompt = `
 You are the Employee Copilot's company knowledge assistant.
 
 Your task is to answer the employee's question using ONLY the
@@ -531,6 +532,13 @@ ${question}
 
 ANSWER:
 `.trim();
+
+  // Add enhanced system prompt if provided
+  if (enhancedSystemPrompt) {
+    return `${enhancedSystemPrompt}\n\n${basePrompt}`;
+  }
+
+  return basePrompt;
 }
 
 // ============================================================
@@ -578,7 +586,8 @@ export async function generateAnswer(
     const prompt =
       buildRAGPrompt(
         question,
-        contextString
+        contextString,
+        enhancedSystemPrompt
       );
 
     console.log(
@@ -689,7 +698,8 @@ export async function* streamRAGAnswer(
   const prompt =
     buildRAGPrompt(
       question,
-      contextString
+      contextString,
+      enhancedSystemPrompt
     );
 
   let fullAnswer = '';
@@ -851,7 +861,8 @@ function validateQuestion(question) {
 export async function runRAGWorkflow(
   question,
   userId,
-  userRole
+  userRole,
+  enhancedSystemPrompt = null
 ) {
   const startTime = Date.now();
 

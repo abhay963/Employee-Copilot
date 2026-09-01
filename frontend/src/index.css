@@ -605,6 +605,12 @@ canvas {
   border-right: 1px solid var(--border-default);
 }
 
+/* Ensure conversation sidebar is always visible */
+.conversation-sidebar {
+  display: flex !important;
+  visibility: visible !important;
+}
+
 /* Conversation item */
 .conversation-item {
   background-color: transparent;

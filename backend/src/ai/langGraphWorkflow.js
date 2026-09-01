@@ -10,6 +10,7 @@ import { config } from '../config/index.js';
 import googleCalendarService from '../services/googleCalendarService.js';
 import gmailService from '../services/gmailService.js';
 import conversationStateService, { WORKFLOW_STEPS, CALENDAR_STATUS } from '../services/conversationStateService.js';
+import conversationMemoryService from '../services/conversationMemoryService.js';
 import leaveWorkflowService from '../services/leaveWorkflowService.js';
 import loggingService from '../services/loggingService.js';
 
@@ -44,6 +45,19 @@ const VALID_INTENTS = [
   'web_search',
   'general',
 ];
+
+// ============================================================
+// BUILD ENHANCED SYSTEM PROMPT WITH CONTEXT
+// ============================================================
+
+function buildEnhancedSystemPrompt(basePrompt, compactContext) {
+  if (!compactContext) {
+    return basePrompt;
+  }
+
+  // Use conversationMemoryService for consistent context building with token optimization
+  return conversationMemoryService.buildLLMContext(compactContext, basePrompt);
+}
 
 const ACTION_TYPES = [
   'leave_request',
@@ -876,6 +890,48 @@ async function checkLeavePolicy(
 }
 
 // ============================================================
+// CALENDAR CONTEXTUAL REFERENCE RESOLUTION
+// ============================================================
+
+function resolveCalendarContextualReferences(message, structuredMemory) {
+  const text = message.toLowerCase();
+  let resolvedMessage = message;
+
+  // Resolve temporal references like "tomorrow", "next week" based on recent dates
+  if (text.includes('tomorrow') || text.includes('next') || text.includes('this')) {
+    if (structuredMemory.importantDates && structuredMemory.importantDates.length > 0) {
+      // If user says "tomorrow" but we have recent date context, ensure proper resolution
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      // This is a placeholder for more sophisticated temporal resolution
+      // For now, we'll keep the original message but the getCalendarDateRange function
+      // will handle the actual date parsing
+    }
+  }
+
+  // Resolve entity references like "it", "that meeting" based on recent calendar context
+  if (text.includes('it') || text.includes('that meeting') || text.includes('the meeting')) {
+    if (structuredMemory.lastCalendarEvent) {
+      // User is referring to a previously mentioned calendar event
+      // We could enhance the message with context from the last calendar interaction
+      console.log('[Calendar] Detected reference to previous calendar event');
+    }
+  }
+
+  // Resolve action references like "change it", "move it" based on pending actions
+  if (text.includes('change') || text.includes('move') || text.includes('reschedule')) {
+    if (structuredMemory.pendingAction && structuredMemory.pendingAction.type === 'calendar_create') {
+      // User wants to modify a pending calendar action
+      console.log('[Calendar] Detected modification request for pending calendar action');
+    }
+  }
+
+  return resolvedMessage;
+}
+
+// ============================================================
 // CALENDAR EVENTS
 // ============================================================
 
@@ -883,10 +939,22 @@ async function queryCalendarEvents(
   state
 ) {
   try {
-    const message =
+    let message =
       state.messages[
         state.messages.length - 1
       ].content;
+
+    // Resolve contextual references using compact context
+    if (state.compactContext?.structuredMemory) {
+      const resolved = resolveCalendarContextualReferences(
+        message,
+        state.compactContext.structuredMemory
+      );
+      if (resolved !== message) {
+        console.log('[Calendar] Resolved contextual reference:', message, '->', resolved);
+        message = resolved;
+      }
+    }
 
     const {
       startDate,
@@ -2255,11 +2323,16 @@ async function generalRAGQuery(
         state.messages.length - 1
       ].content;
 
+    // Build enhanced system prompt with compact context
+    const basePrompt = `You are an Employee Copilot. Answer the user's question using the company knowledge base.`;
+    const enhancedPrompt = buildEnhancedSystemPrompt(basePrompt, state.compactContext);
+
     const ragResult =
       await runRAGWorkflow(
         message,
         state.userId,
-        state.userRole
+        state.userRole,
+        enhancedPrompt
       );
 
     return {
@@ -2927,7 +3000,8 @@ export async function runLangGraphWorkflow(
   conversationId = null,
   actionId = null,
   isConfirmed = false,
-  actionData = null
+  actionData = null,
+  compactContext = null
 ) {
   let intent = 'general'; // Initialize with default value for error handling
 
@@ -3079,6 +3153,8 @@ export async function runLangGraphWorkflow(
 
       hasConflicts:
         false,
+
+      compactContext: compactContext || null,
     };
 
     // ========================================================

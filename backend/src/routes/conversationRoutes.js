@@ -8,7 +8,8 @@ import {
   updateConversationTitle,
   executePendingAction,
   getConversationState,
-  cancelPendingAction
+  cancelPendingAction,
+  getConversationContext
 } from '../controllers/conversationController.js';
 import { authenticate } from '../middleware/auth.js';
 
@@ -40,6 +41,9 @@ router.post('/:id/actions/cancel', cancelPendingAction);
 
 // Get conversation state (for workflow recovery)
 router.get('/:id/state', getConversationState);
+
+// Get conversation context (for memory system)
+router.get('/:id/context', getConversationContext);
 
 // Delete conversation
 router.delete('/:id', deleteConversation);

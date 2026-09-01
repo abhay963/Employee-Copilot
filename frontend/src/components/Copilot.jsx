@@ -15,13 +15,13 @@ import {
   Loader2,
   FileText,
   Trash2,
-  User,
   Sparkles,
   Copy,
   Check,
 } from 'lucide-react';
 
 import { FiCommand } from 'react-icons/fi';
+import { FaUser } from 'react-icons/fa';
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -128,8 +128,10 @@ const ChatMessage = ({
             ${
               isUser
                 ? `
-                  bg-accent-primary
-                  text-inverse
+                  bg-violet-600
+                  text-white
+                  border border-violet-500
+                  relative z-10
                   shadow-md
                 `
                 : `
@@ -145,7 +147,11 @@ const ChatMessage = ({
           `}
         >
           {isUser ? (
-            <User size={15} strokeWidth={2.2} />
+            <FaUser
+              size={16}
+              className="text-white"
+              aria-label="User"
+            />
           ) : (
             <Sparkles
               size={16}

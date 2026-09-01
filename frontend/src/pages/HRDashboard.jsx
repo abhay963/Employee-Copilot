@@ -1105,7 +1105,7 @@ const HRDashboard = () => {
                   CHATGPT STYLE CONVERSATION SIDEBAR
               ================================================== */}
 
-              <section className="hidden sm:flex w-[280px] lg:w-[310px] shrink-0 bg-[#f7f7f8] border-r border-gray-200 flex-col">
+              <section className="flex w-[280px] lg:w-[310px] shrink-0 conversation-sidebar flex-col">
 
                 {/* Conversation header */}
 

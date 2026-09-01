@@ -956,7 +956,7 @@ const EmployeeDashboard = () => {
                   CHATGPT STYLE CONVERSATION SIDEBAR
               ================================================== */}
 
-              <section className="hidden sm:flex w-[280px] lg:w-[310px] shrink-0 conversation-sidebar flex-col">
+              <section className="flex w-[280px] lg:w-[310px] shrink-0 conversation-sidebar flex-col">
 
                 {/* Conversation header */}
 

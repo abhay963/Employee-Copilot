@@ -2,6 +2,7 @@ import { Conversation } from '../models/Conversation.js';
 import { Message } from '../models/Message.js';
 import { runLangGraphWorkflow } from '../ai/langGraphWorkflow.js';
 import conversationStateService from './conversationStateService.js';
+import conversationMemoryService from './conversationMemoryService.js';
 import leaveWorkflowService from './leaveWorkflowService.js';
 
 class ConversationService {
@@ -228,11 +229,29 @@ class ConversationService {
       await conversationStateService.getOrCreateState(conversationId, userId);
 
       // --------------------------------------------------------
-      // Save user message
+      // Get conversation context for memory system
+      // --------------------------------------------------------
+
+      const conversationContext = await conversationMemoryService.getConversationContext(
+        conversationId,
+        userId
+      );
+
+      // --------------------------------------------------------
+      // Resolve contextual references in user message
+      // --------------------------------------------------------
+
+      const { resolvedMessage, resolvedContext } = conversationMemoryService.resolveContextualReferences(
+        cleanQuestion,
+        conversationContext.context
+      );
+
+      // --------------------------------------------------------
+      // Save user message with duplicate prevention
       // --------------------------------------------------------
 
       const userMessage =
-        await Message.create({
+        await Message.createWithDuplicateCheck({
           conversation_id:
             conversationId,
 
@@ -253,7 +272,7 @@ class ConversationService {
       );
 
       // --------------------------------------------------------
-      // Run AI workflow with conversationId for state management
+      // Run AI workflow with conversationId and compact context
       // --------------------------------------------------------
 
       const result =
@@ -261,7 +280,11 @@ class ConversationService {
           cleanQuestion,
           userId,
           userRole,
-          conversationId
+          conversationId,
+          null,
+          false,
+          null,
+          conversationContext.context
         );
 
       const {
@@ -271,14 +294,15 @@ class ConversationService {
         requiresConfirmation = false,
         pendingAction = null,
         actionMetadata = null,
+        intent = null,
       } = result || {};
 
       // --------------------------------------------------------
-      // Save assistant response
+      // Save assistant response with duplicate prevention
       // --------------------------------------------------------
 
       const assistantMessage =
-        await Message.create({
+        await Message.createWithDuplicateCheck({
           conversation_id:
             conversationId,
 
@@ -295,12 +319,36 @@ class ConversationService {
         });
 
       // --------------------------------------------------------
-      // Update timestamp
+      // Update conversation memory state
       // --------------------------------------------------------
 
-      await Conversation.updateTimestamp(
-        conversationId
+      await conversationMemoryService.updateConversationState(
+        conversationId,
+        cleanQuestion,
+        response,
+        intent
       );
+
+      // --------------------------------------------------------
+      // Generate/update conversation summary if needed
+      // --------------------------------------------------------
+
+      if (conversationContext.needsSummary) {
+        const allMessages = await Message.findByConversationId(conversationId);
+        await conversationMemoryService.generateConversationSummary(
+          conversationId,
+          allMessages
+        );
+      }
+
+      // --------------------------------------------------------
+      // Update timestamp and message count
+      // --------------------------------------------------------
+
+      const messageCount = conversationContext.messages.length + 2; // +2 for new messages
+      await Conversation.update(conversationId, {
+        message_count: messageCount,
+      });
 
       return {
         userMessage,
@@ -388,11 +436,29 @@ class ConversationService {
       await conversationStateService.getOrCreateState(conversationId, userId);
 
       // --------------------------------------------------------
-      // Save user message
+      // Get conversation context for memory system
+      // --------------------------------------------------------
+
+      const conversationContext = await conversationMemoryService.getConversationContext(
+        conversationId,
+        userId
+      );
+
+      // --------------------------------------------------------
+      // Resolve contextual references in user message
+      // --------------------------------------------------------
+
+      const { resolvedMessage, resolvedContext } = conversationMemoryService.resolveContextualReferences(
+        cleanQuestion,
+        conversationContext.context
+      );
+
+      // --------------------------------------------------------
+      // Save user message with duplicate prevention
       // --------------------------------------------------------
 
       const userMessage =
-        await Message.create({
+        await Message.createWithDuplicateCheck({
           conversation_id:
             conversationId,
 
@@ -458,7 +524,11 @@ class ConversationService {
           cleanQuestion,
           userId,
           userRole,
-          conversationId
+          conversationId,
+          null,
+          false,
+          null,
+          conversationContext.context
         );
 
       const {
@@ -468,14 +538,15 @@ class ConversationService {
         requiresConfirmation = false,
         pendingAction = null,
         actionMetadata = null,
+        intent = null,
       } = result || {};
 
       // --------------------------------------------------------
-      // Save complete assistant message
+      // Save complete assistant message with duplicate prevention
       // --------------------------------------------------------
 
       const assistantMessage =
-        await Message.create({
+        await Message.createWithDuplicateCheck({
           conversation_id:
             conversationId,
 
@@ -490,6 +561,38 @@ class ConversationService {
               ? sources
               : [],
         });
+
+      // --------------------------------------------------------
+      // Update conversation memory state
+      // --------------------------------------------------------
+
+      await conversationMemoryService.updateConversationState(
+        conversationId,
+        cleanQuestion,
+        response,
+        intent
+      );
+
+      // --------------------------------------------------------
+      // Generate/update conversation summary if needed
+      // --------------------------------------------------------
+
+      if (conversationContext.needsSummary) {
+        const allMessages = await Message.findByConversationId(conversationId);
+        await conversationMemoryService.generateConversationSummary(
+          conversationId,
+          allMessages
+        );
+      }
+
+      // --------------------------------------------------------
+      // Update timestamp and message count
+      // --------------------------------------------------------
+
+      const messageCount = conversationContext.messages.length + 2; // +2 for new messages
+      await Conversation.update(conversationId, {
+        message_count: messageCount,
+      });
 
       // --------------------------------------------------------
       // Send response as one complete event
@@ -644,7 +747,7 @@ class ConversationService {
           success: true,
 
           assistantMessage:
-            await Message.create({
+            await Message.createWithDuplicateCheck({
               conversation_id:
                 conversationId,
 
@@ -736,11 +839,11 @@ class ConversationService {
         'Action completed successfully.';
 
       // --------------------------------------------------------
-      // Save execution result
+      // Save execution result with duplicate prevention
       // --------------------------------------------------------
 
       const assistantMessage =
-        await Message.create({
+        await Message.createWithDuplicateCheck({
           conversation_id:
             conversationId,
 

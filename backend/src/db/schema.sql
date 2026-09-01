@@ -115,6 +115,9 @@ CREATE TABLE IF NOT EXISTS conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title VARCHAR(500),
+    summary TEXT,
+    summary_last_updated TIMESTAMP,
+    message_count INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -242,5 +245,30 @@ CREATE TABLE IF NOT EXISTS conversation_state (
 CREATE INDEX IF NOT EXISTS conversation_state_conversation_idx ON conversation_state(conversation_id);
 CREATE INDEX IF NOT EXISTS conversation_state_user_idx ON conversation_state(user_id);
 CREATE INDEX IF NOT EXISTS conversation_state_action_idx ON conversation_state(action_id);
+
+-- Add conversation summary columns if they don't exist (for existing databases)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'conversations' AND column_name = 'summary'
+    ) THEN
+        ALTER TABLE conversations ADD COLUMN summary TEXT;
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'conversations' AND column_name = 'summary_last_updated'
+    ) THEN
+        ALTER TABLE conversations ADD COLUMN summary_last_updated TIMESTAMP;
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'conversations' AND column_name = 'message_count'
+    ) THEN
+        ALTER TABLE conversations ADD COLUMN message_count INTEGER DEFAULT 0;
+    END IF;
+END $$;
 
 

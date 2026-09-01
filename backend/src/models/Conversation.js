@@ -24,10 +24,37 @@ export class Conversation {
   }
 
   static async update(id, data) {
-    const { title } = data;
+    const { title, summary, summary_last_updated, message_count } = data;
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (title !== undefined) {
+      updates.push(`title = COALESCE($${paramIndex++}, title)`);
+      values.push(title);
+    }
+
+    if (summary !== undefined) {
+      updates.push(`summary = $${paramIndex++}`);
+      values.push(summary);
+    }
+
+    if (summary_last_updated !== undefined) {
+      updates.push(`summary_last_updated = $${paramIndex++}`);
+      values.push(summary_last_updated);
+    }
+
+    if (message_count !== undefined) {
+      updates.push(`message_count = $${paramIndex++}`);
+      values.push(message_count);
+    }
+
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+
     const result = await query(
-      'UPDATE conversations SET title = COALESCE($1, title), updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
-      [title, id]
+      `UPDATE conversations SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
     );
     return result.rows[0];
   }

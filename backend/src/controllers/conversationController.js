@@ -1,5 +1,6 @@
 import conversationService from '../services/conversationService.js';
 import conversationStateService from '../services/conversationStateService.js';
+import conversationMemoryService from '../services/conversationMemoryService.js';
 
 export const createConversation = async (req, res) => {
   try {
@@ -7,6 +8,9 @@ export const createConversation = async (req, res) => {
     const { title } = req.body;
 
     const conversation = await conversationService.createConversation(userId, title);
+    
+    // Initialize conversation state for new conversation
+    await conversationStateService.getOrCreateState(conversation.id, userId);
     
     res.json({
       success: true,
@@ -39,6 +43,10 @@ export const getConversationById = async (req, res) => {
     const userId = req.user.id;
 
     const conversation = await conversationService.getConversationWithMessages(id, userId);
+    
+    // Initialize conversation state when opening existing conversation
+    // This ensures context is loaded for follow-up messages
+    await conversationStateService.getOrCreateState(id, userId);
     
     res.json({
       success: true,
@@ -225,5 +233,36 @@ export const cancelPendingAction = async (req, res) => {
       return res.status(404).json({ error: error.message });
     }
     res.status(500).json({ error: 'Failed to cancel action' });
+  }
+};
+
+export const getConversationContext = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Verify conversation ownership
+    await conversationService.validateConversationForController(id, userId);
+
+    // Get conversation context from memory service
+    const context = await conversationMemoryService.getConversationContext(id, userId);
+
+    res.json({
+      success: true,
+      context: context.context,
+      needsSummary: context.needsSummary,
+      conversation: {
+        id: context.conversation.id,
+        title: context.conversation.title,
+        summary: context.conversation.summary,
+        messageCount: context.conversation.message_count,
+      }
+    });
+  } catch (error) {
+    console.error('Error getting conversation context:', error);
+    if (error.message === 'Conversation not found' || error.message === 'Access denied') {
+      return res.status(404).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to get conversation context' });
   }
 };
