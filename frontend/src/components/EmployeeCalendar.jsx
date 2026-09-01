@@ -9,7 +9,7 @@ import { toast } from 'react-hot-toast';
 import { googleAPI } from '../services/api';
 
 // ============================================================
-// HELPERS
+// DATE HELPERS
 // ============================================================
 
 const pad = (value) =>
@@ -19,6 +19,13 @@ const formatDateKey = (date) =>
   `${date.getFullYear()}-${pad(
     date.getMonth() + 1
   )}-${pad(date.getDate())}`;
+
+const formatDateTimeLocal = (date) =>
+  `${date.getFullYear()}-${pad(
+    date.getMonth() + 1
+  )}-${pad(date.getDate())}T${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
 
 const getMonthStart = (date) =>
   new Date(
@@ -35,18 +42,23 @@ const getMonthEnd = (date) =>
   );
 
 const getCalendarGrid = (currentDate) => {
-  const firstDay = getMonthStart(currentDate);
-  const lastDay = getMonthEnd(currentDate);
+  const firstDay =
+    getMonthStart(currentDate);
+
+  const lastDay =
+    getMonthEnd(currentDate);
 
   const start = new Date(firstDay);
+
   start.setDate(
-    firstDay.getDate() - firstDay.getDay()
+    start.getDate() - start.getDay()
   );
 
   const end = new Date(lastDay);
+
   end.setDate(
-    lastDay.getDate() +
-      (6 - lastDay.getDay())
+    end.getDate() +
+      (6 - end.getDay())
   );
 
   const days = [];
@@ -55,6 +67,7 @@ const getCalendarGrid = (currentDate) => {
 
   while (cursor <= end) {
     days.push(new Date(cursor));
+
     cursor.setDate(
       cursor.getDate() + 1
     );
@@ -79,15 +92,19 @@ const formatEventTime = (event) => {
   }
 
   if (event.start.dateTime) {
-    const date = new Date(
-      event.start.dateTime
-    );
+    const date =
+      new Date(event.start.dateTime);
+
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
 
     return date.toLocaleTimeString(
-      'en-US',
+      'en-IN',
       {
         hour: 'numeric',
         minute: '2-digit',
+        hour12: true,
       }
     );
   }
@@ -100,14 +117,21 @@ const getEventDateKey = (event) => {
     return null;
   }
 
+  // Google all-day event
   if (event.start.date) {
     return event.start.date;
   }
 
+  // Google timed event
   if (event.start.dateTime) {
-    return formatDateKey(
-      new Date(event.start.dateTime)
-    );
+    const date =
+      new Date(event.start.dateTime);
+
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+
+    return formatDateKey(date);
   }
 
   return null;
@@ -117,30 +141,33 @@ const getInitialForm = () => {
   const now = new Date();
 
   const start = new Date(now);
+
+  const remainder =
+    start.getMinutes() % 30;
+
   start.setMinutes(
-    Math.ceil(start.getMinutes() / 30) * 30,
+    start.getMinutes() +
+      (remainder === 0
+        ? 0
+        : 30 - remainder),
     0,
     0
   );
 
   const end = new Date(start);
+
   end.setHours(
     end.getHours() + 1
   );
-
-  const toDateTimeLocal = (date) =>
-    `${date.getFullYear()}-${pad(
-      date.getMonth() + 1
-    )}-${pad(date.getDate())}T${pad(
-      date.getHours()
-    )}:${pad(date.getMinutes())}`;
 
   return {
     summary: '',
     description: '',
     location: '',
-    start: toDateTimeLocal(start),
-    end: toDateTimeLocal(end),
+    start:
+      formatDateTimeLocal(start),
+    end:
+      formatDateTimeLocal(end),
   };
 };
 
@@ -149,20 +176,11 @@ const getInitialForm = () => {
 // ============================================================
 
 function EmployeeCalendar() {
-  // ----------------------------------------------------------
-  // CALENDAR STATE
-  // ----------------------------------------------------------
-
   const [currentDate, setCurrentDate] =
     useState(new Date());
 
-  const [events, setEvents] = useState(
-    []
-  );
-
-  // ----------------------------------------------------------
-  // CONNECTION STATE
-  // ----------------------------------------------------------
+  const [events, setEvents] =
+    useState([]);
 
   const [
     calendarConnected,
@@ -174,118 +192,107 @@ function EmployeeCalendar() {
     setCheckingConnection,
   ] = useState(true);
 
-  const [
-    connecting,
-    setConnecting,
-  ] = useState(false);
+  const [connecting, setConnecting] =
+    useState(false);
 
   const [
     disconnecting,
     setDisconnecting,
   ] = useState(false);
 
-  // ----------------------------------------------------------
-  // LOADING / ERROR
-  // ----------------------------------------------------------
-
   const [loading, setLoading] =
     useState(false);
 
-  // ----------------------------------------------------------
-  // EVENT MODAL
-  // ----------------------------------------------------------
+  const [
+    showEventModal,
+    setShowEventModal,
+  ] = useState(false);
 
-  const [showEventModal, setShowEventModal] =
-    useState(false);
-
-  const [creatingEvent, setCreatingEvent] =
-    useState(false);
+  const [
+    creatingEvent,
+    setCreatingEvent,
+  ] = useState(false);
 
   const [eventForm, setEventForm] =
     useState(getInitialForm());
 
-  // ----------------------------------------------------------
-  // SELECTED DAY
-  // ----------------------------------------------------------
-
-  const [selectedDate, setSelectedDate] =
-    useState(null);
-
-  // ==========================================================
+  // ============================================================
   // CALENDAR GRID
-  // ==========================================================
+  // ============================================================
 
   const calendarDays = useMemo(
     () =>
-      getCalendarGrid(
-        currentDate
-      ),
+      getCalendarGrid(currentDate),
     [currentDate]
   );
 
-  // ==========================================================
+  // ============================================================
   // MONTH RANGE
-  // ==========================================================
+  // ============================================================
 
   const monthRange = useMemo(() => {
-    const start = new Date(
-      currentDate.getFullYear(),
-      currentDate.getMonth(),
-      1
-    );
-
-    const end = new Date(
-      currentDate.getFullYear(),
-      currentDate.getMonth() + 1,
-      0
-    );
-
     return {
-      start,
-      end,
+      start:
+        getMonthStart(currentDate),
+
+      end:
+        getMonthEnd(currentDate),
     };
   }, [currentDate]);
 
-  // ==========================================================
-  // CHECK GOOGLE CALENDAR CONNECTION
-  // ==========================================================
+  // ============================================================
+  // CHECK CONNECTION
+  // ============================================================
 
-  const checkConnection = useCallback(
-    async () => {
+  const checkConnection =
+    useCallback(async () => {
       try {
         setCheckingConnection(true);
 
         const response =
           await googleAPI.getCalendarStatus();
 
+        const connected =
+          Boolean(response?.connected);
+
         setCalendarConnected(
-          Boolean(response?.connected)
+          connected
         );
-      } catch (err) {
+
+        return connected;
+      } catch (error) {
         console.error(
-          'Calendar connection check failed:',
-          err
+          'Calendar status error:',
+          error
         );
 
         setCalendarConnected(false);
 
-        toast.error(
-          err?.error ||
-            'Unable to check Google Calendar connection.'
-        );
+        // Do NOT show an error toast for
+        // a normal disconnected state.
+        if (
+          error?.code !==
+          'GOOGLE_CALENDAR_NOT_CONNECTED'
+        ) {
+          toast.error(
+            error?.error ||
+              error?.message ||
+              'Unable to check Google Calendar connection.'
+          );
+        }
+
+        return false;
       } finally {
         setCheckingConnection(false);
       }
-    },
-    []
-  );
+    }, []);
 
-  // ==========================================================
+  // ============================================================
   // LOAD EVENTS
-  // ==========================================================
+  // ============================================================
 
-  const loadEvents = useCallback(
-    async () => {
+  const loadEvents =
+    useCallback(async () => {
       if (!calendarConnected) {
         setEvents([]);
         return;
@@ -294,177 +301,123 @@ function EmployeeCalendar() {
       try {
         setLoading(true);
 
-        const start =
-          monthRange.start;
-
-        const end =
-          monthRange.end;
-
         const response =
           await googleAPI.getCalendarEvents(
-            formatDateKey(start),
-            formatDateKey(end)
+            formatDateKey(
+              monthRange.start
+            ),
+            formatDateKey(
+              monthRange.end
+            )
           );
 
-        setEvents(
-          Array.isArray(response?.events)
+        const loadedEvents =
+          Array.isArray(
+            response?.events
+          )
             ? response.events
-            : []
-        );
-      } catch (err) {
-        console.error(
-          'Failed to load calendar events:',
-          err
-        );
+            : [];
 
-        const errorCode =
-          err?.code;
+        setEvents(loadedEvents);
+      } catch (error) {
+        console.error(
+          'Calendar events error:',
+          error
+        );
 
         if (
-          errorCode ===
-            'GOOGLE_CALENDAR_NOT_CONNECTED'
+          error?.code ===
+          'GOOGLE_CALENDAR_NOT_CONNECTED'
         ) {
-          setCalendarConnected(
-            false
-          );
-
+          setCalendarConnected(false);
           setEvents([]);
 
           toast.error(
             'Google Calendar is not connected.'
           );
-        } else if (
-          errorCode ===
-            'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
-        ) {
-          setCalendarConnected(
-            false
-          );
 
+          return;
+        }
+
+        if (
+          error?.code ===
+          'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
+        ) {
+          setCalendarConnected(false);
           setEvents([]);
 
           toast.error(
-            'Google Calendar authorization has expired. Please reconnect your Google Calendar.'
+            'Google Calendar authorization expired. Please reconnect.'
           );
-        } else {
-          toast.error(
-            err?.error ||
-              err?.message ||
-              'Failed to load calendar events.'
-          );
+
+          return;
         }
+
+        if (
+          error?.code ===
+          'GOOGLE_CALENDAR_PERMISSION_REQUIRED'
+        ) {
+          setCalendarConnected(false);
+          setEvents([]);
+
+          toast.error(
+            'Google Calendar permission is missing. Please reconnect.'
+          );
+
+          return;
+        }
+
+        toast.error(
+          error?.error ||
+            error?.message ||
+            'Failed to load calendar events.'
+        );
       } finally {
         setLoading(false);
       }
-    },
-    [
+    }, [
       calendarConnected,
       monthRange,
-    ]
-  );
+    ]);
 
-  // ==========================================================
-  // INITIAL CONNECTION CHECK
-  // ==========================================================
-
-  useEffect(() => {
-    checkConnection();
-  }, [checkConnection]);
-
-  // ==========================================================
-  // LOAD EVENTS WHEN CONNECTED / MONTH CHANGES
-  // ==========================================================
+  // ============================================================
+  // INITIALIZE CALENDAR
+  // ============================================================
 
   useEffect(() => {
-    if (calendarConnected) {
-      loadEvents();
-    }
+    let cancelled = false;
+
+    const initialize =
+      async () => {
+        const connected =
+          await checkConnection();
+
+        if (
+          cancelled
+        ) {
+          return;
+        }
+
+        if (connected) {
+          await loadEvents();
+        } else {
+          setEvents([]);
+        }
+      };
+
+    initialize();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
-    calendarConnected,
+    checkConnection,
     loadEvents,
   ]);
 
-  // ==========================================================
-  // HANDLE GOOGLE CALENDAR CONNECT
-  // ==========================================================
-
-  const handleConnect = async () => {
-    try {
-      setConnecting(true);
-
-      const response =
-        await googleAPI.getCalendarAuthUrl();
-
-      if (!response?.authUrl) {
-        throw new Error(
-          'Google Calendar authorization URL was not returned.'
-        );
-      }
-
-      window.location.href =
-        response.authUrl;
-    } catch (err) {
-      console.error(
-        'Google Calendar connection failed:',
-        err
-      );
-
-      const errorMessage = err?.error ||
-        err?.message ||
-        'Failed to connect Google Calendar.';
-
-      toast.error(errorMessage, {
-        duration: 5000,
-      });
-
-      setConnecting(false);
-    }
-  };
-
-  // ==========================================================
-  // HANDLE GOOGLE CALENDAR DISCONNECT
-  // ==========================================================
-
-  const handleDisconnect = async () => {
-    const confirmed =
-      window.confirm(
-        'Disconnect Google Calendar from Employee Copilot?'
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setDisconnecting(true);
-
-      await googleAPI.revokeCalendarTokens();
-
-      setCalendarConnected(false);
-      setEvents([]);
-
-      toast.success(
-        'Google Calendar disconnected successfully.'
-      );
-    } catch (err) {
-      console.error(
-        'Failed to disconnect Google Calendar:',
-        err
-      );
-
-      toast.error(
-        err?.error ||
-          err?.message ||
-          'Failed to disconnect Google Calendar.'
-      );
-    } finally {
-      setDisconnecting(false);
-    }
-  };
-
-  // ==========================================================
-  // URL CALLBACK RESULT
-  // ==========================================================
+  // ============================================================
+  // HANDLE OAUTH CALLBACK
+  // ============================================================
 
   useEffect(() => {
     const params =
@@ -487,33 +440,50 @@ function EmployeeCalendar() {
         'error_description'
       );
 
-    if (connected === 'true') {
-      setCalendarConnected(true);
-
+    if (
+      connected === 'true'
+    ) {
       toast.success(
         'Google Calendar connected successfully.'
       );
 
+      // Remove OAuth parameters.
       window.history.replaceState(
         {},
         document.title,
         window.location.pathname
       );
+
+      // IMPORTANT:
+      // Ask backend for the real state.
+      checkConnection().then(
+        (isConnected) => {
+          if (isConnected) {
+            loadEvents();
+          }
+        }
+      );
+
+      return;
     }
 
     if (googleError) {
-      console.error('Google Calendar OAuth error:', {
-        error: googleError,
-        description: errorDescription
-      });
+      console.error(
+        'Google Calendar OAuth error:',
+        {
+          error: googleError,
+          description:
+            errorDescription,
+        }
+      );
 
-      const errorDetails = errorDescription
-        ? `${errorDescription} (Error: ${googleError})`
-        : `Google Calendar connection failed: ${googleError}`;
-
-      toast.error(errorDetails, {
-        duration: 6000,
-      });
+      toast.error(
+        errorDescription ||
+          `Google Calendar connection failed: ${googleError}`,
+        {
+          duration: 6000,
+        }
+      );
 
       window.history.replaceState(
         {},
@@ -521,287 +491,383 @@ function EmployeeCalendar() {
         window.location.pathname
       );
     }
-  }, []);
+  }, [
+    checkConnection,
+    loadEvents,
+  ]);
 
-  // ==========================================================
-  // NAVIGATION
-  // ==========================================================
+  // ============================================================
+  // CONNECT
+  // ============================================================
 
-  const goToPreviousMonth = () => {
-    setCurrentDate(
-      (previous) =>
-        new Date(
-          previous.getFullYear(),
-          previous.getMonth() - 1,
-          1
-        )
-    );
-  };
+  const handleConnect =
+    async () => {
+      try {
+        setConnecting(true);
 
-  const goToNextMonth = () => {
-    setCurrentDate(
-      (previous) =>
-        new Date(
-          previous.getFullYear(),
-          previous.getMonth() + 1,
-          1
-        )
-    );
-  };
+        const response =
+          await googleAPI.getCalendarAuthUrl();
 
-  const goToToday = () => {
-    setCurrentDate(new Date());
-  };
+        if (
+          !response?.authUrl
+        ) {
+          throw new Error(
+            'Google Calendar authorization URL was not returned.'
+          );
+        }
 
-  // ==========================================================
-  // EVENTS BY DATE
-  // ==========================================================
+        window.location.assign(
+          response.authUrl
+        );
+      } catch (error) {
+        console.error(
+          'Calendar connect error:',
+          error
+        );
 
-  const eventsByDate = useMemo(() => {
-    const grouped = {};
+        toast.error(
+          error?.error ||
+            error?.message ||
+            'Failed to connect Google Calendar.'
+        );
 
-    events.forEach((event) => {
-      const dateKey =
-        getEventDateKey(event);
+        setConnecting(false);
+      }
+    };
 
-      if (!dateKey) {
+  // ============================================================
+  // DISCONNECT
+  // ============================================================
+
+  const handleDisconnect =
+    async () => {
+      const confirmed =
+        window.confirm(
+          'Disconnect Google Calendar from Employee Copilot?'
+        );
+
+      if (!confirmed) {
         return;
       }
 
-      if (!grouped[dateKey]) {
-        grouped[dateKey] = [];
+      try {
+        setDisconnecting(true);
+
+        await googleAPI.revokeCalendarTokens();
+
+        setCalendarConnected(false);
+        setEvents([]);
+
+        toast.success(
+          'Google Calendar disconnected successfully.'
+        );
+      } catch (error) {
+        console.error(
+          'Calendar disconnect error:',
+          error
+        );
+
+        toast.error(
+          error?.error ||
+            error?.message ||
+            'Failed to disconnect Google Calendar.'
+        );
+      } finally {
+        setDisconnecting(false);
+      }
+    };
+
+  // ============================================================
+  // NAVIGATION
+  // ============================================================
+
+  const goToPreviousMonth =
+    () => {
+      setCurrentDate(
+        (previous) =>
+          new Date(
+            previous.getFullYear(),
+            previous.getMonth() - 1,
+            1
+          )
+      );
+    };
+
+  const goToNextMonth =
+    () => {
+      setCurrentDate(
+        (previous) =>
+          new Date(
+            previous.getFullYear(),
+            previous.getMonth() + 1,
+            1
+          )
+      );
+    };
+
+  const goToToday =
+    () => {
+      setCurrentDate(
+        new Date()
+      );
+    };
+
+  // ============================================================
+  // EVENTS BY DATE
+  // ============================================================
+
+  const eventsByDate =
+    useMemo(() => {
+      const grouped = {};
+
+      for (
+        const calendarEvent of events
+      ) {
+        const dateKey =
+          getEventDateKey(
+            calendarEvent
+          );
+
+        if (!dateKey) {
+          continue;
+        }
+
+        if (
+          !grouped[dateKey]
+        ) {
+          grouped[dateKey] = [];
+        }
+
+        grouped[dateKey].push(
+          calendarEvent
+        );
       }
 
-      grouped[dateKey].push(event);
-    });
+      return grouped;
+    }, [events]);
 
-    return grouped;
-  }, [events]);
+  // ============================================================
+  // OPEN CREATE MODAL
+  // ============================================================
 
-  // ==========================================================
-  // OPEN CREATE EVENT MODAL
-  // ==========================================================
+  const openCreateEventModal =
+    (date = null) => {
+      const form =
+        getInitialForm();
 
-  const openCreateEventModal = (
-    date = null
-  ) => {
-    const form = getInitialForm();
+      if (date) {
+        const selected =
+          new Date(date);
 
-    if (date) {
-      const selected =
-        new Date(date);
+        selected.setHours(
+          9,
+          0,
+          0,
+          0
+        );
 
-      const start =
-        new Date(selected);
+        const end =
+          new Date(selected);
 
-      start.setHours(
-        9,
-        0,
-        0,
-        0
-      );
+        end.setHours(
+          10,
+          0,
+          0,
+          0
+        );
 
-      const end =
-        new Date(selected);
+        form.start =
+          formatDateTimeLocal(
+            selected
+          );
 
-      end.setHours(
-        10,
-        0,
-        0,
-        0
-      );
+        form.end =
+          formatDateTimeLocal(
+            end
+          );
+      }
 
-      const toDateTimeLocal = (
-        value
-      ) =>
-        `${value.getFullYear()}-${pad(
-          value.getMonth() + 1
-        )}-${pad(
-          value.getDate()
-        )}T${pad(
-          value.getHours()
-        )}:${pad(
-          value.getMinutes()
-        )}`;
+      setEventForm(form);
 
-      form.start =
-        toDateTimeLocal(start);
+      setShowEventModal(true);
+    };
 
-      form.end =
-        toDateTimeLocal(end);
-
-      setSelectedDate(date);
-    }
-
-    setEventForm(form);
-    setShowEventModal(true);
-  };
-
-  // ==========================================================
+  // ============================================================
   // CLOSE MODAL
-  // ==========================================================
+  // ============================================================
 
-  const closeEventModal = () => {
-    if (creatingEvent) {
-      return;
-    }
-
-    setShowEventModal(false);
-    setEventForm(
-      getInitialForm()
-    );
-    setSelectedDate(null);
-  };
-
-  // ==========================================================
-  // FORM CHANGE
-  // ==========================================================
-
-  const handleFormChange = (
-    field,
-    value
-  ) => {
-    setEventForm(
-      (previous) => ({
-        ...previous,
-        [field]: value,
-      })
-    );
-  };
-
-  // ==========================================================
-  // CREATE CALENDAR EVENT
-  // ==========================================================
-
-  const handleCreateEvent = async (
-    event
-  ) => {
-    event.preventDefault();
-
-    if (!eventForm.summary.trim()) {
-      toast.error(
-        'Event title is required.'
-      );
-
-      return;
-    }
-
-    if (
-      !eventForm.start ||
-      !eventForm.end
-    ) {
-      toast.error(
-        'Start and end time are required.'
-      );
-
-      return;
-    }
-
-    const startDate =
-      new Date(eventForm.start);
-
-    const endDate =
-      new Date(eventForm.end);
-
-    if (
-      Number.isNaN(
-        startDate.getTime()
-      ) ||
-      Number.isNaN(
-        endDate.getTime()
-      )
-    ) {
-      toast.error(
-        'Please enter valid dates and times.'
-      );
-
-      return;
-    }
-
-    if (
-      endDate <= startDate
-    ) {
-      toast.error(
-        'End time must be after the start time.'
-      );
-
-      return;
-    }
-
-    try {
-      setCreatingEvent(true);
-
-      const eventData = {
-        summary:
-          eventForm.summary.trim(),
-
-        description:
-          eventForm.description.trim() ||
-          undefined,
-
-        location:
-          eventForm.location.trim() ||
-          undefined,
-
-        start: {
-          dateTime:
-            startDate.toISOString(),
-        },
-
-        end: {
-          dateTime:
-            endDate.toISOString(),
-        },
-      };
-
-      await googleAPI.createCalendarEvent(
-        eventData
-      );
+  const closeEventModal =
+    () => {
+      if (creatingEvent) {
+        return;
+      }
 
       setShowEventModal(false);
 
       setEventForm(
         getInitialForm()
       );
+    };
 
-      toast.success(
-        'Calendar event created successfully.'
+  // ============================================================
+  // FORM CHANGE
+  // ============================================================
+
+  const handleFormChange =
+    (field, value) => {
+      setEventForm(
+        (previous) => ({
+          ...previous,
+          [field]: value,
+        })
       );
+    };
 
-      await loadEvents();
-    } catch (err) {
-      console.error(
-        'Failed to create calendar event:',
-        err
-      );
+  // ============================================================
+  // CREATE EVENT
+  // ============================================================
 
-      const errorCode =
-        err?.code;
+  const handleCreateEvent =
+    async (event) => {
+      event.preventDefault();
+
+      const title =
+        eventForm.summary.trim();
+
+      if (!title) {
+        toast.error(
+          'Event title is required.'
+        );
+
+        return;
+      }
 
       if (
-        errorCode ===
-        'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
+        !eventForm.start ||
+        !eventForm.end
       ) {
-        setCalendarConnected(false);
+        toast.error(
+          'Start and end time are required.'
+        );
+
+        return;
+      }
+
+      const startDate =
+        new Date(
+          eventForm.start
+        );
+
+      const endDate =
+        new Date(
+          eventForm.end
+        );
+
+      if (
+        Number.isNaN(
+          startDate.getTime()
+        ) ||
+        Number.isNaN(
+          endDate.getTime()
+        )
+      ) {
+        toast.error(
+          'Please enter valid dates and times.'
+        );
+
+        return;
+      }
+
+      if (
+        endDate <= startDate
+      ) {
+        toast.error(
+          'End time must be after start time.'
+        );
+
+        return;
+      }
+
+      try {
+        setCreatingEvent(true);
+
+        const timeZone =
+          Intl.DateTimeFormat()
+            .resolvedOptions()
+            .timeZone ||
+          'Asia/Kolkata';
+
+        const eventData = {
+          summary: title,
+
+          description:
+            eventForm.description.trim() ||
+            undefined,
+
+          location:
+            eventForm.location.trim() ||
+            undefined,
+
+          start: {
+            dateTime:
+              `${eventForm.start}:00`,
+            timeZone,
+          },
+
+          end: {
+            dateTime:
+              `${eventForm.end}:00`,
+            timeZone,
+          },
+        };
+
+        await googleAPI.createCalendarEvent(
+          eventData
+        );
+
+        toast.success(
+          'Calendar event created successfully.'
+        );
+
+        setShowEventModal(false);
+
+        setEventForm(
+          getInitialForm()
+        );
+
+        await loadEvents();
+      } catch (error) {
+        console.error(
+          'Create calendar event error:',
+          error
+        );
+
+        if (
+          error?.code ===
+          'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
+        ) {
+          setCalendarConnected(false);
+
+          toast.error(
+            'Google Calendar authorization expired. Please reconnect.'
+          );
+
+          return;
+        }
 
         toast.error(
-          'Google Calendar authorization has expired. Please reconnect.'
-        );
-      } else {
-        toast.error(
-          err?.error ||
-            err?.message ||
+          error?.error ||
+            error?.message ||
             'Failed to create calendar event.'
         );
+      } finally {
+        setCreatingEvent(false);
       }
-    } finally {
-      setCreatingEvent(false);
-    }
-  };
+    };
 
-  // ==========================================================
+  // ============================================================
   // RENDER
-  // ==========================================================
+  // ============================================================
 
   return (
     <div className="calendar-page">
@@ -810,19 +876,19 @@ function EmployeeCalendar() {
           min-height: 100%;
           width: 100%;
           padding: 28px;
+          box-sizing: border-box;
           color: #f5f7fb;
           background:
             radial-gradient(
               circle at top right,
-              rgba(99, 102, 241, 0.12),
+              rgba(99,102,241,.12),
               transparent 30%
             ),
             radial-gradient(
               circle at bottom left,
-              rgba(56, 189, 248, 0.06),
+              rgba(56,189,248,.06),
               transparent 28%
             );
-          box-sizing: border-box;
         }
 
         .calendar-container {
@@ -838,61 +904,54 @@ function EmployeeCalendar() {
           margin-bottom: 24px;
         }
 
-        .calendar-title-section {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
         .calendar-title {
           margin: 0;
           font-size: 28px;
           font-weight: 700;
-          letter-spacing: -0.5px;
+          letter-spacing: -.5px;
         }
 
         .calendar-subtitle {
-          margin: 0;
+          margin: 6px 0 0;
           color: #8d96a8;
           font-size: 14px;
         }
 
         .calendar-header-actions {
           display: flex;
-          align-items: center;
           gap: 10px;
         }
 
         .calendar-button {
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(255,255,255,0.045);
+          border: 1px solid rgba(255,255,255,.1);
+          background: rgba(255,255,255,.045);
           color: #f5f7fb;
           border-radius: 10px;
           padding: 10px 15px;
           font-size: 13px;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: .2s ease;
         }
 
         .calendar-button:hover {
-          background: rgba(255,255,255,0.08);
-          border-color: rgba(255,255,255,0.18);
+          background: rgba(255,255,255,.08);
         }
 
         .calendar-button.primary {
-          background: linear-gradient(
-            135deg,
-            #6366f1,
-            #7c3aed
-          );
           border-color: transparent;
+          background:
+            linear-gradient(
+              135deg,
+              #6366f1,
+              #7c3aed
+            );
         }
 
         .calendar-button.primary:hover {
           transform: translateY(-1px);
           box-shadow:
-            0 8px 24px rgba(99,102,241,0.25);
+            0 8px 24px rgba(99,102,241,.25);
         }
 
         .calendar-button.danger {
@@ -900,18 +959,18 @@ function EmployeeCalendar() {
         }
 
         .calendar-button:disabled {
-          opacity: 0.55;
+          opacity: .55;
           cursor: not-allowed;
         }
 
         .calendar-card {
-          border: 1px solid rgba(255,255,255,0.08);
-          background: rgba(17, 20, 29, 0.72);
-          backdrop-filter: blur(18px);
-          border-radius: 18px;
           overflow: hidden;
+          border: 1px solid rgba(255,255,255,.08);
+          border-radius: 18px;
+          background: rgba(17,20,29,.72);
+          backdrop-filter: blur(18px);
           box-shadow:
-            0 20px 70px rgba(0,0,0,0.20);
+            0 20px 70px rgba(0,0,0,.2);
         }
 
         .connection-card {
@@ -920,7 +979,8 @@ function EmployeeCalendar() {
           justify-content: space-between;
           gap: 20px;
           padding: 18px 20px;
-          border-bottom: 1px solid rgba(255,255,255,0.07);
+          border-bottom:
+            1px solid rgba(255,255,255,.07);
         }
 
         .connection-left {
@@ -932,19 +992,19 @@ function EmployeeCalendar() {
         .google-icon {
           width: 38px;
           height: 38px;
-          border-radius: 11px;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.08);
-          font-size: 18px;
+          border: 1px solid rgba(255,255,255,.08);
+          border-radius: 11px;
+          background: rgba(255,255,255,.06);
+          font-weight: 700;
         }
 
         .connection-title {
+          margin-bottom: 3px;
           font-size: 14px;
           font-weight: 600;
-          margin-bottom: 3px;
         }
 
         .connection-status {
@@ -965,7 +1025,7 @@ function EmployeeCalendar() {
         .status-dot.connected {
           background: #4ade80;
           box-shadow:
-            0 0 10px rgba(74,222,128,0.55);
+            0 0 10px rgba(74,222,128,.55);
         }
 
         .calendar-toolbar {
@@ -973,7 +1033,8 @@ function EmployeeCalendar() {
           align-items: center;
           justify-content: space-between;
           padding: 18px 20px;
-          border-bottom: 1px solid rgba(255,255,255,0.07);
+          border-bottom:
+            1px solid rgba(255,255,255,.07);
         }
 
         .month-navigation {
@@ -985,16 +1046,16 @@ function EmployeeCalendar() {
         .month-button {
           width: 36px;
           height: 36px;
+          border: 1px solid rgba(255,255,255,.08);
           border-radius: 9px;
-          border: 1px solid rgba(255,255,255,0.08);
-          background: rgba(255,255,255,0.035);
+          background: rgba(255,255,255,.035);
           color: #dce1ea;
           cursor: pointer;
           font-size: 17px;
         }
 
         .month-button:hover {
-          background: rgba(255,255,255,0.08);
+          background: rgba(255,255,255,.08);
         }
 
         .month-title {
@@ -1007,28 +1068,30 @@ function EmployeeCalendar() {
         .calendar-grid {
           display: grid;
           grid-template-columns:
-            repeat(7, minmax(0, 1fr));
+            repeat(7,minmax(0,1fr));
         }
 
         .weekday {
           padding: 13px 12px;
+          border-bottom:
+            1px solid rgba(255,255,255,.07);
           color: #777f91;
           font-size: 11px;
           font-weight: 700;
+          letter-spacing: .7px;
           text-transform: uppercase;
-          letter-spacing: 0.7px;
-          border-bottom: 1px solid rgba(255,255,255,0.07);
         }
 
         .calendar-day {
           min-height: 130px;
           padding: 10px;
-          border-right: 1px solid rgba(255,255,255,0.055);
-          border-bottom: 1px solid rgba(255,255,255,0.055);
-          background: rgba(255,255,255,0.008);
-          cursor: pointer;
-          transition: background 0.15s ease;
           box-sizing: border-box;
+          border-right:
+            1px solid rgba(255,255,255,.055);
+          border-bottom:
+            1px solid rgba(255,255,255,.055);
+          background: rgba(255,255,255,.008);
+          cursor: pointer;
         }
 
         .calendar-day:nth-child(7n) {
@@ -1036,19 +1099,19 @@ function EmployeeCalendar() {
         }
 
         .calendar-day:hover {
-          background: rgba(255,255,255,0.035);
+          background: rgba(255,255,255,.035);
         }
 
         .calendar-day.other-month {
-          opacity: 0.42;
+          opacity: .42;
         }
 
         .calendar-day.today {
           background:
             linear-gradient(
               180deg,
-              rgba(99,102,241,0.09),
-              rgba(255,255,255,0.008)
+              rgba(99,102,241,.09),
+              rgba(255,255,255,.008)
             );
         }
 
@@ -1075,7 +1138,7 @@ function EmployeeCalendar() {
           color: white;
           background: #6366f1;
           box-shadow:
-            0 4px 15px rgba(99,102,241,0.32);
+            0 4px 15px rgba(99,102,241,.32);
         }
 
         .add-day {
@@ -1099,26 +1162,29 @@ function EmployeeCalendar() {
 
         .calendar-event {
           width: 100%;
+          box-sizing: border-box;
           padding: 5px 7px;
-          border: 1px solid rgba(99,102,241,0.18);
-          border-left: 3px solid #6366f1;
+          border:
+            1px solid rgba(99,102,241,.18);
+          border-left:
+            3px solid #6366f1;
           border-radius: 5px;
-          background: rgba(99,102,241,0.10);
+          background:
+            rgba(99,102,241,.1);
           color: #dfe3ff;
           text-align: left;
           cursor: pointer;
-          overflow: hidden;
-          box-sizing: border-box;
         }
 
         .calendar-event:hover {
-          background: rgba(99,102,241,0.18);
+          background:
+            rgba(99,102,241,.18);
         }
 
         .event-time {
-          font-size: 9px;
-          color: #9ea7c5;
           margin-bottom: 2px;
+          color: #9ea7c5;
+          font-size: 9px;
         }
 
         .event-title {
@@ -1130,27 +1196,27 @@ function EmployeeCalendar() {
         }
 
         .empty-state {
-          padding: 70px 20px;
+          padding: 80px 20px;
           text-align: center;
           color: #858d9e;
         }
 
         .empty-state-icon {
-          font-size: 40px;
           margin-bottom: 12px;
-          opacity: 0.65;
+          font-size: 42px;
         }
 
         .empty-state-title {
+          margin-bottom: 8px;
           color: #dce1ea;
-          font-size: 17px;
+          font-size: 18px;
           font-weight: 650;
-          margin-bottom: 7px;
         }
 
         .empty-state-text {
-          max-width: 430px;
-          margin: 0 auto 20px;
+          max-width: 450px;
+          margin:
+            0 auto 20px;
           line-height: 1.6;
           font-size: 13px;
         }
@@ -1166,10 +1232,12 @@ function EmployeeCalendar() {
           width: 25px;
           height: 25px;
           margin: 0 auto 12px;
-          border-radius: 50%;
-          border: 2px solid rgba(255,255,255,0.10);
+          border:
+            2px solid rgba(255,255,255,.1);
           border-top-color: #6366f1;
-          animation: calendar-spin 0.8s linear infinite;
+          border-radius: 50%;
+          animation:
+            calendar-spin .8s linear infinite;
         }
 
         @keyframes calendar-spin {
@@ -1186,19 +1254,20 @@ function EmployeeCalendar() {
           align-items: center;
           justify-content: center;
           padding: 20px;
-          background: rgba(0,0,0,0.62);
+          background: rgba(0,0,0,.62);
           backdrop-filter: blur(7px);
         }
 
         .modal {
           width: 100%;
           max-width: 530px;
+          overflow: hidden;
+          border:
+            1px solid rgba(255,255,255,.1);
           border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.10);
           background: #151821;
           box-shadow:
-            0 30px 100px rgba(0,0,0,0.45);
-          overflow: hidden;
+            0 30px 100px rgba(0,0,0,.45);
         }
 
         .modal-header {
@@ -1206,7 +1275,8 @@ function EmployeeCalendar() {
           align-items: center;
           justify-content: space-between;
           padding: 20px 22px;
-          border-bottom: 1px solid rgba(255,255,255,0.07);
+          border-bottom:
+            1px solid rgba(255,255,255,.07);
         }
 
         .modal-title {
@@ -1220,15 +1290,10 @@ function EmployeeCalendar() {
           height: 32px;
           border: none;
           border-radius: 8px;
-          background: rgba(255,255,255,0.05);
+          background: rgba(255,255,255,.05);
           color: #a7afbf;
           cursor: pointer;
           font-size: 18px;
-        }
-
-        .close-button:hover {
-          background: rgba(255,255,255,0.09);
-          color: white;
         }
 
         .modal-body {
@@ -1256,19 +1321,22 @@ function EmployeeCalendar() {
         .form-input {
           width: 100%;
           box-sizing: border-box;
-          border: 1px solid rgba(255,255,255,0.09);
-          border-radius: 9px;
-          padding: 11px 12px;
           outline: none;
-          background: rgba(255,255,255,0.045);
+          padding: 11px 12px;
+          border:
+            1px solid rgba(255,255,255,.09);
+          border-radius: 9px;
+          background: rgba(255,255,255,.045);
           color: #f5f7fb;
           font-size: 13px;
         }
 
         .form-input:focus {
-          border-color: rgba(99,102,241,0.7);
+          border-color:
+            rgba(99,102,241,.7);
           box-shadow:
-            0 0 0 3px rgba(99,102,241,0.10);
+            0 0 0 3px
+            rgba(99,102,241,.1);
         }
 
         textarea.form-input {
@@ -1281,7 +1349,8 @@ function EmployeeCalendar() {
           justify-content: flex-end;
           gap: 10px;
           padding: 17px 22px;
-          border-top: 1px solid rgba(255,255,255,0.07);
+          border-top:
+            1px solid rgba(255,255,255,.07);
         }
 
         @media (max-width: 900px) {
@@ -1294,21 +1363,8 @@ function EmployeeCalendar() {
             flex-direction: column;
           }
 
-          .calendar-header-actions {
-            width: 100%;
-          }
-
-          .calendar-header-actions .calendar-button {
-            flex: 1;
-          }
-
           .calendar-day {
             min-height: 105px;
-            padding: 7px;
-          }
-
-          .calendar-event {
-            padding: 4px 5px;
           }
         }
 
@@ -1317,37 +1373,17 @@ function EmployeeCalendar() {
             padding: 10px;
           }
 
-          .calendar-toolbar {
-            padding: 13px;
-          }
-
-          .month-title {
-            min-width: auto;
-            font-size: 15px;
-          }
-
-          .weekday {
-            padding: 9px 5px;
-            font-size: 9px;
-          }
-
           .calendar-day {
             min-height: 85px;
             padding: 5px;
           }
 
-          .day-number {
-            width: 23px;
-            height: 23px;
-            font-size: 10px;
+          .event-time {
+            display: none;
           }
 
           .event-title {
             font-size: 9px;
-          }
-
-          .event-time {
-            display: none;
           }
 
           .form-row {
@@ -1363,12 +1399,10 @@ function EmployeeCalendar() {
 
       <div className="calendar-container">
 
-        {/* ================================================== */}
         {/* HEADER */}
-        {/* ================================================== */}
 
         <div className="calendar-header">
-          <div className="calendar-title-section">
+          <div>
             <h1 className="calendar-title">
               Calendar
             </h1>
@@ -1399,15 +1433,11 @@ function EmployeeCalendar() {
           </div>
         </div>
 
-        {/* ================================================== */}
-        {/* CALENDAR CARD */}
-        {/* ================================================== */}
+        {/* CARD */}
 
         <div className="calendar-card">
 
-          {/* ================================================ */}
-          {/* GOOGLE CONNECTION */}
-          {/* ================================================ */}
+          {/* CONNECTION */}
 
           <div className="connection-card">
             <div className="connection-left">
@@ -1440,36 +1470,40 @@ function EmployeeCalendar() {
             </div>
 
             {!checkingConnection &&
-              (calendarConnected ? (
-                <button
-                  className="calendar-button danger"
-                  onClick={
-                    handleDisconnect
-                  }
-                  disabled={
-                    disconnecting
-                  }
-                >
-                  {disconnecting
-                    ? 'Disconnecting...'
-                    : 'Disconnect'}
-                </button>
-              ) : (
-                <button
-                  className="calendar-button primary"
-                  onClick={handleConnect}
-                  disabled={connecting}
-                >
-                  {connecting
-                    ? 'Connecting...'
-                    : 'Connect Google Calendar'}
-                </button>
-              ))}
+              (
+                calendarConnected ? (
+                  <button
+                    className="calendar-button danger"
+                    onClick={
+                      handleDisconnect
+                    }
+                    disabled={
+                      disconnecting
+                    }
+                  >
+                    {disconnecting
+                      ? 'Disconnecting...'
+                      : 'Disconnect'}
+                  </button>
+                ) : (
+                  <button
+                    className="calendar-button primary"
+                    onClick={
+                      handleConnect
+                    }
+                    disabled={
+                      connecting
+                    }
+                  >
+                    {connecting
+                      ? 'Connecting...'
+                      : 'Connect Google Calendar'}
+                  </button>
+                )
+              )}
           </div>
 
-          {/* ================================================ */}
-          {/* CALENDAR CONTENT */}
-          {/* ================================================ */}
+          {/* NOT CONNECTED */}
 
           {!calendarConnected ? (
             <div className="empty-state">
@@ -1491,19 +1525,20 @@ function EmployeeCalendar() {
 
               <button
                 className="calendar-button primary"
-                onClick={handleConnect}
+                onClick={
+                  handleConnect
+                }
                 disabled={connecting}
               >
                 {connecting
                   ? 'Connecting...'
                   : 'Connect Google Calendar'}
               </button>
+
             </div>
           ) : (
             <>
-              {/* ============================================ */}
-              {/* MONTH TOOLBAR */}
-              {/* ============================================ */}
+              {/* TOOLBAR */}
 
               <div className="calendar-toolbar">
 
@@ -1514,7 +1549,6 @@ function EmployeeCalendar() {
                     onClick={
                       goToPreviousMonth
                     }
-                    aria-label="Previous month"
                   >
                     ‹
                   </button>
@@ -1524,7 +1558,6 @@ function EmployeeCalendar() {
                     onClick={
                       goToNextMonth
                     }
-                    aria-label="Next month"
                   >
                     ›
                   </button>
@@ -1534,22 +1567,24 @@ function EmployeeCalendar() {
                       currentDate
                     )}
                   </div>
+
                 </div>
 
                 <button
                   className="calendar-button"
-                  onClick={loadEvents}
+                  onClick={
+                    loadEvents
+                  }
                   disabled={loading}
                 >
                   {loading
                     ? 'Refreshing...'
                     : 'Refresh'}
                 </button>
+
               </div>
 
-              {/* ============================================ */}
               {/* CALENDAR */}
-              {/* ============================================ */}
 
               {loading &&
               events.length === 0 ? (
@@ -1560,8 +1595,6 @@ function EmployeeCalendar() {
               ) : (
                 <div className="calendar-grid">
 
-                  {/* WEEKDAYS */}
-
                   {[
                     'Sun',
                     'Mon',
@@ -1570,16 +1603,16 @@ function EmployeeCalendar() {
                     'Thu',
                     'Fri',
                     'Sat',
-                  ].map((day) => (
-                    <div
-                      key={day}
-                      className="weekday"
-                    >
-                      {day}
-                    </div>
-                  ))}
-
-                  {/* DAYS */}
+                  ].map(
+                    (day) => (
+                      <div
+                        key={day}
+                        className="weekday"
+                      >
+                        {day}
+                      </div>
+                    )
+                  )}
 
                   {calendarDays.map(
                     (day) => {
@@ -1599,12 +1632,9 @@ function EmployeeCalendar() {
                         day.getFullYear() ===
                           currentDate.getFullYear();
 
-                      const today =
-                        new Date();
-
                       const isToday =
                         formatDateKey(
-                          today
+                          new Date()
                         ) === dateKey;
 
                       return (
@@ -1639,19 +1669,17 @@ function EmployeeCalendar() {
 
                             <button
                               className="add-day"
-                              onClick={(
-                                event
-                              ) => {
+                              onClick={(event) => {
                                 event.stopPropagation();
 
                                 openCreateEventModal(
                                   day
                                 );
                               }}
-                              aria-label="Add event"
                             >
                               +
                             </button>
+
                           </div>
 
                           <div className="event-list">
@@ -1659,17 +1687,13 @@ function EmployeeCalendar() {
                             {dayEvents
                               .slice(0, 4)
                               .map(
-                                (
-                                  calendarEvent
-                                ) => (
+                                (calendarEvent) => (
                                   <button
                                     key={
                                       calendarEvent.id
                                     }
                                     className="calendar-event"
-                                    onClick={(
-                                      event
-                                    ) =>
+                                    onClick={(event) =>
                                       event.stopPropagation()
                                     }
                                     title={
@@ -1709,21 +1733,22 @@ function EmployeeCalendar() {
                                 more
                               </div>
                             )}
+
                           </div>
                         </div>
                       );
                     }
                   )}
+
                 </div>
               )}
             </>
           )}
+
         </div>
       </div>
 
-      {/* ==================================================== */}
       {/* CREATE EVENT MODAL */}
-      {/* ==================================================== */}
 
       {showEventModal && (
         <div
@@ -1756,6 +1781,7 @@ function EmployeeCalendar() {
               >
                 ×
               </button>
+
             </div>
 
             <form
@@ -1828,6 +1854,7 @@ function EmployeeCalendar() {
                       }
                     />
                   </div>
+
                 </div>
 
                 <div className="form-group">
@@ -1902,6 +1929,7 @@ function EmployeeCalendar() {
 
               </div>
             </form>
+
           </div>
         </div>
       )}
