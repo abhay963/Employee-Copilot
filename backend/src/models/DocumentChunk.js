@@ -247,6 +247,8 @@ export class DocumentChunk {
       50
     );
 
+    const currentDate = new Date().toISOString().split('T')[0];
+
     let queryText;
     let params;
 
@@ -271,6 +273,11 @@ export class DocumentChunk {
 
           d.document_type,
 
+          d.version,
+          d.effective_from,
+          d.effective_until,
+          d.status,
+
           (
             1 - (
               dc.embedding
@@ -285,15 +292,31 @@ export class DocumentChunk {
 
         WHERE dc.embedding IS NOT NULL
 
+          AND (
+            d.status = 'active'
+            OR d.status IS NULL
+          )
+
+          AND (
+            d.effective_from IS NULL
+            OR d.effective_from <= $2
+          )
+
+          AND (
+            d.effective_until IS NULL
+            OR d.effective_until >= $2
+          )
+
         ORDER BY
           dc.embedding
           <=> $1::vector
 
-        LIMIT $2
+        LIMIT $3
       `;
 
       params = [
         embeddingVector,
+        currentDate,
         safeLimit,
       ];
     }
@@ -317,6 +340,11 @@ export class DocumentChunk {
 
           d.document_type,
 
+          d.version,
+          d.effective_from,
+          d.effective_until,
+          d.status,
+
           (
             1 - (
               dc.embedding
@@ -336,16 +364,32 @@ export class DocumentChunk {
             OR d.visibility = 'company'
           )
 
+          AND (
+            d.status = 'active'
+            OR d.status IS NULL
+          )
+
+          AND (
+            d.effective_from IS NULL
+            OR d.effective_from <= $3
+          )
+
+          AND (
+            d.effective_until IS NULL
+            OR d.effective_until >= $3
+          )
+
         ORDER BY
           dc.embedding
           <=> $2::vector
 
-        LIMIT $3
+        LIMIT $4
       `;
 
       params = [
         userId,
         embeddingVector,
+        currentDate,
         safeLimit,
       ];
     }
@@ -360,7 +404,7 @@ export class DocumentChunk {
     // ========================================================
 
     console.log(
-      `[RAG] similaritySearch | role=${userRole} | candidates=${result.rows.length}`
+      `[RAG] similaritySearch | role=${userRole} | currentDate=${currentDate} | candidates=${result.rows.length}`
     );
 
     if (result.rows.length > 0) {
@@ -370,6 +414,9 @@ export class DocumentChunk {
           document: row.document_title,
           visibility: row.visibility,
           documentType: row.document_type,
+          status: row.status,
+          effectiveFrom: row.effective_from,
+          effectiveUntil: row.effective_until,
           similarity: Number(
             row.similarity
           ),

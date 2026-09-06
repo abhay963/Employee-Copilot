@@ -83,6 +83,11 @@ CREATE TABLE IF NOT EXISTS documents (
     owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     visibility VARCHAR(50) NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'company')),
     document_type VARCHAR(50) DEFAULT 'general' CHECK (document_type IN ('general', 'hr', 'policy', 'training')),
+    -- Policy versioning fields
+    version VARCHAR(50),
+    effective_from DATE,
+    effective_until DATE,
+    status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'superseded', 'draft', 'archived')),
     upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -268,6 +273,69 @@ BEGIN
         WHERE table_name = 'conversations' AND column_name = 'message_count'
     ) THEN
         ALTER TABLE conversations ADD COLUMN message_count INTEGER DEFAULT 0;
+    END IF;
+END $$;
+
+-- Add policy versioning columns to documents table if they don't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'documents' AND column_name = 'version'
+    ) THEN
+        ALTER TABLE documents ADD COLUMN version VARCHAR(50);
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'documents' AND column_name = 'effective_from'
+    ) THEN
+        ALTER TABLE documents ADD COLUMN effective_from DATE;
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'documents' AND column_name = 'effective_until'
+    ) THEN
+        ALTER TABLE documents ADD COLUMN effective_until DATE;
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'documents' AND column_name = 'status'
+    ) THEN
+        ALTER TABLE documents ADD COLUMN status VARCHAR(50) DEFAULT 'active';
+        
+        -- Add the status check constraint
+        ALTER TABLE documents ADD CONSTRAINT documents_status_check 
+            CHECK (status IN ('active', 'superseded', 'draft', 'archived'));
+    END IF;
+    
+    -- Add index for policy versioning queries
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes 
+        WHERE indexname = 'documents_document_type_status_idx'
+    ) THEN
+        CREATE INDEX documents_document_type_status_idx ON documents(document_type, status);
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes 
+        WHERE indexname = 'documents_effective_dates_idx'
+    ) THEN
+        CREATE INDEX documents_effective_dates_idx ON documents(effective_from, effective_until);
+    END IF;
+END $$;
+
+-- Add file_path column to documents table if it doesn't exist (for existing databases)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'documents' AND column_name = 'file_path'
+    ) THEN
+        ALTER TABLE documents ADD COLUMN file_path VARCHAR(1000);
+        RAISE NOTICE 'Added file_path column to documents table';
     END IF;
 END $$;
 

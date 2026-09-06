@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import { config } from '../config/index.js';
 import {
   getDocuments,
@@ -14,10 +15,22 @@ import { authenticate, requireHR, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Ensure upload directory exists
+const ensureUploadDir = () => {
+  const uploadDir = path.resolve(config.uploadDir);
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+    console.log(`[Upload] Created upload directory: ${uploadDir}`);
+  }
+  return uploadDir;
+};
+
+const resolvedUploadDir = ensureUploadDir();
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, config.uploadDir);
+    cb(null, resolvedUploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);

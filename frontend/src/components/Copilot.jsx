@@ -18,10 +18,11 @@ import {
   Sparkles,
   Copy,
   Check,
+  BrainCircuit,
 } from 'lucide-react';
 
 import { FiCommand } from 'react-icons/fi';
-import { FaUser } from 'react-icons/fa';
+import { FaBrain, FaUser } from 'react-icons/fa';
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -153,7 +154,7 @@ const ChatMessage = ({
               aria-label="User"
             />
           ) : (
-            <Sparkles
+            <FaBrain
               size={16}
               strokeWidth={2.2}
             />
@@ -928,7 +929,7 @@ const TypingIndicator = () => {
           text-white
         "
       >
-        <Sparkles size={16} />
+        <BrainCircuit size={16} />
       </motion.div>
 
       <div>
@@ -1135,7 +1136,7 @@ const EmptyState = ({
             shadow-blue-500/20
           "
         >
-          <Sparkles size={28} />
+          <BrainCircuit size={28} />
         </motion.div>
 
         <h3
@@ -2221,7 +2222,7 @@ const Copilot = ({
               shadow-blue-500/20
             "
           >
-            <Sparkles size={28} />
+            <BrainCircuit size={28} />
           </div>
 
           <h2
@@ -2316,7 +2317,7 @@ const Copilot = ({
               shadow-blue-500/20
             "
           >
-            <Sparkles size={19} />
+            <BrainCircuit size={19} />
 
             <span
               className="
@@ -2613,7 +2614,7 @@ const Copilot = ({
                     shadow-blue-500/20
                   "
                 >
-                  <Sparkles size={15} />
+                  <BrainCircuit size={15} />
                 </motion.div>
 
                 {/* TEXTAREA */}
@@ -2796,7 +2797,7 @@ const Copilot = ({
                 text-muted
               "
             >
-              <Sparkles
+              <BrainCircuit
                 size={9}
               />
 

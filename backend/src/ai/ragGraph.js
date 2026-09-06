@@ -548,7 +548,8 @@ ANSWER:
 export async function generateAnswer(
   question,
   context,
-  sources = []
+  sources = [],
+  enhancedSystemPrompt = null
 ) {
   try {
     if (
@@ -653,7 +654,8 @@ export async function generateAnswer(
 export async function* streamRAGAnswer(
   question,
   context,
-  sources = []
+  sources = [],
+  enhancedSystemPrompt = null
 ) {
   if (
     !Array.isArray(context) ||
@@ -982,7 +984,8 @@ export async function runRAGWorkflow(
       await generateAnswer(
         normalizedQuestion,
         context,
-        sources
+        sources,
+        enhancedSystemPrompt
       );
 
     const duration =
@@ -1063,7 +1066,8 @@ export async function runRAGWorkflow(
 export async function* streamRAGWorkflow(
   question,
   userId,
-  userRole
+  userRole,
+  enhancedSystemPrompt = null
 ) {
   const startTime = Date.now();
 
@@ -1179,7 +1183,8 @@ export async function* streamRAGWorkflow(
       const event of streamRAGAnswer(
         normalizedQuestion,
         context,
-        sources
+        sources,
+        enhancedSystemPrompt
       )
     ) {
       if (

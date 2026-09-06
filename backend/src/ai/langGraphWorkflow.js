@@ -1,26 +1,66 @@
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+// ============================================================
+// employeeCopilotGraph.js
+// ============================================================
+//
+// Employee Copilot using REAL LangGraph orchestration.
+//
+// Hinglish:
+// Pehle hamare paas ek bada switch(intent) tha.
+// Ab har responsibility ko ek separate LangGraph node bana diya.
+//
+// Flow:
+//
+// START
+//   ↓
+// validateInput
+//   ↓
+// classifyIntent
+//   ↓
+// routeByIntent
+//   ├── leaveBalance
+//   ├── leavePolicy
+//   ├── prepareLeave
+//   ├── calendarQuery
+//   ├── prepareCalendar
+//   ├── gmailRead
+//   ├── prepareEmail
+//   ├── webSearch
+//   └── generalRAG
+//   ↓
+// generateResponse
+//   ↓
+// END
+//
+// ============================================================
 
-import { runRAGWorkflow } from './ragGraph.js';
+import {
+  StateGraph,
+  Annotation,
+  START,
+  END,
+  MemorySaver,
+  interrupt,
+  Command,
+} from "@langchain/langgraph";
 
-import { LeaveBalance } from '../models/LeaveBalance.js';
-import { LeaveRequest } from '../models/LeaveRequest.js';
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
-import { config } from '../config/index.js';
+import { config } from "../config/index.js";
 
-import googleCalendarService from '../services/googleCalendarService.js';
-import gmailService from '../services/gmailService.js';
-import conversationStateService, { WORKFLOW_STEPS, CALENDAR_STATUS } from '../services/conversationStateService.js';
-import conversationMemoryService from '../services/conversationMemoryService.js';
-import leaveWorkflowService from '../services/leaveWorkflowService.js';
-import loggingService from '../services/loggingService.js';
+import { runRAGWorkflow } from "./ragGraph.js";
 
-import tavilyTool from './tools/tavilyTool.js';
+import { LeaveBalance } from "../models/LeaveBalance.js";
+import { LeaveRequest } from "../models/LeaveRequest.js";
 
-// Re-export for use in this file
-const { IDLE, COLLECTING_DETAILS, VALIDATING, CALENDAR_CHECK, READY_FOR_CONFIRMATION, CONFIRMED, SUBMITTED, CANCELLED } = WORKFLOW_STEPS;
+import googleCalendarService from "../services/googleCalendarService.js";
+import gmailService from "../services/gmailService.js";
+import conversationMemoryService from "../services/conversationMemoryService.js";
+
+import tavilyTool from "./tools/tavilyTool.js";
+
 
 // ============================================================
-// GEMINI
+// LLM
 // ============================================================
 
 const llm = new ChatGoogleGenerativeAI({
@@ -30,173 +70,372 @@ const llm = new ChatGoogleGenerativeAI({
   maxOutputTokens: 2048,
 });
 
+
 // ============================================================
-// CONSTANTS
+// INTENTS
 // ============================================================
 
 const VALID_INTENTS = [
-  'leave_balance',
-  'leave_policy',
-  'leave_request',
-  'calendar_events',
-  'calendar_create',
-  'gmail_read',
-  'gmail_send',
-  'web_search',
-  'general',
+  "leave_balance",
+  "leave_policy",
+  "leave_request",
+
+  "calendar_events",
+  "calendar_create",
+
+  "gmail_read",
+  "gmail_send",
+
+  "web_search",
+
+  "general",
 ];
 
-// ============================================================
-// BUILD ENHANCED SYSTEM PROMPT WITH CONTEXT
-// ============================================================
 
-function buildEnhancedSystemPrompt(basePrompt, compactContext) {
-  if (!compactContext) {
-    return basePrompt;
-  }
-
-  // Use conversationMemoryService for consistent context building with token optimization
-  return conversationMemoryService.buildLLMContext(compactContext, basePrompt);
-}
+// ============================================================
+// ACTION TYPES
+// ============================================================
 
 const ACTION_TYPES = [
-  'leave_request',
-  'calendar_create',
-  'gmail_send',
+  "leave_request",
+  "calendar_create",
+  "gmail_send",
 ];
 
+
 // ============================================================
-// INPUT GUARDRAILS
+// STATE
+// ============================================================
+//
+// Hinglish:
+//
+// Ye sabse important part hai.
+//
+// Annotation.Root() = poore graph ka State.
+//
+// Har node:
+//
+// state read karega
+//       ↓
+// kuch kaam karega
+//       ↓
+// state ka update return karega
+//
 // ============================================================
 
-export function validateUserInput(input) {
+const EmployeeState = Annotation.Root({
+
+  // ----------------------------------------------------------
+  // User information
+  // ----------------------------------------------------------
+
+  userId: Annotation(),
+
+  userRole: Annotation(),
+
+  conversationId: Annotation(),
+
+
+  // ----------------------------------------------------------
+  // User message
+  // ----------------------------------------------------------
+
+  messages: Annotation({
+    reducer: (current, update) => {
+
+      // Agar new messages aaye hain to append karo.
+      return [...current, ...update];
+    },
+
+    default: () => [],
+  }),
+
+
+  // ----------------------------------------------------------
+  // Intent
+  // ----------------------------------------------------------
+
+  intent: Annotation(),
+
+
+  // ----------------------------------------------------------
+  // Tool information
+  // ----------------------------------------------------------
+
+  currentTool: Annotation(),
+
+  toolResult: Annotation(),
+
+
+  // ----------------------------------------------------------
+  // Action / confirmation
+  // ----------------------------------------------------------
+
+  pendingAction: Annotation(),
+
+  requiresConfirmation: Annotation({
+    default: () => false,
+  }),
+
+  approvalDecision: Annotation({
+    default: () => null,
+  }),
+
+
+  // ----------------------------------------------------------
+  // Calendar conflicts
+  // ----------------------------------------------------------
+
+  hasConflicts: Annotation({
+    default: () => false,
+  }),
+
+
+  // ----------------------------------------------------------
+  // Missing field
+  // ----------------------------------------------------------
+
+  missingField: Annotation(),
+
+
+  // ----------------------------------------------------------
+  // General context
+  // ----------------------------------------------------------
+
+  context: Annotation({
+    default: () => ({}),
+  }),
+
+
+  // ----------------------------------------------------------
+  // Compact conversation context
+  // ----------------------------------------------------------
+
+  compactContext: Annotation(),
+
+
+  // ----------------------------------------------------------
+  // Final response
+  // ----------------------------------------------------------
+
+  response: Annotation(),
+
+  sources: Annotation({
+    default: () => [],
+  }),
+
+
+  // ----------------------------------------------------------
+  // Error
+  // ----------------------------------------------------------
+
+  error: Annotation(),
+});
+
+
+// ============================================================
+// INPUT VALIDATION
+// ============================================================
+
+function validateUserInput(input) {
+
   if (
-    typeof input !== 'string' ||
+    typeof input !== "string" ||
     !input.trim()
   ) {
     throw new Error(
-      'Please enter a valid message.'
+      "Please enter a valid message."
     );
   }
 
   const trimmed = input.trim();
 
+
   if (trimmed.length > 4000) {
+
     throw new Error(
-      'Your message is too long. Please keep it under 4000 characters.'
+      "Your message is too long. Please keep it under 4000 characters."
     );
   }
 
-  // Prompt injection patterns.
+
+  // ----------------------------------------------------------
+  // Basic prompt injection protection
+  // ----------------------------------------------------------
+
   const injectionPatterns = [
+
     /ignore\s+(all\s+)?previous\s+instructions/i,
+
     /ignore\s+(all\s+)?system\s+instructions/i,
+
     /forget\s+(your\s+)?instructions/i,
+
     /override\s+(the\s+)?system/i,
+
     /reveal\s+(your\s+)?system\s+prompt/i,
+
     /show\s+(me\s+)?your\s+system\s+prompt/i,
+
     /reveal\s+(the\s+)?api\s*key/i,
+
     /reveal\s+(the\s+)?password/i,
+
     /reveal\s+(the\s+)?secret/i,
-    /bypass\s+authentication/i,
-    /bypass\s+authorization/i,
-    /execute\s+arbitrary\s+command/i,
+
+    /bypass authentication/i,
+
+    /bypass authorization/i,
+
     /<script[\s\S]*?>/i,
+
     /javascript\s*:/i,
   ];
 
+
   for (const pattern of injectionPatterns) {
+
     if (pattern.test(trimmed)) {
+
       throw new Error(
-        'I can’t help with bypassing security controls or exposing private system information.'
+        "I can’t help with bypassing security controls or exposing private system information."
       );
     }
   }
 
+
   return trimmed;
 }
 
+
 // ============================================================
-// OUTPUT GUARDRAILS
+// OUTPUT VALIDATION
 // ============================================================
 
-export function validateAIOutput(output) {
+function validateAIOutput(output) {
+
   if (
-    typeof output !== 'string' ||
+    typeof output !== "string" ||
     !output.trim()
   ) {
-    return 'I was unable to generate a response. Please try again.';
+
+    return (
+      "I was unable to generate a response. Please try again."
+    );
   }
+
 
   let cleaned = output.trim();
 
+
   if (cleaned.length > 12000) {
-    cleaned = cleaned.substring(0, 12000);
+
+    cleaned = cleaned.substring(
+      0,
+      12000
+    );
   }
 
+
+  // ----------------------------------------------------------
+  // Secret leakage protection
+  // ----------------------------------------------------------
+
   const leakagePatterns = [
+
     /(?:api[_ -]?key|secret|password|access[_ -]?token)\s*[:=]\s*\S+/i,
+
     /process\.env\.[A-Z0-9_]+/i,
+
     /BEGIN\s+(?:RSA|OPENSSH|PRIVATE)\s+KEY/i,
   ];
 
+
   for (const pattern of leakagePatterns) {
+
     if (pattern.test(cleaned)) {
-      return 'I can’t provide private system credentials or internal secrets.';
+
+      return (
+        "I can’t provide private system credentials or internal secrets."
+      );
     }
   }
+
 
   return cleaned;
 }
 
+
 // ============================================================
-// SAFE JSON EXTRACTION
+// JSON EXTRACTION
 // ============================================================
 
 function extractJSON(content) {
+
   if (!content) {
     return null;
   }
 
+
   const text = String(content)
-    .replace(/```json/gi, '')
-    .replace(/```/g, '')
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
     .trim();
 
+
   try {
+
     return JSON.parse(text);
+
   } catch {
+
     const match = text.match(
       /\{[\s\S]*\}/
     );
+
 
     if (!match) {
       return null;
     }
 
+
     try {
-      return JSON.parse(match[0]);
+
+      return JSON.parse(
+        match[0]
+      );
+
     } catch {
+
       return null;
     }
   }
 }
+
 
 // ============================================================
 // DATE HELPERS
 // ============================================================
 
 function pad(value) {
-  return String(value).padStart(2, '0');
+
+  return String(value)
+    .padStart(2, "0");
 }
+
 
 function formatDateLocal(date) {
-  return `${date.getFullYear()}-${pad(
-    date.getMonth() + 1
-  )}-${pad(date.getDate())}`;
+
+  return (
+    `${date.getFullYear()}-` +
+    `${pad(date.getMonth() + 1)}-` +
+    `${pad(date.getDate())}`
+  );
 }
 
+
 function getStartOfDay(date) {
+
   const result = new Date(date);
 
   result.setHours(
@@ -209,7 +448,9 @@ function getStartOfDay(date) {
   return result;
 }
 
+
 function getEndOfDay(date) {
+
   const result = new Date(date);
 
   result.setHours(
@@ -222,7 +463,9 @@ function getEndOfDay(date) {
   return result;
 }
 
+
 function addDays(date, days) {
+
   const result = new Date(date);
 
   result.setDate(
@@ -232,58 +475,37 @@ function addDays(date, days) {
   return result;
 }
 
-// ============================================================
-// VAGUE CONFIRMATION DETECTOR
-// ============================================================
-
-function isVagueConfirmation(message) {
-  const text = String(message || '').trim().toLowerCase();
-  
-  const confirmations = [
-    'yes', 'yeah', 'yep', 'sure', 'okay', 'ok', 'alright', 
-    'do it', 'submit', 'confirm', 'go ahead', 'proceed', 'continue'
-  ];
-  
-  const cancellations = [
-    'no', 'nope', 'cancel', 'stop', 'never mind', 'forget it', 'dont'
-  ];
-  
-  for (const confirmation of confirmations) {
-    if (text === confirmation || text.startsWith(confirmation + ' ') || text.endsWith(' ' + confirmation)) {
-      return 'confirm';
-    }
-  }
-  
-  for (const cancellation of cancellations) {
-    if (text === cancellation || text.startsWith(cancellation + ' ') || text.endsWith(' ' + cancellation)) {
-      return 'cancel';
-    }
-  }
-  
-  return null;
-}
 
 // ============================================================
-// RELATIVE DATE PARSER
+// RELATIVE DATE
 // ============================================================
 
 function parseRelativeDate(message) {
-  const text = String(message || '')
+
+  const text = String(message || "")
     .toLowerCase();
 
   const today = new Date();
 
-  if (text.includes('today')) {
-    return formatDateLocal(today);
+
+  if (text.includes("today")) {
+
+    return formatDateLocal(
+      today
+    );
   }
 
-  if (text.includes('tomorrow')) {
+
+  if (text.includes("tomorrow")) {
+
     return formatDateLocal(
       addDays(today, 1)
     );
   }
 
+
   const weekdays = {
+
     sunday: 0,
     monday: 1,
     tuesday: 2,
@@ -293,21 +515,29 @@ function parseRelativeDate(message) {
     saturday: 6,
   };
 
-  for (const [name, targetDay] of Object.entries(
-    weekdays
-  )) {
+
+  for (
+    const [name, targetDay]
+    of Object.entries(weekdays)
+  ) {
+
     if (
-      text.includes(`next ${name}`)
+      text.includes(
+        `next ${name}`
+      )
     ) {
+
       const currentDay =
         today.getDay();
 
       let diff =
         targetDay - currentDay;
 
+
       if (diff <= 0) {
         diff += 7;
       }
+
 
       return formatDateLocal(
         addDays(today, diff)
@@ -315,335 +545,38 @@ function parseRelativeDate(message) {
     }
   }
 
-  return formatDateLocal(today);
+
+  return formatDateLocal(
+    today
+  );
 }
 
-// ============================================================
-// CALENDAR RANGE
-// ============================================================
-
-function getCalendarDateRange(
-  userMessage
-) {
-  const message =
-    String(userMessage || '')
-      .toLowerCase();
-
-  const today = new Date();
-
-  // ----------------------------
-  // Specific date
-  // ----------------------------
-
-  const isoMatch =
-    message.match(
-      /\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/
-    );
-
-  if (isoMatch) {
-    const date = new Date(
-      Number(isoMatch[1]),
-      Number(isoMatch[2]) - 1,
-      Number(isoMatch[3])
-    );
-
-    return {
-      startDate:
-        getStartOfDay(date),
-      endDate:
-        getEndOfDay(date),
-      label:
-        formatDateLocal(date),
-    };
-  }
-
-  // ----------------------------
-  // Today
-  // ----------------------------
-
-  if (
-    message.includes('today')
-  ) {
-    return {
-      startDate:
-        getStartOfDay(today),
-      endDate:
-        getEndOfDay(today),
-      label: 'today',
-    };
-  }
-
-  // ----------------------------
-  // Tomorrow
-  // ----------------------------
-
-  if (
-    message.includes('tomorrow')
-  ) {
-    const tomorrow =
-      addDays(today, 1);
-
-    return {
-      startDate:
-        getStartOfDay(tomorrow),
-      endDate:
-        getEndOfDay(tomorrow),
-      label: 'tomorrow',
-    };
-  }
-
-  // ----------------------------
-  // Next week
-  // IMPORTANT:
-  // Must come BEFORE generic "week".
-  // ----------------------------
-
-  if (
-    message.includes('next week')
-  ) {
-    const day =
-      today.getDay();
-
-    const daysUntilNextMonday =
-      day === 0
-        ? 1
-        : 8 - day;
-
-    const start =
-      addDays(
-        today,
-        daysUntilNextMonday
-      );
-
-    const end =
-      addDays(start, 6);
-
-    return {
-      startDate:
-        getStartOfDay(start),
-      endDate:
-        getEndOfDay(end),
-      label: 'next week',
-    };
-  }
-
-  // ----------------------------
-  // This week
-  // ----------------------------
-
-  if (
-    message.includes('this week') ||
-    message === 'week' ||
-    message.includes('this weeks')
-  ) {
-    const currentDay =
-      today.getDay();
-
-    const daysFromMonday =
-      currentDay === 0
-        ? 6
-        : currentDay - 1;
-
-    const start =
-      addDays(
-        today,
-        -daysFromMonday
-      );
-
-    const end =
-      addDays(start, 6);
-
-    return {
-      startDate:
-        getStartOfDay(start),
-      endDate:
-        getEndOfDay(end),
-      label: 'this week',
-    };
-  }
-
-  // ----------------------------
-  // This month
-  // ----------------------------
-
-  if (
-    message.includes('this month')
-  ) {
-    const start =
-      new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        1
-      );
-
-    const end =
-      new Date(
-        today.getFullYear(),
-        today.getMonth() + 1,
-        0
-      );
-
-    return {
-      startDate:
-        getStartOfDay(start),
-      endDate:
-        getEndOfDay(end),
-      label: 'this month',
-    };
-  }
-
-  // ----------------------------
-  // Upcoming
-  // ----------------------------
-
-  if (
-    message.includes('upcoming') ||
-    message.includes('future') ||
-    message.includes('next meetings')
-  ) {
-    const end =
-      addDays(today, 30);
-
-    return {
-      startDate:
-        new Date(),
-      endDate:
-        getEndOfDay(end),
-      label: 'upcoming',
-    };
-  }
-
-  // ----------------------------
-  // Next N days
-  // ----------------------------
-
-  const nextDaysMatch =
-    message.match(/next\s+(\d+)\s+days?/i);
-
-  if (nextDaysMatch) {
-    const days =
-      Number(nextDaysMatch[1]);
-
-    if (days > 0 && days <= 365) {
-      const end =
-        addDays(today, days);
-
-      return {
-        startDate:
-          new Date(),
-        endDate:
-          getEndOfDay(end),
-        label: `next ${days} days`,
-      };
-    }
-  }
-
-  // ----------------------------
-  // Specific time check
-  // ----------------------------
-
-  const timeMatch =
-    message.match(/(?:am\s+I|am\s+i)\s+(?:free|available)\s+(?:on|at)\s+(.+?)(?:\s+(?:at|@)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?)?$/i);
-
-  if (timeMatch) {
-    const datePart =
-      timeMatch[1].trim();
-
-    const timePart =
-      timeMatch[2]?.trim() || null;
-
-    // Parse the date
-    let targetDate;
-
-    if (datePart.toLowerCase() === 'today') {
-      targetDate = today;
-    } else if (datePart.toLowerCase() === 'tomorrow') {
-      targetDate = addDays(today, 1);
-    } else {
-      // Try to parse as a specific date
-      const dateObj =
-        new Date(datePart);
-
-      if (!Number.isNaN(dateObj.getTime())) {
-        targetDate = dateObj;
-      } else {
-        // Default to today if date parsing fails
-        targetDate = today;
-      }
-    }
-
-    if (timePart) {
-      // If specific time is mentioned, check availability at that time
-      const parsedTime =
-        parseTime(timePart);
-
-      if (parsedTime) {
-        const [hours, minutes] =
-          parsedTime.split(':').map(Number);
-
-        const startCheck =
-          new Date(targetDate);
-
-        startCheck.setHours(hours, minutes, 0, 0);
-
-        const endCheck =
-          new Date(startCheck);
-
-        endCheck.setHours(hours + 1, minutes, 0, 0);
-
-        return {
-          startDate: startCheck,
-          endDate: endCheck,
-          label: `availability check at ${parsedTime}`,
-        };
-      }
-    }
-
-    // Check availability for the entire day
-    return {
-      startDate:
-        getStartOfDay(targetDate),
-      endDate:
-        getEndOfDay(targetDate),
-      label: 'availability check',
-    };
-  }
-
-  // ----------------------------
-  // Default
-  // ----------------------------
-
-  return {
-    startDate:
-      getStartOfDay(today),
-    endDate:
-      getEndOfDay(today),
-    label: 'today',
-  };
-}
 
 // ============================================================
 // TIME PARSER
 // ============================================================
 
 function parseTime(value) {
+
   if (!value) {
     return null;
   }
 
-  const text =
-    String(value)
-      .trim()
-      .toLowerCase();
 
-  const match =
-    text.match(
-      /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/
-    );
+  const text = String(value)
+    .trim()
+    .toLowerCase();
+
+
+  const match = text.match(
+    /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/
+  );
+
 
   if (!match) {
     return null;
   }
+
 
   let hours =
     Number(match[1]);
@@ -654,199 +587,397 @@ function parseTime(value) {
   const meridiem =
     match[3];
 
+
   if (
     hours < 0 ||
     hours > 23 ||
     minutes < 0 ||
     minutes > 59
   ) {
+
     return null;
   }
 
-  if (meridiem === 'pm' && hours < 12) {
+
+  if (
+    meridiem === "pm" &&
+    hours < 12
+  ) {
+
     hours += 12;
   }
 
-  if (meridiem === 'am' && hours === 12) {
+
+  if (
+    meridiem === "am" &&
+    hours === 12
+  ) {
+
     hours = 0;
   }
 
-  return `${pad(hours)}:${pad(minutes)}`;
+
+  return (
+    `${pad(hours)}:${pad(minutes)}`
+  );
 }
 
+
 // ============================================================
-// CALENDAR EVENT FORMATTER
+// NODE 1
+// VALIDATE INPUT
 // ============================================================
 
-function formatCalendarEvent(event) {
-  const title =
-    event.summary ||
-    'Untitled event';
+async function validateInputNode(state) {
 
-  if (event.start?.date) {
-    return {
-      title,
-      allDay: true,
-      start: event.start.date,
-      end: event.end?.date || null,
-      location:
-        event.location || null,
-      description:
-        event.description || null,
-      htmlLink:
-        event.htmlLink || null,
-    };
-  }
+  const lastMessage =
+    state.messages[
+      state.messages.length - 1
+    ];
 
-  const start =
-    event.start?.dateTime
-      ? new Date(
-          event.start.dateTime
-        )
-      : null;
 
-  const end =
-    event.end?.dateTime
-      ? new Date(
-          event.end.dateTime
-        )
-      : null;
+  const sanitized =
+    validateUserInput(
+      lastMessage.content
+    );
+
 
   return {
-    title,
-    allDay: false,
-    start:
-      start
-        ? start.toISOString()
-        : null,
-    end:
-      end
-        ? end.toISOString()
-        : null,
-    location:
-      event.location || null,
-    description:
-      event.description || null,
-    htmlLink:
-      event.htmlLink || null,
+
+    messages: [
+      {
+        role: "user",
+        content: sanitized,
+      },
+    ],
   };
 }
 
-function formatEventTime(event) {
-  if (event.allDay) {
-    return 'All day';
-  }
-
-  if (!event.start) {
-    return 'Time unavailable';
-  }
-
-  const start =
-    new Date(event.start);
-
-  const end =
-    event.end
-      ? new Date(event.end)
-      : null;
-
-  const formatter =
-    new Intl.DateTimeFormat(
-      'en-IN',
-      {
-        day: 'numeric',
-        month: 'short',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      }
-    );
-
-  const startText =
-    formatter.format(start);
-
-  if (!end) {
-    return startText;
-  }
-
-  const endFormatter =
-    new Intl.DateTimeFormat(
-      'en-IN',
-      {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      }
-    );
-
-  return `${startText} - ${endFormatter.format(
-    end
-  )}`;
-}
 
 // ============================================================
+// NODE 2
+// CLASSIFY INTENT
+// ============================================================
+
+async function classifyIntentNode(state) {
+
+  const message =
+    state.messages[
+      state.messages.length - 1
+    ].content;
+
+
+  const intent =
+    await classifyIntent(
+      message
+    );
+
+
+  console.log(
+    "[LangGraph] Intent:",
+    intent
+  );
+
+
+  return {
+    intent,
+  };
+}
+
+
+// ============================================================
+// INTENT CLASSIFIER
+// ============================================================
+
+async function classifyIntent(
+  userMessage
+) {
+
+  const text =
+    String(userMessage || "")
+      .trim()
+      .toLowerCase();
+
+
+  // ----------------------------------------------------------
+  // Leave balance
+  // ----------------------------------------------------------
+
+  if (
+    /\b(leave balance|leaves balance|how many leaves|how much leave|remaining leave|leave remaining)\b/i
+      .test(text)
+  ) {
+
+    return "leave_balance";
+  }
+
+
+  // ----------------------------------------------------------
+  // Leave policy
+  // ----------------------------------------------------------
+
+  if (
+    /\b(leave policy|leave rules|leave entitlement|leave procedure|leave guidelines)\b/i
+      .test(text)
+  ) {
+
+    return "leave_policy";
+  }
+
+
+  // ----------------------------------------------------------
+  // Leave request
+  // ----------------------------------------------------------
+
+  if (
+    /\b(give me leave|grant me leave|i need leave|i want leave|take leave|request leave|apply for leave|apply leave|get leave|need to take leave|want to take leave|can i get leave|please give me leave)\b/i
+      .test(text)
+  ) {
+
+    return "leave_request";
+  }
+
+
+  // ----------------------------------------------------------
+  // Calendar query
+  // ----------------------------------------------------------
+
+  if (
+    /\b(meeting|calendar|schedule|appointment|event)\b/i.test(text) &&
+    (
+      /\b(today|tomorrow|this week|next week|this month|upcoming|next \d+ days|am i free|am i available|do i have|show|what|list|check)\b/i
+        .test(text)
+    )
+  ) {
+
+    return "calendar_events";
+  }
+
+
+  // ----------------------------------------------------------
+  // Calendar create
+  // ----------------------------------------------------------
+
+  if (
+    /\b(schedule|create|add|set up|book|arrange)\b/i
+      .test(text) &&
+
+    /\b(meeting|appointment|event|call|discussion)\b/i
+      .test(text) &&
+
+    !/\b(do i have|am i free|am i available|show|what|list|check)\b/i
+      .test(text)
+  ) {
+
+    return "calendar_create";
+  }
+
+
+  // ----------------------------------------------------------
+  // Gmail
+  // ----------------------------------------------------------
+
+  if (
+    /\b(email|gmail|mail|inbox)\b/i
+      .test(text)
+  ) {
+
+    if (
+      /\b(send|write|compose|draft)\b/i
+        .test(text)
+    ) {
+
+      return "gmail_send";
+    }
+
+
+    return "gmail_read";
+  }
+
+
+  // ----------------------------------------------------------
+  // Explicit web search
+  // ----------------------------------------------------------
+
+  if (
+    /\b(latest|current|today|recent|internet|web search|online)\b/i
+      .test(text)
+  ) {
+
+    return "web_search";
+  }
+
+
+  // ----------------------------------------------------------
+  // LLM fallback
+  // ----------------------------------------------------------
+
+  const prompt = `
+Classify this Employee Copilot request into exactly one category.
+
+Categories:
+
+leave_balance
+leave_policy
+leave_request
+calendar_events
+calendar_create
+gmail_read
+gmail_send
+web_search
+general
+
+Return ONLY the category.
+
+User:
+${userMessage}
+`;
+
+
+  try {
+
+    const response =
+      await llm.invoke(
+        prompt
+      );
+
+
+    const intent =
+      String(
+        response.content || ""
+      )
+        .trim()
+        .toLowerCase()
+        .replace(
+          /[`"' ]/g,
+          ""
+        );
+
+
+    if (
+      VALID_INTENTS.includes(
+        intent
+      )
+    ) {
+
+      return intent;
+    }
+
+  } catch (error) {
+
+    console.error(
+      "[Intent]",
+      error
+    );
+  }
+
+
+  return "general";
+}
+
+
+// ============================================================
+// ROUTER
+// ============================================================
+//
+// Hinglish:
+//
+// Ye LangGraph ka important part hai.
+//
+// classifyIntent node ne intent nikala.
+//
+// Ab router decide karega:
+//
+// "Kis node pe jaana hai?"
+//
+// ============================================================
+
+function routeByIntent(state) {
+
+  return state.intent;
+}
+
+
+// ============================================================
+// NODE 3
 // LEAVE BALANCE
 // ============================================================
 
-async function queryLeaveBalance(
-  state
-) {
+async function leaveBalanceNode(state) {
+
   try {
+
     const balance =
       await LeaveBalance.findByUserId(
         state.userId
       );
 
+
     if (!balance) {
+
       return {
-        ...state,
         toolResult:
-          'I could not retrieve your leave balance. Please contact HR.',
+          "I could not retrieve your leave balance. Please contact HR.",
+
+        currentTool: null,
       };
     }
 
+
+    const toolResult =
+      `Here is your current leave balance:\n\n` +
+
+      `• Annual Leave: ${balance.annual_leave} days\n` +
+
+      `• Sick Leave: ${balance.sick_leave} days\n` +
+
+      `• Personal Leave: ${balance.personal_leave} days`;
+
+
     return {
-      ...state,
 
-      toolResult:
-        `Here is your current leave balance:\n\n` +
-        `• Annual Leave: ${balance.annual_leave} days\n` +
-        `• Sick Leave: ${balance.sick_leave} days\n` +
-        `• Personal Leave: ${balance.personal_leave} days`,
-
-      context: {
-        ...state.context,
-        leaveBalance: balance,
-      },
+      toolResult,
 
       currentTool: null,
+
+      context: {
+        leaveBalance: balance,
+      },
     };
+
   } catch (error) {
+
     console.error(
-      '[LeaveBalance]',
+      "[LeaveBalance]",
       error
     );
 
+
     return {
-      ...state,
+
       toolResult:
-        'I could not retrieve your leave balance right now. Please try again.',
+        "I could not retrieve your leave balance right now. Please try again.",
+
       currentTool: null,
     };
   }
 }
 
+
 // ============================================================
-// LEAVE POLICY → RAG
+// NODE 4
+// LEAVE POLICY / RAG
 // ============================================================
 
-async function checkLeavePolicy(
-  state
-) {
+async function leavePolicyNode(state) {
+
   try {
+
     const message =
       state.messages[
         state.messages.length - 1
       ].content;
+
 
     const ragResult =
       await runRAGWorkflow(
@@ -855,382 +986,52 @@ async function checkLeavePolicy(
         state.userRole
       );
 
+
     return {
-      ...state,
 
       toolResult:
         ragResult.answer,
 
-      context: {
-        ...state.context,
+      currentTool: null,
 
+      context: {
         ragResult,
-
-        policyInfo:
-          ragResult,
       },
 
-      currentTool: null,
+      sources:
+        ragResult.sources || [],
     };
+
   } catch (error) {
+
     console.error(
-      '[LeavePolicy]',
+      "[LeavePolicy]",
       error
     );
 
+
     return {
-      ...state,
 
       toolResult:
-        'I could not retrieve the leave policy right now. Please try again.',
+        "I could not retrieve the leave policy right now. Please try again.",
 
       currentTool: null,
     };
   }
 }
 
-// ============================================================
-// CALENDAR CONTEXTUAL REFERENCE RESOLUTION
-// ============================================================
-
-function resolveCalendarContextualReferences(message, structuredMemory) {
-  const text = message.toLowerCase();
-  let resolvedMessage = message;
-
-  // Resolve temporal references like "tomorrow", "next week" based on recent dates
-  if (text.includes('tomorrow') || text.includes('next') || text.includes('this')) {
-    if (structuredMemory.importantDates && structuredMemory.importantDates.length > 0) {
-      // If user says "tomorrow" but we have recent date context, ensure proper resolution
-      const today = new Date();
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      
-      // This is a placeholder for more sophisticated temporal resolution
-      // For now, we'll keep the original message but the getCalendarDateRange function
-      // will handle the actual date parsing
-    }
-  }
-
-  // Resolve entity references like "it", "that meeting" based on recent calendar context
-  if (text.includes('it') || text.includes('that meeting') || text.includes('the meeting')) {
-    if (structuredMemory.lastCalendarEvent) {
-      // User is referring to a previously mentioned calendar event
-      // We could enhance the message with context from the last calendar interaction
-      console.log('[Calendar] Detected reference to previous calendar event');
-    }
-  }
-
-  // Resolve action references like "change it", "move it" based on pending actions
-  if (text.includes('change') || text.includes('move') || text.includes('reschedule')) {
-    if (structuredMemory.pendingAction && structuredMemory.pendingAction.type === 'calendar_create') {
-      // User wants to modify a pending calendar action
-      console.log('[Calendar] Detected modification request for pending calendar action');
-    }
-  }
-
-  return resolvedMessage;
-}
 
 // ============================================================
-// CALENDAR EVENTS
-// ============================================================
-
-async function queryCalendarEvents(
-  state
-) {
-  try {
-    let message =
-      state.messages[
-        state.messages.length - 1
-      ].content;
-
-    // Resolve contextual references using compact context
-    if (state.compactContext?.structuredMemory) {
-      const resolved = resolveCalendarContextualReferences(
-        message,
-        state.compactContext.structuredMemory
-      );
-      if (resolved !== message) {
-        console.log('[Calendar] Resolved contextual reference:', message, '->', resolved);
-        message = resolved;
-      }
-    }
-
-    const {
-      startDate,
-      endDate,
-      label,
-    } =
-      getCalendarDateRange(
-        message
-      );
-
-    console.log(
-      '[Calendar]',
-      {
-        label,
-        startDate,
-        endDate,
-      }
-    );
-
-    const events =
-      await googleCalendarService.getEvents(
-        state.userId,
-        startDate,
-        endDate
-      );
-
-    const activeEvents =
-      Array.isArray(events)
-        ? events.filter(
-            event =>
-              event.status !==
-              'cancelled'
-          )
-        : [];
-
-    const formattedEvents =
-      activeEvents.map(
-        formatCalendarEvent
-      );
-
-    if (
-      formattedEvents.length === 0
-    ) {
-      return {
-        ...state,
-
-        toolResult:
-          getNoCalendarEventsMessage(
-            label
-          ),
-
-        context: {
-          ...state.context,
-
-          calendarEvents: [],
-
-          calendarRange: {
-            startDate,
-            endDate,
-            label,
-          },
-        },
-
-        currentTool: null,
-      };
-    }
-
-    // Special handling for availability check
-    if (label === 'availability check' || label.startsWith('availability check at')) {
-      const eventCount = formattedEvents.length;
-
-      if (eventCount === 0) {
-        return {
-          ...state,
-
-          toolResult:
-            'Yes, you are free during that time! No calendar events found.',
-
-          context: {
-            ...state.context,
-
-            calendarEvents: [],
-
-            calendarRange: {
-              startDate,
-              endDate,
-              label,
-            },
-          },
-
-          currentTool: null,
-        };
-      } else {
-        const lines =
-          formattedEvents.map(
-            (event, index) => {
-              let line =
-                `${index + 1}. **${event.title}**\n` +
-                `   ${formatEventTime(
-                  event
-                )}`;
-
-              if (event.location) {
-                line +=
-                  `\n   Location: ${event.location}`;
-              }
-
-              return line;
-            }
-          );
-
-        return {
-          ...state,
-
-          toolResult:
-            `No, you are not free. You have ${eventCount} calendar event${
-              eventCount === 1
-                ? ''
-                : 's'
-            } during that time:\n\n` +
-            lines.join('\n\n'),
-
-          context: {
-            ...state.context,
-
-            calendarEvents:
-              formattedEvents,
-
-            calendarRange: {
-              startDate,
-              endDate,
-              label,
-            },
-          },
-
-          currentTool: null,
-        };
-      }
-    }
-
-    const lines =
-      formattedEvents.map(
-        (event, index) => {
-          let line =
-            `${index + 1}. **${event.title}**\n` +
-            `   ${formatEventTime(
-              event
-            )}`;
-
-          if (event.location) {
-            line +=
-              `\n   Location: ${event.location}`;
-          }
-
-          return line;
-        }
-      );
-
-    return {
-      ...state,
-
-      toolResult:
-        `You have ${formattedEvents.length} calendar event${
-          formattedEvents.length === 1
-            ? ''
-            : 's'
-        } ${label}:\n\n` +
-        lines.join('\n\n'),
-
-      context: {
-        ...state.context,
-
-        calendarEvents:
-          formattedEvents,
-
-        calendarRange: {
-          startDate,
-          endDate,
-          label,
-        },
-      },
-
-      currentTool: null,
-    };
-  } catch (error) {
-    console.error(
-      '[Calendar]',
-      error
-    );
-
-    if (
-      error.code ===
-        'GOOGLE_CALENDAR_NOT_CONNECTED' ||
-      error.message ===
-        'GOOGLE_CALENDAR_NOT_CONNECTED'
-    ) {
-      return {
-        ...state,
-
-        toolResult:
-          'Your Google Calendar is not connected. Please connect it from the Calendar page first.',
-
-        currentTool: null,
-      };
-    }
-
-    if (
-      error.code ===
-        'GOOGLE_CALENDAR_RECONNECT_REQUIRED' ||
-      error.message ===
-        'GOOGLE_CALENDAR_RECONNECT_REQUIRED'
-    ) {
-      return {
-        ...state,
-
-        toolResult:
-          'Your Google Calendar connection needs to be renewed. Please reconnect it from the Calendar page.',
-
-        currentTool: null,
-      };
-    }
-
-    return {
-      ...state,
-
-      toolResult:
-        'I could not access your Google Calendar right now. Please try again.',
-
-      currentTool: null,
-    };
-  }
-}
-
-function getNoCalendarEventsMessage(
-  label
-) {
-  switch (label) {
-    case 'today':
-      return "You don't have any meetings or calendar events today.";
-
-    case 'tomorrow':
-      return "You don't have any meetings or calendar events tomorrow.";
-
-    case 'this week':
-      return "You don't have any meetings or calendar events this week.";
-
-    case 'next week':
-      return "You don't have any meetings or calendar events next week.";
-
-    case 'this month':
-      return "You don't have any meetings or calendar events this month.";
-
-    case 'upcoming':
-      return "You don't have any upcoming calendar events in the next 30 days.";
-
-    case 'availability check':
-      return "You have no calendar events during the specified time - you appear to be free.";
-
-    default:
-      if (label.startsWith('next ') && label.includes(' days')) {
-        return `You don't have any calendar events in the ${label}.`;
-      }
-      return "I couldn't find any upcoming calendar events.";
-  }
-}
-
-// ============================================================
-// LEAVE DETAILS
+// NODE 5
+// EXTRACT LEAVE DETAILS
 // ============================================================
 
 async function extractLeaveDetails(
   userMessage
 ) {
-  try {
-    const prompt = `
-You are extracting structured leave information.
+
+  const prompt = `
+You extract structured leave information.
 
 Return ONLY valid JSON.
 
@@ -1242,24 +1043,33 @@ Return ONLY valid JSON.
 }
 
 Rules:
-- Convert today/tomorrow/next Monday etc. into actual dates.
-- Never invent a missing date.
-- If only one date is provided, use it for start_date and end_date.
-- Do not add information not present in the user's request.
+
+- Convert today/tomorrow/next weekday into actual dates.
+- Never invent missing dates.
+- If only one date is provided, use it for both start_date and end_date.
+- Do not invent information.
 
 User:
 ${userMessage}
 `;
 
+
+  try {
+
     const response =
-      await llm.invoke(prompt);
+      await llm.invoke(
+        prompt
+      );
+
 
     return extractJSON(
       response.content
     );
+
   } catch (error) {
+
     console.error(
-      '[LeaveExtraction]',
+      "[LeaveExtraction]",
       error
     );
 
@@ -1267,373 +1077,1806 @@ ${userMessage}
   }
 }
 
+
 // ============================================================
-// CALCULATE LEAVE DAYS
+// NODE 6
+// PREPARE LEAVE
 // ============================================================
 
-async function calculateLeaveDays(
-  startDate,
-  endDate
-) {
-  const days =
-    await LeaveRequest.calculateDays(
-      startDate,
-      endDate
+async function prepareLeaveNode(state) {
+
+  const message =
+    state.messages[
+      state.messages.length - 1
+    ].content;
+
+
+  const details =
+    await extractLeaveDetails(
+      message
     );
 
-  return Number(days);
+
+  if (
+    !details ||
+    !details.leave_type ||
+    !details.start_date ||
+    !details.end_date
+  ) {
+
+    return {
+
+      toolResult:
+        `To request leave, I need:\n\n` +
+
+        `• Leave type: annual, sick, or personal\n` +
+
+        `• Start date\n` +
+
+        `• End date\n` +
+
+        `• Reason (optional)\n\n` +
+
+        `Example: "Apply annual leave from 2026-09-10 to 2026-09-12 for vacation."`,
+
+      requiresConfirmation: false,
+
+      pendingAction: null,
+    };
+  }
+
+
+  const numberOfDays =
+    Number(
+      await LeaveRequest.calculateDays(
+        details.start_date,
+        details.end_date
+      )
+    );
+
+
+  const pendingAction = {
+
+    type: "leave_request",
+
+    actionId:
+      `leave_request_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+
+    leave_type:
+      details.leave_type,
+
+    start_date:
+      details.start_date,
+
+    end_date:
+      details.end_date,
+
+    reason:
+      details.reason || null,
+
+    number_of_days:
+      numberOfDays,
+  };
+
+
+  return {
+
+    pendingAction,
+
+    currentTool:
+      "leave_request",
+
+    context: {
+      leaveDetails:
+        details,
+    },
+  };
 }
 
+
 // ============================================================
-// VALIDATE LEAVE REQUEST
+// NODE 7
+// VALIDATE LEAVE
 // ============================================================
 
-async function validateLeaveRequest(
-  state
-) {
-  try {
-    const action =
-      state.pendingAction;
+async function validateLeaveNode(state) {
 
-    if (
-      !action ||
-      action.type !==
-        'leave_request'
-    ) {
-      return {
-        ...state,
+  const action =
+    state.pendingAction;
 
-        toolResult:
-          'There is no pending leave request to validate.',
 
-        requiresConfirmation:
-          false,
-      };
-    }
+  if (!action) {
 
-    const {
+    return {
+
+      toolResult:
+        "There is no pending leave request.",
+
+      requiresConfirmation: false,
+    };
+  }
+
+
+  const {
+    leave_type,
+    start_date,
+    end_date,
+    number_of_days,
+  } = action;
+
+
+  // ----------------------------------------------------------
+  // Check balance
+  // ----------------------------------------------------------
+
+  const hasBalance =
+    await LeaveBalance.checkAvailability(
+      state.userId,
       leave_type,
+      number_of_days
+    );
+
+
+  if (!hasBalance) {
+
+    return {
+
+      toolResult:
+        `You don't have enough ${leave_type} leave balance for ${number_of_days} day(s).`,
+
+      requiresConfirmation:
+        false,
+
+      pendingAction:
+        null,
+    };
+  }
+
+
+  // ----------------------------------------------------------
+  // Check overlapping leave
+  // ----------------------------------------------------------
+
+  const overlapping =
+    await LeaveRequest.checkOverlappingLeave(
+      state.userId,
       start_date,
-      end_date,
-      number_of_days,
-    } = action;
+      end_date
+    );
 
-    if (
-      !leave_type ||
-      !start_date ||
-      !end_date
-    ) {
-      return {
-        ...state,
 
-        toolResult:
-          'I need the leave type and complete start/end dates before I can submit the request.',
+  if (
+    overlapping?.length > 0
+  ) {
 
-        requiresConfirmation:
-          false,
-      };
-    }
+    return {
 
-    if (
-      number_of_days <= 0
-    ) {
-      return {
-        ...state,
+      toolResult:
+        "You already have a leave request overlapping these dates.",
 
-        toolResult:
-          'The requested leave duration is invalid.',
+      requiresConfirmation:
+        false,
 
-        requiresConfirmation:
-          false,
-      };
-    }
+      pendingAction:
+        null,
+    };
+  }
 
-    // --------------------------------------------------------
-    // Balance
-    // --------------------------------------------------------
 
-    const hasBalance =
-      await LeaveBalance.checkAvailability(
-        state.userId,
-        leave_type,
-        number_of_days
-      );
+  // ----------------------------------------------------------
+  // Calendar conflict
+  // ----------------------------------------------------------
 
-    if (!hasBalance) {
-      return {
-        ...state,
+  let calendarConflicts = [];
 
-        toolResult:
-          `You don't have enough ${leave_type} leave balance for ${number_of_days} day(s).`,
 
-        requiresConfirmation:
-          false,
+  try {
 
-        pendingAction:
-          null,
-      };
-    }
-
-    // --------------------------------------------------------
-    // Existing leave
-    // --------------------------------------------------------
-
-    const overlapping =
-      await LeaveRequest.checkOverlappingLeave(
+    const conflictCheck =
+      await googleCalendarService.checkConflicts(
         state.userId,
         start_date,
         end_date
       );
 
+
     if (
-      overlapping?.length > 0
+      conflictCheck?.hasConflicts
     ) {
-      return {
-        ...state,
 
-        toolResult:
-          'You already have a leave request overlapping these dates.',
-
-        requiresConfirmation:
-          false,
-
-        pendingAction:
-          null,
-      };
+      calendarConflicts =
+        conflictCheck.conflicts || [];
     }
 
-    // --------------------------------------------------------
-    // Calendar conflict
-    // --------------------------------------------------------
-
-    try {
-      const conflictCheck =
-        await googleCalendarService.checkConflicts(
-          state.userId,
-          start_date,
-          end_date
-        );
-
-      if (
-        conflictCheck?.hasConflicts
-      ) {
-        return {
-          ...state,
-
-          toolResult:
-            'There are calendar events during this leave period. Please review the conflicts before submitting the leave request.',
-
-          requiresConfirmation:
-            false,
-
-          context: {
-            ...state.context,
-
-            calendarConflicts:
-              conflictCheck.conflicts,
-          },
-        };
-      }
-    } catch (error) {
-      console.warn(
-        '[Leave] Calendar conflict check failed:',
-        error.message
-      );
-
-      // Calendar conflict checking should not
-      // prevent leave submission if Calendar itself
-      // is unavailable.
-    }
-
-    return {
-      ...state,
-
-      toolResult:
-        'Your leave request has passed validation and is ready for confirmation.',
-
-      requiresConfirmation:
-        true,
-    };
   } catch (error) {
-    console.error(
-      '[LeaveValidation]',
-      error
+
+    // Calendar unavailable hone par
+    // leave request block nahi karenge.
+
+    console.warn(
+      "[Leave] Calendar conflict check failed:",
+      error.message
     );
+  }
+
+
+  return {
+
+    requiresConfirmation:
+      true,
+
+    hasConflicts:
+      calendarConflicts.length > 0,
+
+    context: {
+      calendarConflicts,
+    },
+
+    toolResult:
+      `Please review your leave request:\n\n` +
+
+      `**Leave type:** ${leave_type}\n` +
+
+      `**Dates:** ${start_date} → ${end_date}\n` +
+
+      `**Days:** ${number_of_days}\n` +
+
+      `**Reason:** ${action.reason || "Not specified"}\n\n` +
+
+      `${
+        calendarConflicts.length > 0
+          ? "⚠️ There are calendar conflicts during this period.\n\n"
+          : "✅ No calendar conflicts detected.\n\n"
+      }` +
+
+      `Would you like me to submit this leave request?`,
+  };
+}
+
+
+// ============================================================
+// NODE 8
+// HUMAN APPROVAL
+// ============================================================
+//
+// IMPORTANT:
+//
+// Ye actual LangGraph Human-in-the-loop hai.
+//
+// Graph yahan pause ho jayega.
+//
+// Frontend ko approval UI dikha sakte ho.
+//
+// User approve karega:
+//
+// Command({ resume: true })
+//
+// User reject karega:
+//
+// Command({ resume: false })
+//
+// ============================================================
+
+async function leaveApprovalNode(state) {
+
+  const approval = interrupt({
+
+    type: "leave_confirmation",
+
+    message:
+      "Please confirm this leave request.",
+
+    action:
+      state.pendingAction,
+
+    conflicts:
+      state.context?.calendarConflicts || [],
+  });
+
+
+  if (!approval) {
 
     return {
-      ...state,
 
       toolResult:
-        'I could not validate the leave request right now.',
+        "Leave request cancelled.",
+
+      pendingAction:
+        null,
 
       requiresConfirmation:
         false,
+
+      approvalDecision: false,
     };
   }
+
+
+  return {
+    requiresConfirmation:
+      false,
+
+    approvalDecision: true,
+  };
 }
 
+
 // ============================================================
+// NODE 9
 // SUBMIT LEAVE
 // ============================================================
 
-export async function submitLeaveRequest(
-  state
-) {
-  try {
-    const {
-      userId,
-      pendingAction,
-    } = state;
+async function submitLeaveNode(state) {
 
-    if (
-      !pendingAction ||
-      pendingAction.type !==
-        'leave_request'
-    ) {
-      return {
-        ...state,
+  const action =
+    state.pendingAction;
 
-        toolResult:
-          'There is no pending leave request to submit.',
 
-        requiresConfirmation:
-          false,
+  // ----------------------------------------------------------
+  // Check if user approved the action
+  // ----------------------------------------------------------
 
-        pendingAction:
-          null,
-      };
-    }
-
-    const {
-      leave_type,
-      start_date,
-      end_date,
-      number_of_days,
-      reason,
-    } = pendingAction;
-
-    // --------------------------------------------------------
-    // Revalidate balance immediately before mutation.
-    // --------------------------------------------------------
-
-    const hasBalance =
-      await LeaveBalance.checkAvailability(
-        userId,
-        leave_type,
-        number_of_days
-      );
-
-    if (!hasBalance) {
-      return {
-        ...state,
-
-        toolResult:
-          `Your ${leave_type} leave balance is no longer sufficient. The request was not submitted.`,
-
-        requiresConfirmation:
-          false,
-
-        pendingAction:
-          null,
-      };
-    }
-
-    // --------------------------------------------------------
-    // Revalidate overlap.
-    // --------------------------------------------------------
-
-    const overlapping =
-      await LeaveRequest.checkOverlappingLeave(
-        userId,
-        start_date,
-        end_date
-      );
-
-    if (
-      overlapping?.length > 0
-    ) {
-      return {
-        ...state,
-
-        toolResult:
-          'The request now overlaps with another leave request, so it was not submitted.',
-
-        requiresConfirmation:
-          false,
-
-        pendingAction:
-          null,
-      };
-    }
-
-    // --------------------------------------------------------
-    // Database mutation
-    // --------------------------------------------------------
-
-    const leaveRequest =
-      await LeaveRequest.create({
-        user_id: userId,
-        leave_type,
-        start_date,
-        end_date,
-        number_of_days,
-        reason,
-      });
+  if (state.approvalDecision !== true) {
 
     return {
-      ...state,
 
       toolResult:
-        `Leave request submitted successfully.\n\n` +
-        `Request ID: ${leaveRequest.id}\n` +
-        `Type: ${leave_type}\n` +
-        `Dates: ${start_date} to ${end_date}\n` +
-        `Days: ${number_of_days}\n` +
-        `Reason: ${reason || 'Not specified'}\n` +
-        `Status: Pending HR approval`,
-
-      requiresConfirmation:
-        false,
+        "Leave request cancelled.",
 
       pendingAction:
         null,
 
-      context: {
-        ...state.context,
-
-        submittedLeaveRequest:
-          leaveRequest,
-      },
+      requiresConfirmation:
+        false,
     };
-  } catch (error) {
-    console.error(
-      '[LeaveSubmit]',
-      error
-    );
+  }
+
+
+  if (
+    !action ||
+    action.type !==
+      "leave_request"
+  ) {
 
     return {
-      ...state,
 
       toolResult:
-        'I could not submit your leave request. Please try again.',
+        "There is no pending leave request to submit.",
+
+      pendingAction:
+        null,
 
       requiresConfirmation:
         false,
+    };
+  }
+
+
+  const {
+    leave_type,
+    start_date,
+    end_date,
+    number_of_days,
+    reason,
+  } = action;
+
+
+  // ----------------------------------------------------------
+  // IMPORTANT:
+  // Approval ke baad bhi revalidate.
+  //
+  // Example:
+  //
+  // User ne approval diya.
+  // Approval ke beech mein kisi aur request ne
+  // leave balance change kar diya.
+  //
+  // Isliye mutation se pehle dobara check.
+  // ----------------------------------------------------------
+
+  const hasBalance =
+    await LeaveBalance.checkAvailability(
+      state.userId,
+      leave_type,
+      number_of_days
+    );
+
+
+  if (!hasBalance) {
+
+    return {
+
+      toolResult:
+        `Your ${leave_type} leave balance is no longer sufficient. The request was not submitted.`,
+
+      pendingAction:
+        null,
+
+      requiresConfirmation:
+        false,
+    };
+  }
+
+
+  const overlapping =
+    await LeaveRequest.checkOverlappingLeave(
+      state.userId,
+      start_date,
+      end_date
+    );
+
+
+  if (
+    overlapping?.length > 0
+  ) {
+
+    return {
+
+      toolResult:
+        "The request now overlaps with another leave request, so it was not submitted.",
+
+      pendingAction:
+        null,
+
+      requiresConfirmation:
+        false,
+    };
+  }
+
+
+  // ----------------------------------------------------------
+  // DB mutation
+  // ----------------------------------------------------------
+
+  const leaveRequest =
+    await LeaveRequest.create({
+
+      user_id:
+        state.userId,
+
+      leave_type,
+
+      start_date,
+
+      end_date,
+
+      number_of_days,
+
+      reason,
+    });
+
+
+  return {
+
+    toolResult:
+      `Leave request submitted successfully.\n\n` +
+
+      `Request ID: ${leaveRequest.id}\n` +
+
+      `Type: ${leave_type}\n` +
+
+      `Dates: ${start_date} to ${end_date}\n` +
+
+      `Days: ${number_of_days}\n` +
+
+      `Reason: ${reason || "Not specified"}\n` +
+
+      `Status: Pending HR approval`,
+
+    pendingAction:
+      null,
+
+    requiresConfirmation:
+      false,
+
+    context: {
+      submittedLeaveRequest:
+        leaveRequest,
+    },
+  };
+}
+
+
+// ============================================================
+// CALENDAR DATE RANGE
+// ============================================================
+
+function getCalendarDateRange(
+  userMessage
+) {
+
+  const message =
+    String(userMessage || "")
+      .toLowerCase();
+
+  const today =
+    new Date();
+
+
+  // ----------------------------------------------------------
+  // Specific ISO date
+  // ----------------------------------------------------------
+
+  const isoMatch =
+    message.match(
+      /\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/
+    );
+
+
+  if (isoMatch) {
+
+    const date =
+      new Date(
+        Number(isoMatch[1]),
+        Number(isoMatch[2]) - 1,
+        Number(isoMatch[3])
+      );
+
+
+    return {
+
+      startDate:
+        getStartOfDay(date),
+
+      endDate:
+        getEndOfDay(date),
+
+      label:
+        formatDateLocal(date),
+    };
+  }
+
+
+  // ----------------------------------------------------------
+  // Today
+  // ----------------------------------------------------------
+
+  if (
+    message.includes("today")
+  ) {
+
+    return {
+
+      startDate:
+        getStartOfDay(today),
+
+      endDate:
+        getEndOfDay(today),
+
+      label:
+        "today",
+    };
+  }
+
+
+  // ----------------------------------------------------------
+  // Tomorrow
+  // ----------------------------------------------------------
+
+  if (
+    message.includes("tomorrow")
+  ) {
+
+    const tomorrow =
+      addDays(today, 1);
+
+
+    return {
+
+      startDate:
+        getStartOfDay(tomorrow),
+
+      endDate:
+        getEndOfDay(tomorrow),
+
+      label:
+        "tomorrow",
+    };
+  }
+
+
+  // ----------------------------------------------------------
+  // Next week
+  // ----------------------------------------------------------
+
+  if (
+    message.includes("next week")
+  ) {
+
+    const day =
+      today.getDay();
+
+
+    const daysUntilNextMonday =
+      day === 0
+        ? 1
+        : 8 - day;
+
+
+    const start =
+      addDays(
+        today,
+        daysUntilNextMonday
+      );
+
+
+    const end =
+      addDays(start, 6);
+
+
+    return {
+
+      startDate:
+        getStartOfDay(start),
+
+      endDate:
+        getEndOfDay(end),
+
+      label:
+        "next week",
+    };
+  }
+
+
+  // ----------------------------------------------------------
+  // This week
+  // ----------------------------------------------------------
+
+  if (
+    message.includes("this week") ||
+    message === "week"
+  ) {
+
+    const currentDay =
+      today.getDay();
+
+
+    const daysFromMonday =
+      currentDay === 0
+        ? 6
+        : currentDay - 1;
+
+
+    const start =
+      addDays(
+        today,
+        -daysFromMonday
+      );
+
+
+    const end =
+      addDays(start, 6);
+
+
+    return {
+
+      startDate:
+        getStartOfDay(start),
+
+      endDate:
+        getEndOfDay(end),
+
+      label:
+        "this week",
+    };
+  }
+
+
+  // ----------------------------------------------------------
+  // This month
+  // ----------------------------------------------------------
+
+  if (
+    message.includes("this month")
+  ) {
+
+    const start =
+      new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        1
+      );
+
+
+    const end =
+      new Date(
+        today.getFullYear(),
+        today.getMonth() + 1,
+        0
+      );
+
+
+    return {
+
+      startDate:
+        getStartOfDay(start),
+
+      endDate:
+        getEndOfDay(end),
+
+      label:
+        "this month",
+    };
+  }
+
+
+  // ----------------------------------------------------------
+  // Upcoming
+  // ----------------------------------------------------------
+
+  if (
+    message.includes("upcoming") ||
+    message.includes("future")
+  ) {
+
+    const end =
+      addDays(
+        today,
+        30
+      );
+
+
+    return {
+
+      startDate:
+        new Date(),
+
+      endDate:
+        getEndOfDay(end),
+
+      label:
+        "upcoming",
+    };
+  }
+
+
+  // ----------------------------------------------------------
+  // Next N days
+  // ----------------------------------------------------------
+
+  const nextDaysMatch =
+    message.match(
+      /next\s+(\d+)\s+days?/i
+    );
+
+
+  if (nextDaysMatch) {
+
+    const days =
+      Number(
+        nextDaysMatch[1]
+      );
+
+
+    if (
+      days > 0 &&
+      days <= 365
+    ) {
+
+      const end =
+        addDays(
+          today,
+          days
+        );
+
+
+      return {
+
+        startDate:
+          new Date(),
+
+        endDate:
+          getEndOfDay(end),
+
+        label:
+          `next ${days} days`,
+      };
+    }
+  }
+
+
+  // ----------------------------------------------------------
+  // Default
+  // ----------------------------------------------------------
+
+  return {
+
+    startDate:
+      getStartOfDay(today),
+
+    endDate:
+      getEndOfDay(today),
+
+    label:
+      "today",
+  };
+}
+
+
+// ============================================================
+// CALENDAR FORMATTER
+// ============================================================
+
+function formatCalendarEvent(
+  event
+) {
+
+  const title =
+    event.summary ||
+    "Untitled event";
+
+
+  if (event.start?.date) {
+
+    return {
+
+      title,
+
+      allDay: true,
+
+      start:
+        event.start.date,
+
+      end:
+        event.end?.date || null,
+
+      location:
+        event.location || null,
+
+      description:
+        event.description || null,
+
+      htmlLink:
+        event.htmlLink || null,
+    };
+  }
+
+
+  const start =
+    event.start?.dateTime
+      ? new Date(
+          event.start.dateTime
+        )
+      : null;
+
+
+  const end =
+    event.end?.dateTime
+      ? new Date(
+          event.end.dateTime
+        )
+      : null;
+
+
+  return {
+
+    title,
+
+    allDay: false,
+
+    start:
+      start
+        ? start.toISOString()
+        : null,
+
+    end:
+      end
+        ? end.toISOString()
+        : null,
+
+    location:
+      event.location || null,
+
+    description:
+      event.description || null,
+
+    htmlLink:
+      event.htmlLink || null,
+  };
+}
+
+
+function formatEventTime(
+  event
+) {
+
+  if (event.allDay) {
+
+    return "All day";
+  }
+
+
+  if (!event.start) {
+
+    return "Time unavailable";
+  }
+
+
+  const start =
+    new Date(event.start);
+
+
+  const end =
+    event.end
+      ? new Date(event.end)
+      : null;
+
+
+  const formatter =
+    new Intl.DateTimeFormat(
+      "en-IN",
+      {
+        day: "numeric",
+        month: "short",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }
+    );
+
+
+  const startText =
+    formatter.format(start);
+
+
+  if (!end) {
+
+    return startText;
+  }
+
+
+  const endFormatter =
+    new Intl.DateTimeFormat(
+      "en-IN",
+      {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }
+    );
+
+
+  return (
+    `${startText} - ` +
+    `${endFormatter.format(end)}`
+  );
+}
+
+
+// ============================================================
+// NODE 10
+// CALENDAR QUERY
+// ============================================================
+
+async function calendarQueryNode(state) {
+
+  try {
+
+    const message =
+      state.messages[
+        state.messages.length - 1
+      ].content;
+
+
+    const {
+      startDate,
+      endDate,
+      label,
+    } =
+      getCalendarDateRange(
+        message
+      );
+
+
+    const events =
+      await googleCalendarService.getEvents(
+        state.userId,
+        startDate,
+        endDate
+      );
+
+
+    const activeEvents =
+      Array.isArray(events)
+        ? events.filter(
+            event =>
+              event.status !==
+              "cancelled"
+          )
+        : [];
+
+
+    const formattedEvents =
+      activeEvents.map(
+        formatCalendarEvent
+      );
+
+
+    if (
+      formattedEvents.length === 0
+    ) {
+
+      return {
+
+        toolResult:
+          getNoCalendarEventsMessage(
+            label
+          ),
+
+        context: {
+
+          calendarEvents: [],
+
+          calendarRange: {
+            startDate,
+            endDate,
+            label,
+          },
+        },
+      };
+    }
+
+
+    const lines =
+      formattedEvents.map(
+        (event, index) => {
+
+          let line =
+            `${index + 1}. **${event.title}**\n` +
+            `   ${formatEventTime(event)}`;
+
+
+          if (event.location) {
+
+            line +=
+              `\n   Location: ${event.location}`;
+          }
+
+
+          return line;
+        }
+      );
+
+
+    return {
+
+      toolResult:
+        `You have ${formattedEvents.length} calendar event${
+          formattedEvents.length === 1
+            ? ""
+            : "s"
+        } ${label}:\n\n` +
+
+        lines.join("\n\n"),
+
+
+      context: {
+
+        calendarEvents:
+          formattedEvents,
+
+        calendarRange: {
+          startDate,
+          endDate,
+          label,
+        },
+      },
+    };
+
+  } catch (error) {
+
+    console.error(
+      "[Calendar]",
+      error
+    );
+
+
+    if (
+      error.code ===
+        "GOOGLE_CALENDAR_NOT_CONNECTED" ||
+      error.message ===
+        "GOOGLE_CALENDAR_NOT_CONNECTED"
+    ) {
+
+      return {
+
+        toolResult:
+          "Your Google Calendar is not connected. Please connect it from the Calendar page first.",
+      };
+    }
+
+
+    return {
+
+      toolResult:
+        "I could not access your Google Calendar right now. Please try again.",
+    };
+  }
+}
+
+
+// ============================================================
+// NO CALENDAR EVENTS
+// ============================================================
+
+function getNoCalendarEventsMessage(
+  label
+) {
+
+  switch (label) {
+
+    case "today":
+      return (
+        "You don't have any meetings or calendar events today."
+      );
+
+    case "tomorrow":
+      return (
+        "You don't have any meetings or calendar events tomorrow."
+      );
+
+    case "this week":
+      return (
+        "You don't have any meetings or calendar events this week."
+      );
+
+    case "next week":
+      return (
+        "You don't have any meetings or calendar events next week."
+      );
+
+    case "this month":
+      return (
+        "You don't have any meetings or calendar events this month."
+      );
+
+    case "upcoming":
+      return (
+        "You don't have any upcoming calendar events in the next 30 days."
+      );
+
+    default:
+
+      return (
+        "I couldn't find any upcoming calendar events."
+      );
+  }
+}
+
+
+// ============================================================
+// CALENDAR EVENT EXTRACTION
+// ============================================================
+
+async function extractCalendarEventDetails(
+  userMessage
+) {
+
+  const prompt = `
+Extract calendar event information.
+
+Return ONLY valid JSON.
+
+{
+  "title": "meeting title" | null,
+  "date": "YYYY-MM-DD" | null,
+  "start_time": "HH:MM" | null,
+  "end_time": "HH:MM" | null,
+  "duration_minutes": number | null,
+  "description": "description" | null,
+  "attendees": ["email@example.com"],
+  "location": "location" | null
+}
+
+Rules:
+
+- Convert today/tomorrow/next weekday.
+- Use 24-hour time.
+- Never invent missing information.
+- If end_time is missing, duration_minutes can be 60.
+- Never invent attendees.
+
+User:
+${userMessage}
+`;
+
+
+  try {
+
+    const response =
+      await llm.invoke(
+        prompt
+      );
+
+
+    return extractJSON(
+      response.content
+    );
+
+  } catch (error) {
+
+    console.error(
+      "[CalendarExtraction]",
+      error
+    );
+
+    return null;
+  }
+}
+
+
+// ============================================================
+// NODE 11
+// PREPARE CALENDAR
+// ============================================================
+
+async function prepareCalendarNode(state) {
+
+  const message =
+    state.messages[
+      state.messages.length - 1
+    ].content;
+
+
+  let details =
+    await extractCalendarEventDetails(
+      message
+    );
+
+
+  if (!details) {
+    details = {};
+  }
+
+
+  // Missing date ko deterministic parser se resolve karo.
+
+  if (!details.date) {
+
+    details.date =
+      parseRelativeDate(
+        message
+      );
+  }
+
+
+  if (details.start_time) {
+
+    details.start_time =
+      parseTime(
+        details.start_time
+      );
+  }
+
+
+  if (details.end_time) {
+
+    details.end_time =
+      parseTime(
+        details.end_time
+      );
+  }
+
+
+  const pendingAction = {
+
+    type:
+      "calendar_create",
+
+    actionId:
+      `calendar_create_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+
+    title:
+      details.title || null,
+
+    date:
+      details.date || null,
+
+    start_time:
+      details.start_time || null,
+
+    end_time:
+      details.end_time || null,
+
+    duration_minutes:
+      details.duration_minutes || 60,
+
+    description:
+      details.description || null,
+
+    attendees:
+      Array.isArray(details.attendees)
+        ? details.attendees
+        : [],
+
+    location:
+      details.location || null,
+  };
+
+
+  return {
+
+    pendingAction,
+
+    currentTool:
+      "calendar_create",
+  };
+}
+
+
+// ============================================================
+// NODE 12
+// VALIDATE CALENDAR
+// ============================================================
+
+async function validateCalendarNode(state) {
+
+  const action =
+    state.pendingAction;
+
+
+  if (!action) {
+
+    return {
+
+      toolResult:
+        "There is no pending calendar event.",
+
+      requiresConfirmation:
+        false,
+    };
+  }
+
+
+  const {
+    title,
+    date,
+    start_time,
+    end_time,
+    duration_minutes,
+  } = action;
+
+
+  if (!title) {
+
+    return {
+
+      toolResult:
+        "What would you like to call the meeting?",
+
+      missingField:
+        "meeting title",
+
+      requiresConfirmation:
+        false,
+    };
+  }
+
+
+  if (!date) {
+
+    return {
+
+      toolResult:
+        "What date should I schedule the meeting for?",
+
+      missingField:
+        "date",
+
+      requiresConfirmation:
+        false,
+    };
+  }
+
+
+  if (!start_time) {
+
+    return {
+
+      toolResult:
+        "What time should I schedule the meeting?",
+
+      missingField:
+        "time",
+
+      requiresConfirmation:
+        false,
+    };
+  }
+
+
+  let finalEndTime =
+    end_time;
+
+
+  if (!finalEndTime) {
+
+    const start =
+      new Date(
+        `${date}T${start_time}:00`
+      );
+
+
+    const duration =
+      Number(
+        duration_minutes || 60
+      );
+
+
+    finalEndTime =
+      new Date(
+        start.getTime() +
+        duration * 60000
+      )
+        .toTimeString()
+        .slice(0, 5);
+  }
+
+
+  const updatedAction = {
+
+    ...action,
+
+    end_time:
+      finalEndTime,
+  };
+
+
+  // ----------------------------------------------------------
+  // Calendar conflicts
+  // ----------------------------------------------------------
+
+  let conflicts = [];
+
+
+  try {
+
+    const conflictCheck =
+      await googleCalendarService.checkConflicts(
+        state.userId,
+        date,
+        date
+      );
+
+
+    if (
+      conflictCheck?.hasConflicts
+    ) {
+
+      conflicts =
+        conflictCheck.conflicts || [];
+    }
+
+  } catch (error) {
+
+    console.warn(
+      "[Calendar] Conflict check failed:",
+      error.message
+    );
+  }
+
+
+  return {
+
+    pendingAction:
+      updatedAction,
+
+    requiresConfirmation:
+      true,
+
+    hasConflicts:
+      conflicts.length > 0,
+
+    context: {
+
+      calendarConflicts:
+        conflicts,
+    },
+
+
+    toolResult:
+
+      `Please review this meeting:\n\n` +
+
+      `**Title:** ${title}\n` +
+
+      `**Date:** ${date}\n` +
+
+      `**Time:** ${start_time} - ${finalEndTime}\n` +
+
+      `${
+        action.location
+          ? `**Location:** ${action.location}\n`
+          : ""
+      }` +
+
+      `${
+        action.description
+          ? `**Description:** ${action.description}\n`
+          : ""
+      }` +
+
+      `${
+        conflicts.length > 0
+          ? "\n⚠️ There is a calendar conflict."
+          : "\n✅ No calendar conflict detected."
+      }` +
+
+      `\n\nWould you like me to schedule it?`,
+  };
+}
+
+
+// ============================================================
+// NODE 13
+// CALENDAR APPROVAL
+// ============================================================
+
+async function calendarApprovalNode(
+  state
+) {
+
+  const approval =
+    interrupt({
+
+      type:
+        "calendar_confirmation",
+
+      message:
+        "Please confirm this meeting.",
+
+      action:
+        state.pendingAction,
+
+      conflicts:
+        state.context?.calendarConflicts ||
+        [],
+    });
+
+
+  if (!approval) {
+
+    return {
+
+      toolResult:
+        "Calendar event creation cancelled.",
+
+      pendingAction:
+        null,
+
+      requiresConfirmation:
+        false,
+
+      approvalDecision: false,
+    };
+  }
+
+
+  return {
+    requiresConfirmation:
+      false,
+
+    approvalDecision: true,
+  };
+}
+
+
+// ============================================================
+// NODE 14
+// CREATE CALENDAR EVENT
+// ============================================================
+
+async function createCalendarNode(
+  state
+) {
+
+  const action =
+    state.pendingAction;
+
+
+  // ----------------------------------------------------------
+  // Check if user approved the action
+  // ----------------------------------------------------------
+
+  if (state.approvalDecision !== true) {
+
+    return {
+
+      toolResult:
+        "Calendar event creation cancelled.",
+
+      pendingAction:
+        null,
+
+      requiresConfirmation:
+        false,
+    };
+  }
+
+
+  if (
+    !action ||
+    action.type !==
+      "calendar_create"
+  ) {
+
+    return {
+
+      toolResult:
+        "There is no pending calendar event to create.",
 
       pendingAction:
         null,
     };
   }
+
+
+  const {
+    title,
+    date,
+    start_time,
+    end_time,
+    description,
+    location,
+    attendees,
+  } = action;
+
+
+  if (
+    !title ||
+    !date ||
+    !start_time ||
+    !end_time
+  ) {
+
+    return {
+
+      toolResult:
+        "The calendar event information is incomplete.",
+
+      pendingAction:
+        null,
+    };
+  }
+
+
+  const timezone =
+    Intl.DateTimeFormat()
+      .resolvedOptions()
+      .timeZone ||
+    "Asia/Kolkata";
+
+
+  const eventData = {
+
+    summary:
+      title,
+
+    start: {
+
+      dateTime:
+        `${date}T${start_time}:00`,
+
+      timeZone:
+        timezone,
+    },
+
+    end: {
+
+      dateTime:
+        `${date}T${end_time}:00`,
+
+      timeZone:
+        timezone,
+    },
+  };
+
+
+  if (description) {
+
+    eventData.description =
+      description;
+  }
+
+
+  if (location) {
+
+    eventData.location =
+      location;
+  }
+
+
+  if (
+    Array.isArray(attendees) &&
+    attendees.length > 0
+  ) {
+
+    eventData.attendees =
+      attendees
+        .filter(
+          email =>
+            typeof email ===
+              "string" &&
+            email.includes("@")
+        )
+        .map(
+          email => ({
+            email,
+          })
+        );
+  }
+
+
+  try {
+
+    const event =
+      await googleCalendarService.createEvent(
+        state.userId,
+        eventData
+      );
+
+
+    return {
+
+      toolResult:
+
+        `Meeting scheduled successfully.\n\n` +
+
+        `**${title}**\n` +
+
+        `Date: ${date}\n` +
+
+        `Time: ${start_time} - ${end_time}`,
+
+      pendingAction:
+        null,
+
+      requiresConfirmation:
+        false,
+
+      context: {
+
+        createdEvent:
+          event,
+      },
+    };
+
+  } catch (error) {
+
+    console.error(
+      "[CalendarCreate]",
+      error
+    );
+
+
+    return {
+
+      toolResult:
+        "I could not create the calendar event. Please try again.",
+
+      pendingAction:
+        null,
+
+      requiresConfirmation:
+        false,
+    };
+  }
 }
 
+
 // ============================================================
-// GMAIL READ
+// GMAIL HEADER
 // ============================================================
 
 function getHeader(
   email,
   headerName
 ) {
+
   return (
     email?.payload?.headers?.find(
       header =>
@@ -1644,33 +2887,41 @@ function getHeader(
   );
 }
 
-async function gmailReadQuery(
-  state
-) {
+
+// ============================================================
+// NODE 15
+// GMAIL READ
+// ============================================================
+
+async function gmailReadNode(state) {
+
   try {
+
     const message =
       state.messages[
         state.messages.length - 1
       ].content;
+
 
     const connected =
       await gmailService.isConnected(
         state.userId
       );
 
+
     if (!connected) {
+
       return {
-        ...state,
 
         toolResult:
-          'Your Gmail is not connected. Please connect Gmail from the settings page first.',
-
-        currentTool: null,
+          "Your Gmail is not connected. Please connect Gmail from the settings page first.",
       };
     }
 
+
     const lower =
       message.toLowerCase();
+
 
     const emails =
       await gmailService.getRecentEmails(
@@ -1678,139 +2929,166 @@ async function gmailReadQuery(
         20
       );
 
+
     let filtered =
       Array.isArray(emails)
         ? emails
         : [];
 
-    // --------------------------------------------------------
+
+    // ----------------------------------------------------------
     // Unread
-    // --------------------------------------------------------
+    // ----------------------------------------------------------
 
     if (
-      lower.includes('unread')
+      lower.includes("unread")
     ) {
+
       filtered =
-        filtered.filter(email =>
-          !email.labelIds ||
-          email.labelIds.includes(
-            'UNREAD'
-          )
+        filtered.filter(
+          email =>
+            !email.labelIds ||
+            email.labelIds.includes(
+              "UNREAD"
+            )
         );
     }
 
-    // --------------------------------------------------------
+
+    // ----------------------------------------------------------
     // From
-    // --------------------------------------------------------
+    // ----------------------------------------------------------
 
     const fromMatch =
       message.match(
         /\bfrom\s+(.+?)(?:\s+(?:about|subject|regarding)\b|$)/i
       );
 
+
     if (fromMatch) {
+
       const person =
         fromMatch[1]
           .trim()
           .replace(
             /^["']|["']$/g,
-            ''
+            ""
           );
 
-      filtered =
-        filtered.filter(email => {
-          const from =
-            getHeader(
-              email,
-              'From'
-            );
 
-          return from
-            ?.toLowerCase()
-            .includes(
-              person.toLowerCase()
+      filtered =
+        filtered.filter(
+          email => {
+
+            const from =
+              getHeader(
+                email,
+                "From"
+              );
+
+
+            return (
+              from
+                ?.toLowerCase()
+                .includes(
+                  person.toLowerCase()
+                )
             );
-        });
+          }
+        );
     }
 
-    // --------------------------------------------------------
+
+    // ----------------------------------------------------------
     // Topic
-    // --------------------------------------------------------
+    // ----------------------------------------------------------
 
     const aboutMatch =
       message.match(
         /\b(?:about|subject|regarding)\s+(.+)$/i
       );
 
+
     if (aboutMatch) {
+
       const topic =
         aboutMatch[1]
           .trim()
           .replace(
             /^["']|["']$/g,
-            ''
+            ""
           );
 
-      filtered =
-        filtered.filter(email => {
-          const subject =
-            getHeader(
-              email,
-              'Subject'
-            );
 
-          return subject
-            ?.toLowerCase()
-            .includes(
-              topic.toLowerCase()
+      filtered =
+        filtered.filter(
+          email => {
+
+            const subject =
+              getHeader(
+                email,
+                "Subject"
+              );
+
+
+            return (
+              subject
+                ?.toLowerCase()
+                .includes(
+                  topic.toLowerCase()
+                )
             );
-        });
+          }
+        );
     }
+
 
     if (
       filtered.length === 0
     ) {
+
       return {
-        ...state,
 
         toolResult:
-          'I could not find any matching emails in your recent Gmail.',
+          "I could not find any matching emails in your recent Gmail.",
 
         context: {
-          ...state.context,
 
           gmailResults: [],
         },
-
-        currentTool: null,
       };
     }
+
 
     const lines =
       filtered
         .slice(0, 10)
         .map(
           (email, index) => {
+
             const from =
               getHeader(
                 email,
-                'From'
+                "From"
               ) ||
-              'Unknown sender';
+              "Unknown sender";
+
 
             const subject =
               getHeader(
                 email,
-                'Subject'
+                "Subject"
               ) ||
-              'No subject';
+              "No subject";
+
 
             const date =
               getHeader(
                 email,
-                'Date'
+                "Date"
               ) ||
-              'Unknown date';
+              "Unknown date";
+
 
             return (
               `${index + 1}. **${subject}**\n` +
@@ -1820,53 +3098,53 @@ async function gmailReadQuery(
           }
         );
 
+
     return {
-      ...state,
 
       toolResult:
+
         `I found ${filtered.length} matching email${
           filtered.length === 1
-            ? ''
-            : 's'
+            ? ""
+            : "s"
         }:\n\n` +
-        lines.join('\n\n'),
+
+        lines.join("\n\n"),
 
       context: {
-        ...state.context,
 
         gmailResults:
           filtered.slice(0, 10),
       },
-
-      currentTool: null,
     };
+
   } catch (error) {
+
     console.error(
-      '[GmailRead]',
+      "[GmailRead]",
       error
     );
 
+
     return {
-      ...state,
 
       toolResult:
-        'I could not access your Gmail right now. Please try again.',
-
-      currentTool: null,
+        "I could not access your Gmail right now. Please try again.",
     };
   }
 }
 
+
 // ============================================================
-// EMAIL DETAILS
+// EMAIL EXTRACTION
 // ============================================================
 
 async function extractEmailDetails(
   userMessage
 ) {
-  try {
-    const prompt = `
-Extract email information from the user request.
+
+  const prompt = `
+Extract email information.
 
 Return ONLY valid JSON.
 
@@ -1877,24 +3155,33 @@ Return ONLY valid JSON.
 }
 
 Rules:
-- Do not invent an email address.
-- If recipient is missing, return null.
-- Preserve the user's intended email content.
-- Do not include markdown outside the JSON.
+
+- Do not invent email address.
+- Missing recipient = null.
+- Preserve intended email content.
+- No markdown outside JSON.
 
 User:
 ${userMessage}
 `;
 
+
+  try {
+
     const response =
-      await llm.invoke(prompt);
+      await llm.invoke(
+        prompt
+      );
+
 
     return extractJSON(
       response.content
     );
+
   } catch (error) {
+
     console.error(
-      '[EmailExtraction]',
+      "[EmailExtraction]",
       error
     );
 
@@ -1902,305 +3189,388 @@ ${userMessage}
   }
 }
 
+
 // ============================================================
-// GMAIL SEND PREPARATION
+// NODE 16
+// PREPARE EMAIL
 // ============================================================
 
-async function gmailSendQuery(
+async function prepareEmailNode(
   state
 ) {
+
   try {
+
     const connected =
       await gmailService.isConnected(
         state.userId
       );
 
+
     if (!connected) {
+
       return {
-        ...state,
 
         toolResult:
-          'Your Gmail is not connected. Please connect Gmail from the settings page first.',
-
-        requiresConfirmation:
-          false,
-
-        currentTool: null,
+          "Your Gmail is not connected. Please connect Gmail from the settings page first.",
       };
     }
+
 
     const message =
       state.messages[
         state.messages.length - 1
       ].content;
+
 
     const details =
       await extractEmailDetails(
         message
       );
 
+
     if (
       !details ||
       !details.to
     ) {
+
       return {
-        ...state,
 
         toolResult:
-          'I can prepare the email, but I need the recipient email address first.',
-
-        currentTool: null,
-
-        requiresConfirmation:
-          false,
+          "I can prepare the email, but I need the recipient email address first.",
       };
     }
+
 
     const subject =
       details.subject?.trim() ||
-      'No subject';
+      "No subject";
+
 
     const body =
       details.body?.trim() ||
-      '';
+      "";
+
 
     if (!body) {
+
       return {
-        ...state,
 
         toolResult:
-          'I have the recipient and subject, but I still need the email body.',
-
-        currentTool: null,
-
-        requiresConfirmation:
-          false,
+          "I have the recipient and subject, but I still need the email body.",
       };
     }
 
-    const actionId =
-      `gmail_send_${Date.now()}_${Math.random()
-        .toString(36)
-        .slice(2, 8)}`;
 
     const pendingAction = {
-      type: 'gmail_send',
 
-      actionId,
+      type:
+        "gmail_send",
 
-      to: details.to.trim(),
+      actionId:
+        `gmail_send_${Date.now()}_${Math.random()
+          .toString(36)
+          .slice(2, 8)}`,
+
+      to:
+        details.to.trim(),
 
       subject,
 
       body,
     };
 
+
     return {
-      ...state,
 
       pendingAction,
 
       requiresConfirmation:
         true,
 
-      toolResult:
-        `I've prepared this email:\n\n` +
-        `**To:** ${pendingAction.to}\n` +
-        `**Subject:** ${pendingAction.subject}\n\n` +
-        `**Message:**\n${pendingAction.body}\n\n` +
-        `Please confirm if you'd like me to send it.`,
+      currentTool:
+        "gmail_send",
 
       context: {
-        ...state.context,
 
         emailDraft: {
-          to: pendingAction.to,
+
+          to:
+            pendingAction.to,
+
           subject:
             pendingAction.subject,
+
           body:
             pendingAction.body,
         },
       },
 
-      currentTool: null,
+      toolResult:
+
+        `I've prepared this email:\n\n` +
+
+        `**To:** ${pendingAction.to}\n` +
+
+        `**Subject:** ${pendingAction.subject}\n\n` +
+
+        `**Message:**\n${pendingAction.body}\n\n` +
+
+        `Please confirm if you'd like me to send it.`,
     };
+
   } catch (error) {
+
     console.error(
-      '[GmailSendPrepare]',
+      "[GmailPrepare]",
       error
     );
 
+
     return {
-      ...state,
 
       toolResult:
-        'I could not prepare the email right now. Please try again.',
-
-      requiresConfirmation:
-        false,
-
-      currentTool: null,
+        "I could not prepare the email right now. Please try again.",
     };
   }
 }
 
+
 // ============================================================
-// SEND GMAIL
+// NODE 17
+// EMAIL APPROVAL
 // ============================================================
 
-export async function sendGmail(
+async function emailApprovalNode(
   state
 ) {
+
+  const approval =
+    interrupt({
+
+      type:
+        "gmail_confirmation",
+
+      message:
+        "Please confirm sending this email.",
+
+      action:
+        state.pendingAction,
+    });
+
+
+  if (!approval) {
+
+    return {
+
+      toolResult:
+        "Email sending cancelled.",
+
+      pendingAction:
+        null,
+
+      requiresConfirmation:
+        false,
+
+      approvalDecision: false,
+    };
+  }
+
+
+  return {
+
+    requiresConfirmation:
+      false,
+
+    approvalDecision: true,
+  };
+}
+
+
+// ============================================================
+// NODE 18
+// SEND EMAIL
+// ============================================================
+
+async function sendEmailNode(
+  state
+) {
+
+  const action =
+    state.pendingAction;
+
+
+  // ----------------------------------------------------------
+  // Check if user approved the action
+  // ----------------------------------------------------------
+
+  if (state.approvalDecision !== true) {
+
+    return {
+
+      toolResult:
+        "Email sending cancelled.",
+
+      pendingAction:
+        null,
+
+      requiresConfirmation:
+        false,
+    };
+  }
+
+
+  if (
+    !action ||
+    action.type !==
+      "gmail_send"
+  ) {
+
+    return {
+
+      toolResult:
+        "There is no pending email to send.",
+
+      pendingAction:
+        null,
+    };
+  }
+
+
+  const {
+    to,
+    subject,
+    body,
+  } = action;
+
+
+  if (!to || !body) {
+
+    return {
+
+      toolResult:
+        "The email information is incomplete, so I did not send it.",
+
+      pendingAction:
+        null,
+    };
+  }
+
+
   try {
-    const {
-      userId,
-      pendingAction,
-    } = state;
-
-    if (
-      !pendingAction ||
-      pendingAction.type !==
-        'gmail_send'
-    ) {
-      return {
-        ...state,
-
-        toolResult:
-          'There is no pending email to send.',
-
-        requiresConfirmation:
-          false,
-
-        pendingAction:
-          null,
-      };
-    }
-
-    const {
-      to,
-      subject,
-      body,
-    } = pendingAction;
-
-    if (
-      !to ||
-      !body
-    ) {
-      return {
-        ...state,
-
-        toolResult:
-          'The email information is incomplete, so I did not send it.',
-
-        requiresConfirmation:
-          false,
-
-        pendingAction:
-          null,
-      };
-    }
 
     await gmailService.sendEmail(
-      userId,
+      state.userId,
       to,
       subject,
       body,
       false
     );
 
+
     return {
-      ...state,
 
       toolResult:
         `Email sent successfully to ${to}.`,
 
-      requiresConfirmation:
-        false,
-
       pendingAction:
         null,
 
+      requiresConfirmation:
+        false,
+
       context: {
-        ...state.context,
 
         sentEmail: {
+
           to,
+
           subject,
         },
       },
     };
+
   } catch (error) {
+
     console.error(
-      '[GmailSend]',
+      "[GmailSend]",
       error
     );
 
+
     return {
-      ...state,
 
       toolResult:
-        `I couldn't send the email. ${error.message || 'Please try again.'}`,
-
-      requiresConfirmation:
-        false,
+        `I couldn't send the email. ${error.message || "Please try again."}`,
 
       pendingAction:
         null,
+
+      requiresConfirmation:
+        false,
     };
   }
 }
 
+
 // ============================================================
-// TAVILY WEB SEARCH
+// NODE 19
+// WEB SEARCH
 // ============================================================
 
-async function webSearchQuery(
+async function webSearchNode(
   state
 ) {
+
   try {
+
     if (
       !tavilyTool?.isConfigured
     ) {
+
       return {
-        ...state,
 
         toolResult:
-          'Web search is not configured yet. Please configure TAVILY_API_KEY in the backend environment.',
-
-        currentTool: null,
+          "Web search is not configured yet. Please configure TAVILY_API_KEY in the backend environment.",
       };
     }
+
 
     const message =
       state.messages[
         state.messages.length - 1
       ].content;
 
+
     const result =
       await tavilyTool.search(
         message,
         {
           maxResults: 5,
-          searchDepth: 'basic',
-          includeAnswer: true,
+
+          searchDepth:
+            "basic",
+
+          includeAnswer:
+            true,
         }
       );
+
 
     if (
       !result?.success
     ) {
+
       return {
-        ...state,
 
         toolResult:
           `I couldn't complete the web search: ${
             result?.error ||
-            'Unknown search error'
+            "Unknown search error"
           }`,
-
-        currentTool: null,
       };
     }
+
 
     const results =
       Array.isArray(
@@ -2209,82 +3579,86 @@ async function webSearchQuery(
         ? result.results
         : [];
 
+
     if (
       results.length === 0
     ) {
+
       return {
-        ...state,
 
         toolResult:
-          'I searched the web but could not find relevant results.',
-
-        currentTool: null,
+          "I searched the web but could not find relevant results.",
 
         context: {
-          ...state.context,
 
           webSearchResults: [],
         },
       };
     }
 
-    const context =
+
+    const searchContext =
       results
         .map(
           (item, index) =>
             `[Source ${index + 1}]
-Title: ${item.title || 'Untitled'}
-URL: ${item.url || 'Unavailable'}
-Content: ${item.content || ''}`
+Title: ${item.title || "Untitled"}
+URL: ${item.url || "Unavailable"}
+Content: ${item.content || ""}`
         )
-        .join('\n\n');
+        .join("\n\n");
+
 
     const prompt = `
 You are an Employee Copilot.
 
-Answer the user's question using the web search results below.
+Answer the user's question using the web search results.
 
 USER QUESTION:
 ${message}
 
 WEB RESULTS:
-${context}
+${searchContext}
 
-${result.answer
-  ? `SEARCH SUMMARY:\n${result.answer}\n`
-  : ''}
+${
+  result.answer
+    ? `SEARCH SUMMARY:\n${result.answer}\n`
+    : ""
+}
 
-RULES:
-- Use the provided search results.
+Rules:
+
+- Use provided search results.
 - Do not invent facts.
-- Clearly distinguish current web information from company information.
-- If sources disagree, mention the disagreement.
-- Keep the response concise and useful.
+- Clearly distinguish web information from company information.
+- If sources disagree, mention it.
+- Keep answer concise.
 - Do not expose internal implementation details.
 
 Answer:
 `;
 
+
     const response =
-      await llm.invoke(prompt);
+      await llm.invoke(
+        prompt
+      );
+
 
     const answer =
       validateAIOutput(
         String(
-          response.content || ''
+          response.content || ""
         )
       );
 
+
     return {
-      ...state,
 
       toolResult:
         answer,
 
-      currentTool: null,
-
       context: {
-        ...state.context,
 
         webSearchResults:
           results,
@@ -2293,39 +3667,61 @@ Answer:
           result.answer || null,
       },
     };
+
   } catch (error) {
+
     console.error(
-      '[Tavily]',
+      "[Tavily]",
       error
     );
 
+
     return {
-      ...state,
 
       toolResult:
-        'I encountered an error while searching the web. Please try again.',
-
-      currentTool: null,
+        "I encountered an error while searching the web. Please try again.",
     };
   }
 }
 
+
 // ============================================================
+// NODE 20
 // GENERAL RAG
 // ============================================================
 
-async function generalRAGQuery(
+async function generalRAGNode(
   state
 ) {
+
   try {
+
     const message =
       state.messages[
         state.messages.length - 1
       ].content;
 
-    // Build enhanced system prompt with compact context
-    const basePrompt = `You are an Employee Copilot. Answer the user's question using the company knowledge base.`;
-    const enhancedPrompt = buildEnhancedSystemPrompt(basePrompt, state.compactContext);
+
+    const basePrompt =
+      `
+You are an Employee Copilot.
+
+Answer the user's question using the company knowledge base.
+
+Do not invent company policies.
+`;
+
+
+    const enhancedPrompt =
+      state.compactContext
+
+        ? conversationMemoryService.buildLLMContext(
+            state.compactContext,
+            basePrompt
+          )
+
+        : basePrompt;
+
 
     const ragResult =
       await runRAGWorkflow(
@@ -2335,1436 +3731,662 @@ async function generalRAGQuery(
         enhancedPrompt
       );
 
+
     return {
-      ...state,
 
       toolResult:
         ragResult.answer,
 
-      currentTool: null,
-
       context: {
-        ...state.context,
 
         ragResult,
       },
+
+      sources:
+        ragResult.sources || [],
     };
+
   } catch (error) {
+
     console.error(
-      '[RAG]',
+      "[RAG]",
       error
     );
 
+
     return {
-      ...state,
 
       toolResult:
-        'I could not retrieve the company knowledge right now. Please try again.',
-
-      currentTool: null,
+        "I could not retrieve the company knowledge right now. Please try again.",
     };
   }
 }
 
+
 // ============================================================
-// CALENDAR EVENT DETAILS
+// RESPONSE NODE
+// ============================================================
+//
+// Har branch ka result yahan aayega.
+//
+// Isliye frontend ko ek consistent structure milega.
 // ============================================================
 
-async function extractCalendarEventDetails(
-  userMessage
-) {
-  try {
-    const prompt = `
-Extract calendar event creation information.
+async function responseNode(state) {
 
-Return ONLY valid JSON:
-
-{
-  "title": "meeting title" | null,
-  "date": "YYYY-MM-DD" | null,
-  "start_time": "HH:MM" | null,
-  "end_time": "HH:MM" | null,
-  "duration_minutes": number | null,
-  "description": "description" | null,
-  "attendees": ["email@example.com"] | [],
-  "location": "location" | null
-}
-
-Rules:
-- Convert today/tomorrow/next weekday into actual dates.
-- Use 24-hour time.
-- Do not invent missing information.
-- If no end time is provided, duration_minutes can be 60.
-- Do not invent attendees.
-
-User:
-${userMessage}
-`;
-
-    const response =
-      await llm.invoke(prompt);
-
-    return extractJSON(
-      response.content
-    );
-  } catch (error) {
-    console.error(
-      '[CalendarExtraction]',
-      error
+  const response =
+    validateAIOutput(
+      state.toolResult ||
+      "I could not generate a response."
     );
 
-    return null;
-  }
-}
-
-// ============================================================
-// VALIDATE CALENDAR EVENT
-// ============================================================
-
-async function validateCalendarEvent(
-  state
-) {
-  try {
-    const action =
-      state.pendingAction;
-
-    if (
-      !action ||
-      action.type !==
-        'calendar_create'
-    ) {
-      return {
-        ...state,
-
-        toolResult:
-          'There is no pending calendar event to validate.',
-
-        requiresConfirmation:
-          false,
-      };
-    }
-
-    const {
-      title,
-      date,
-      start_time,
-      end_time,
-      duration_minutes,
-    } = action;
-
-    if (!title) {
-      return {
-        ...state,
-
-        toolResult:
-          'What would you like to call the meeting?',
-
-        requiresConfirmation:
-          false,
-
-        missingField:
-          'meeting title',
-      };
-    }
-
-    if (!date) {
-      return {
-        ...state,
-
-        toolResult:
-          'What date should I schedule the meeting for?',
-
-        requiresConfirmation:
-          false,
-
-        missingField:
-          'date',
-      };
-    }
-
-    if (!start_time) {
-      return {
-        ...state,
-
-        toolResult:
-          'What time should I schedule the meeting?',
-
-        requiresConfirmation:
-          false,
-
-        missingField:
-          'time',
-      };
-    }
-
-    let finalEndTime =
-      end_time;
-
-    if (
-      !finalEndTime
-    ) {
-      const start =
-        new Date(
-          `${date}T${start_time}:00`
-        );
-
-      const duration =
-        Number(
-          duration_minutes || 60
-        );
-
-      finalEndTime =
-        new Date(
-          start.getTime() +
-            duration * 60000
-        )
-          .toTimeString()
-          .slice(0, 5);
-    }
-
-    state.pendingAction.end_time =
-      finalEndTime;
-
-    // --------------------------------------------------------
-    // Check conflicts
-    // --------------------------------------------------------
-
-    let hasConflicts =
-      false;
-
-    let conflicts = [];
-
-    try {
-      const conflictCheck =
-        await googleCalendarService.checkConflicts(
-          state.userId,
-          date,
-          date
-        );
-
-      if (
-        conflictCheck?.hasConflicts
-      ) {
-        hasConflicts =
-          true;
-
-        conflicts =
-          conflictCheck.conflicts ||
-          [];
-      }
-    } catch (error) {
-      console.warn(
-        '[Calendar] Conflict check failed:',
-        error.message
-      );
-    }
-
-    return {
-      ...state,
-
-      requiresConfirmation:
-        true,
-
-      hasConflicts,
-
-      context: {
-        ...state.context,
-
-        calendarConflicts:
-          conflicts,
-      },
-
-      toolResult:
-        hasConflicts
-          ? 'The meeting is ready, but there is a calendar conflict during this period.'
-          : 'The meeting is ready to be scheduled.',
-    };
-  } catch (error) {
-    console.error(
-      '[CalendarValidation]',
-      error
-    );
-
-    return {
-      ...state,
-
-      toolResult:
-        'I could not validate the calendar event.',
-
-      requiresConfirmation:
-        false,
-    };
-  }
-}
-
-// ============================================================
-// CREATE CALENDAR EVENT
-// ============================================================
-
-export async function createCalendarEvent(
-  state
-) {
-  try {
-    const {
-      userId,
-      pendingAction,
-    } = state;
-
-    if (
-      !pendingAction ||
-      pendingAction.type !==
-        'calendar_create'
-    ) {
-      return {
-        ...state,
-
-        toolResult:
-          'There is no pending calendar event to create.',
-
-        requiresConfirmation:
-          false,
-
-        pendingAction:
-          null,
-      };
-    }
-
-    const {
-      title,
-      date,
-      start_time,
-      end_time,
-      description,
-      location,
-      attendees,
-    } = pendingAction;
-
-    if (
-      !title ||
-      !date ||
-      !start_time ||
-      !end_time
-    ) {
-      return {
-        ...state,
-
-        toolResult:
-          'The calendar event information is incomplete.',
-
-        requiresConfirmation:
-          false,
-
-        pendingAction:
-          null,
-      };
-    }
-
-    const timezone =
-      Intl.DateTimeFormat()
-        .resolvedOptions()
-        .timeZone ||
-      'Asia/Kolkata';
-
-    const eventData = {
-      summary: title,
-
-      start: {
-        dateTime:
-          `${date}T${start_time}:00`,
-
-        timeZone:
-          timezone,
-      },
-
-      end: {
-        dateTime:
-          `${date}T${end_time}:00`,
-
-        timeZone:
-          timezone,
-      },
-    };
-
-    if (description) {
-      eventData.description =
-        description;
-    }
-
-    if (location) {
-      eventData.location =
-        location;
-    }
-
-    if (
-      Array.isArray(attendees) &&
-      attendees.length > 0
-    ) {
-      eventData.attendees =
-        attendees
-          .filter(
-            email =>
-              typeof email ===
-                'string' &&
-              email.includes('@')
-          )
-          .map(
-            email => ({
-              email,
-            })
-          );
-    }
-
-    const event =
-      await googleCalendarService.createEvent(
-        userId,
-        eventData
-      );
-
-    return {
-      ...state,
-
-      toolResult:
-        `Meeting scheduled successfully.\n\n` +
-        `**${title}**\n` +
-        `Date: ${date}\n` +
-        `Time: ${start_time} - ${end_time}`,
-
-      requiresConfirmation:
-        false,
-
-      pendingAction:
-        null,
-
-      context: {
-        ...state.context,
-
-        createdEvent:
-          event,
-      },
-    };
-  } catch (error) {
-    console.error(
-      '[CalendarCreate]',
-      error
-    );
-
-    if (
-      error.code ===
-        'GOOGLE_CALENDAR_NOT_CONNECTED' ||
-      error.message ===
-        'GOOGLE_CALENDAR_NOT_CONNECTED'
-    ) {
-      return {
-        ...state,
-
-        toolResult:
-          'Your Google Calendar is not connected. Please connect it first.',
-
-        requiresConfirmation:
-          false,
-
-        pendingAction:
-          null,
-      };
-    }
-
-    return {
-      ...state,
-
-      toolResult:
-        'I could not create the calendar event. Please try again.',
-
-      requiresConfirmation:
-        false,
-
-      pendingAction:
-        null,
-    };
-  }
-}
-
-// ============================================================
-// INTENT CLASSIFICATION
-// ============================================================
-
-async function classifyIntent(userMessage) {
-  try {
-    const text = String(userMessage || '')
-      .trim()
-      .toLowerCase();
-
-    // ----------------------------------------------------------
-    // DETERMINISTIC LEAVE ROUTING
-    // ----------------------------------------------------------
-
-    // Leave balance
-    if (
-      /\b(leave balance|leaves balance|how many leaves|how much leave|remaining leave|leave remaining)\b/i.test(
-        text
-      )
-    ) {
-      return 'leave_balance';
-    }
-
-    // Leave policy
-    if (
-      /\b(leave policy|leave rules|leave entitlement|leave procedure|leave guidelines)\b/i.test(
-        text
-      )
-    ) {
-      return 'leave_policy';
-    }
-
-    // Leave request
-    if (
-      /\b(give me leave|grant me leave|i need leave|i want leave|take leave|request leave|apply for leave|apply leave|get leave|need to take leave|want to take leave|can i get leave|please give me leave)\b/i.test(
-        text
-      )
-    ) {
-      return 'leave_request';
-    }
-
-    // Calendar events - deterministic patterns
-    if (
-      /\b(meeting|calendar|schedule|appointment|event)\b/i.test(text) &&
-      (/\b(today|tomorrow|this week|next week|this month|upcoming|next \d+ days|am i free|am i available|do i have|show|what|list|check)\b/i.test(text) ||
-       /\b(in the next \d+ days|in the next week|in the next month)\b/i.test(text))
-    ) {
-      return 'calendar_events';
-    }
-
-    // Availability check patterns (these should take precedence)
-    if (
-      /\b(am i free|am i available|do i have any meetings|do i have any events|check my|show my|what meetings|what events|list my|my schedule|my calendar)\b/i.test(text) &&
-      /\b(today|tomorrow|this week|next week|this month|upcoming|next \d+ days|on|at|@)\b/i.test(text)
-    ) {
-      return 'calendar_events';
-    }
-
-    // Calendar create - deterministic patterns (must be more specific)
-    if (
-      /\b(schedule|create|add|set up|book|arrange)\b/i.test(text) &&
-      /\b(meeting|appointment|event|call|discussion)\b/i.test(text) &&
-      !/\b(do i have|am i free|am i available|show|what|list|check)\b/i.test(text)
-    ) {
-      return 'calendar_create';
-    }
-
-    // ----------------------------------------------------------
-    // GEMINI FALLBACK
-    // ----------------------------------------------------------
-
-    const prompt = `
-Classify the user request into exactly ONE category.
-
-Categories:
-
-leave_balance
-- User wants their own leave balance.
-
-leave_policy
-- User asks about company leave policy.
-
-leave_request
-- User wants to apply, request, take, get, or be given leave.
-- Informal phrases such as:
-  "give me leave"
-  "I need leave"
-  "I want leave"
-  "I need to take leave"
-  "please give me leave"
-  must be classified as leave_request.
-
-calendar_events
-- User wants to check their own Google Calendar.
-- Availability checks: "Am I free on Friday at 3 PM?"
-- Meeting queries: "Do I have any meetings in the next 7 days?"
-- Schedule checks: "What meetings do I have tomorrow?"
-- Calendar reviews: "Show my calendar for this week"
-
-calendar_create
-- User wants to create/schedule a calendar event.
-- Meeting scheduling: "Schedule a team meeting tomorrow at 2 PM for 1 hour"
-- Event creation: "Add a meeting on September 10 at 11 AM"
-- Booking appointments: "Book a client call next Tuesday"
-
-gmail_read
-- User wants to read/search their own Gmail.
-
-gmail_send
-- User wants to send/draft/reply to an email.
-
-web_search
-- User explicitly asks for latest/current/external internet information.
-
-general
-- Company knowledge, casual questions, coding/help, or anything else.
-
-Important:
-- "What is our leave policy?" = leave_policy
-- "How many leaves do I have?" = leave_balance
-- "Apply leave from Monday to Wednesday" = leave_request
-- "Give me leave" = leave_request
-- "I need leave tomorrow" = leave_request
-- "I want to take leave" = leave_request
-- "Please give me leave" = leave_request
-- "Do I have a meeting today?" = calendar_events
-- "Am I free on Friday at 3 PM?" = calendar_events
-- "What meetings do I have tomorrow?" = calendar_events
-- "Do I have any meetings in the next 7 days?" = calendar_events
-- "Schedule a meeting tomorrow at 3 PM" = calendar_create
-- "Add a meeting on September 10 at 11 AM" = calendar_create
-- "Show my emails" = gmail_read
-- "Send an email to Rahul" = gmail_send
-- "What's the latest React version?" = web_search
-
-Return ONLY the category.
-
-User:
-${userMessage}
-`;
-
-    const response = await llm.invoke(prompt);
-
-    const intent = String(response.content || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[`"' ]/g, '');
-
-    if (VALID_INTENTS.includes(intent)) {
-      return intent;
-    }
-
-    return 'general';
-  } catch (error) {
-    console.error('[Intent]', error);
-    return 'general';
-  }
-}
-
-// ============================================================
-// BUILD ACTION METADATA
-// ============================================================
-
-function buildActionMetadata(
-  pendingAction,
-  context = {}
-) {
-  if (!pendingAction) {
-    return null;
-  }
 
   return {
-    actionId:
-      pendingAction.actionId,
 
-    actionType:
-      pendingAction.type,
+    response,
 
-    actionData:
-      pendingAction,
+    sources:
+      state.sources ||
+      state.context?.ragResult?.sources ||
+      [],
 
-    title:
-      pendingAction.title ||
-      pendingAction.leave_type ||
-      'Confirm action',
-
-    date:
-      pendingAction.date ||
-      pendingAction.start_date ||
+    error:
       null,
-
-    time:
-      pendingAction.start_time ||
-      null,
-
-    hasConflicts:
-      context.hasConflicts || false,
-
-    conflictDetails:
-      context.calendarConflicts || null,
-
-    calendarStatus:
-      context.calendarStatus || null,
   };
 }
 
+
 // ============================================================
-// MAIN WORKFLOW
+// GRAPH
+// ============================================================
+//
+// AB actual LangGraph yahan ban raha hai.
+//
 // ============================================================
 
-export async function runLangGraphWorkflow(
-  userMessage,
-  userId,
-  userRole,
-  conversationId = null,
-  actionId = null,
-  isConfirmed = false,
-  actionData = null,
-  compactContext = null
-) {
-  let intent = 'general'; // Initialize with default value for error handling
-
-  try {
-    // --------------------------------------------------------
-    // Validate input
-    // --------------------------------------------------------
-
-    const sanitizedInput =
-      validateUserInput(
-        userMessage
-      );
+const workflow =
+  new StateGraph(
+    EmployeeState
+  )
 
     // --------------------------------------------------------
-    // CHECK FOR PENDING ACTIONS FIRST (Intent Routing Guardrail)
-    // --------------------------------------------------------
-    
-    if (conversationId) {
-      const hasPendingAction = await conversationStateService.hasPendingAction(conversationId);
-      
-      if (hasPendingAction && !isConfirmed) {
-        // Handle vague responses against pending workflow
-        const vagueResponse = isVagueConfirmation(sanitizedInput);
-        
-        if (vagueResponse) {
-          const pendingActionState = await conversationStateService.getPendingAction(conversationId);
-          
-          if (pendingActionState) {
-            console.log('[LangGraph] Resolving vague response against pending action:', pendingActionState.actionId);
-            
-            // Verify the action is still in valid state before executing
-            const stateByActionId = await conversationStateService.getStateByActionId(pendingActionState.actionId);
-            
-            if (!stateByActionId || String(stateByActionId.user_id) !== String(userId)) {
-              console.log('[LangGraph] Invalid or expired pending action, clearing state');
-              await conversationStateService.clearPendingAction(conversationId);
-              
-              return {
-                response: 'The pending action has expired or is no longer valid. Please submit your request again.',
-                sources: [],
-                requiresConfirmation: false,
-                pendingAction: null,
-                actionMetadata: null,
-                error: null
-              };
-            }
-            
-            // Execute the pending action based on vague response
-            if (vagueResponse === 'confirm') {
-              const result = await leaveWorkflowService.confirmAndSubmitLeaveRequest(
-                conversationId,
-                userId,
-                pendingActionState.actionId
-              );
-              
-              return {
-                response: result.message,
-                sources: [],
-                requiresConfirmation: false,
-                pendingAction: null,
-                actionMetadata: null,
-                error: result.success ? null : result.error
-              };
-            } else if (vagueResponse === 'cancel') {
-              const result = await leaveWorkflowService.cancelLeaveRequest(
-                conversationId,
-                userId,
-                pendingActionState.actionId
-              );
-              
-              return {
-                response: result.message,
-                sources: [],
-                requiresConfirmation: false,
-                pendingAction: null,
-                actionMetadata: null,
-                error: result.success ? null : result.error
-              };
-            }
-          }
-        } else {
-          // User sent an unrelated question while pending action exists
-          const pendingActionState = await conversationStateService.getPendingAction(conversationId);
-          
-          if (pendingActionState) {
-            console.log('[LangGraph] Unrelated question with pending action, preserving workflow');
-            
-            // Verify the action is still valid
-            const stateByActionId = await conversationStateService.getStateByActionId(pendingActionState.actionId);
-            
-            if (!stateByActionId || String(stateByActionId.user_id) !== String(userId)) {
-              console.log('[LangGraph] Invalid or expired pending action, clearing state');
-              await conversationStateService.clearPendingAction(conversationId);
-              
-              // Fall through to normal intent processing
-            } else {
-              return {
-                response: `You still have a leave request waiting for confirmation:\n\n` +
-                         `**Leave type:** ${pendingActionState.actionData.leave_type}\n` +
-                         `**Dates:** ${pendingActionState.actionData.start_date} → ${pendingActionState.actionData.end_date}\n` +
-                         `**Days:** ${pendingActionState.actionData.number_of_days}\n\n` +
-                         `Would you like to continue with this request or cancel it?`,
-                sources: [],
-                requiresConfirmation: true,
-                pendingAction: pendingActionState.actionData,
-                actionMetadata: {
-                  actionId: pendingActionState.actionId,
-                  actionType: pendingActionState.actionData.type,
-                  title: pendingActionState.actionData.leave_type,
-                  date: pendingActionState.actionData.start_date,
-                  hasConflicts: false
-                },
-                error: null
-              };
-            }
-          }
-        }
-      }
-    }
-
-    // --------------------------------------------------------
-    // Initial state
+    // Core nodes
     // --------------------------------------------------------
 
-    let state = {
-      messages: [
-        {
-          role: 'user',
-          content:
-            sanitizedInput,
-        },
-      ],
+    .addNode(
+      "validateInput",
+      validateInputNode
+    )
 
-      userId,
+    .addNode(
+      "classifyIntent",
+      classifyIntentNode
+    )
 
-      userRole,
 
-      currentTool: null,
+    // --------------------------------------------------------
+    // Leave
+    // --------------------------------------------------------
 
-      toolResult: null,
+    .addNode(
+      "leaveBalance",
+      leaveBalanceNode
+    )
 
-      requiresConfirmation:
-        false,
+    .addNode(
+      "leavePolicy",
+      leavePolicyNode
+    )
 
-      pendingAction:
-        actionData || null,
+    .addNode(
+      "prepareLeave",
+      prepareLeaveNode
+    )
 
-      context: {},
+    .addNode(
+      "validateLeave",
+      validateLeaveNode
+    )
 
-      hasConflicts:
-        false,
+    .addNode(
+      "leaveApproval",
+      leaveApprovalNode
+    )
 
-      compactContext: compactContext || null,
-    };
+    .addNode(
+      "submitLeave",
+      submitLeaveNode
+    )
 
-    // ========================================================
-    // CONFIRMATION FLOW
-    // ========================================================
-    //
-    // This is the critical fix.
-    //
-    // "yes" should NEVER be classified as a new
-    // general/RAG request.
-    //
-    // Instead:
-    //
-    // UI
-    // ↓
-    // actionId + actionData
-    // ↓
-    // direct execution
-    //
-    // ========================================================
 
-    if (
-      isConfirmed &&
-      actionId
-    ) {
-      console.log(
-        '[Action] Executing confirmed action:',
-        actionId
-      );
+    // --------------------------------------------------------
+    // Calendar
+    // --------------------------------------------------------
 
-      if (
-        !actionData
-      ) {
-        return {
-          response:
-            'The confirmation data has expired. Please submit the action again.',
+    .addNode(
+      "calendarQuery",
+      calendarQueryNode
+    )
 
-          sources: [],
+    .addNode(
+      "prepareCalendar",
+      prepareCalendarNode
+    )
 
-          requiresConfirmation:
-            false,
+    .addNode(
+      "validateCalendar",
+      validateCalendarNode
+    )
 
-          pendingAction:
-            null,
+    .addNode(
+      "calendarApproval",
+      calendarApprovalNode
+    )
 
-          actionMetadata:
-            null,
+    .addNode(
+      "createCalendar",
+      createCalendarNode
+    )
 
-          error:
-            'MISSING_ACTION_DATA',
-        };
-      }
 
-      const actionType =
-        actionData.type;
+    // --------------------------------------------------------
+    // Gmail
+    // --------------------------------------------------------
 
-      if (
-        !ACTION_TYPES.includes(
-          actionType
-        )
-      ) {
-        return {
-          response:
-            'I could not recognize the requested action.',
+    .addNode(
+      "gmailRead",
+      gmailReadNode
+    )
 
-          sources: [],
+    .addNode(
+      "prepareEmail",
+      prepareEmailNode
+    )
 
-          requiresConfirmation:
-            false,
+    .addNode(
+      "emailApproval",
+      emailApprovalNode
+    )
 
-          pendingAction:
-            null,
+    .addNode(
+      "sendEmail",
+      sendEmailNode
+    )
 
-          actionMetadata:
-            null,
 
-          error:
-            'INVALID_ACTION_TYPE',
-        };
-      }
+    // --------------------------------------------------------
+    // Other
+    // --------------------------------------------------------
 
-      // Prevent action type spoofing.
-      if (
-        actionType ===
-          'leave_request' &&
-        !actionId.startsWith(
-          'leave_request_'
-        )
-      ) {
-        throw new Error(
-          'Invalid leave action ID.'
-        );
-      }
+    .addNode(
+      "webSearch",
+      webSearchNode
+    )
 
-      if (
-        actionType ===
-          'calendar_create' &&
-        !actionId.startsWith(
-          'calendar_create_'
-        )
-      ) {
-        throw new Error(
-          'Invalid calendar action ID.'
-        );
-      }
+    .addNode(
+      "generalRAG",
+      generalRAGNode
+    )
 
-      if (
-        actionType ===
-          'gmail_send' &&
-        !actionId.startsWith(
-          'gmail_send_'
-        )
-      ) {
-        throw new Error(
-          'Invalid Gmail action ID.'
-        );
-      }
 
-      state.pendingAction = {
-        ...actionData,
-        actionId,
-      };
+    // --------------------------------------------------------
+    // Final response
+    // --------------------------------------------------------
 
-      // ------------------------------------------------------
-      // Execute mutation
-      // ------------------------------------------------------
-
-      if (
-        actionType ===
-        'leave_request'
-      ) {
-        state =
-          await submitLeaveRequest(
-            state
-          );
-      }
-
-      else if (
-        actionType ===
-        'calendar_create'
-      ) {
-        state =
-          await createCalendarEvent(
-            state
-          );
-      }
-
-      else if (
-        actionType ===
-        'gmail_send'
-      ) {
-        state =
-          await sendGmail(
-            state
-          );
-      }
-
-      const response =
-        validateAIOutput(
-          state.toolResult
-        );
-
-      return {
-        response,
-
-        sources:
-          state.context
-            ?.ragResult
-            ?.sources || [],
-
-        requiresConfirmation:
-          false,
-
-        pendingAction:
-          null,
-
-        actionMetadata:
-          null,
-
-        error:
-          null,
-      };
-    }
-
-    // ========================================================
-    // NORMAL REQUEST
-    // ========================================================
-
-    intent =
-      await classifyIntent(
-        sanitizedInput
-      );
-
-    loggingService.logAIRequest(userId, conversationId, intent, sanitizedInput);
-
-    console.log(
-      '[Copilot] Intent:',
-      intent
+    .addNode(
+      "generateResponse",
+      responseNode
     );
 
-    switch (intent) {
 
-      // ======================================================
-      // LEAVE BALANCE
-      // ======================================================
+// ============================================================
+// EDGES
+// ============================================================
 
-      case 'leave_balance':
-        state =
-          await queryLeaveBalance(
-            state
-          );
-        break;
 
-      // ======================================================
-      // LEAVE POLICY
-      // ======================================================
+// START
+//
+// User request graph mein enter karega.
 
-      case 'leave_policy':
-        state =
-          await checkLeavePolicy(
-            state
-          );
-        break;
+workflow.addEdge(
+  START,
+  "validateInput"
+);
 
-      // ======================================================
-      // LEAVE REQUEST
-      // ======================================================
 
-      case 'leave_request': {
-        // Check if there's an incomplete request to continue
-        if (conversationId) {
-          const existingState = await conversationStateService.findByConversationId(conversationId);
-          
-          if (existingState && existingState.workflow_step === COLLECTING_DETAILS) {
-            // Continue the incomplete request
-            const details = await extractLeaveDetails(sanitizedInput);
-            const workflowResult = await leaveWorkflowService.continueIncompleteRequest(
-              conversationId,
-              userId,
-              details
-            );
+// validate → classify
 
-            if (workflowResult.success) {
-              state.requiresConfirmation = true;
-              state.pendingAction = workflowResult.pendingAction;
-              state.toolResult = workflowResult.message;
-              state.hasConflicts = workflowResult.calendarConflicts ? true : false;
-              state.context = {
-                ...state.context,
-                calendarStatus: workflowResult.calendarStatus,
-                calendarConflicts: workflowResult.calendarConflicts
-              };
-            } else {
-              state.requiresConfirmation = false;
-              state.pendingAction = null;
-              state.toolResult = workflowResult.message;
-            }
-            break;
-          }
-        }
+workflow.addEdge(
+  "validateInput",
+  "classifyIntent"
+);
 
-        const details =
-          await extractLeaveDetails(
-            sanitizedInput
-          );
 
-        if (
-          !details ||
-          !details.leave_type ||
-          !details.start_date ||
-          !details.end_date
-        ) {
-          state.toolResult =
-            `To request leave, I need:\n\n` +
-            `• Leave type: annual, sick, or personal\n` +
-            `• Start date\n` +
-            `• End date\n` +
-            `• Reason (optional)\n\n` +
-            `Example: "Apply annual leave from 2026-09-01 to 2026-09-03 for vacation."`;
+// ============================================================
+// INTENT ROUTING
+// ============================================================
+//
+// Ye tumhare old switch(intent) ko replace karta hai.
+//
+// ============================================================
 
-          break;
-        }
+workflow.addConditionalEdges(
 
-        // Use the new leave workflow service
-        if (conversationId) {
-          const workflowResult = await leaveWorkflowService.initializeLeaveWorkflow(
-            conversationId,
-            userId,
-            details
-          );
+  "classifyIntent",
 
-          if (workflowResult.success) {
-            state.requiresConfirmation = true;
-            state.pendingAction = workflowResult.pendingAction;
-            state.toolResult = workflowResult.message;
-            state.hasConflicts = workflowResult.calendarConflicts ? true : false;
-            state.context = {
-              ...state.context,
-              calendarStatus: workflowResult.calendarStatus,
-              calendarConflicts: workflowResult.calendarConflicts
-            };
-          } else {
-            state.requiresConfirmation = false;
-            state.pendingAction = null;
-            state.toolResult = workflowResult.message;
-          }
-        } else {
-          // Fallback to old logic if no conversationId
-          const numberOfDays =
-            await calculateLeaveDays(
-              details.start_date,
-              details.end_date
-            );
+  routeByIntent,
 
-          const pendingAction = {
-            type:
-              'leave_request',
+  {
 
-            actionId:
-              `leave_request_${Date.now()}_${Math.random()
-                .toString(36)
-                .slice(2, 8)}`,
+    leave_balance:
+      "leaveBalance",
 
-            leave_type:
-              details.leave_type,
+    leave_policy:
+      "leavePolicy",
 
-            start_date:
-              details.start_date,
+    leave_request:
+      "prepareLeave",
 
-            end_date:
-              details.end_date,
+    calendar_events:
+      "calendarQuery",
 
-            reason:
-              details.reason ||
-              null,
+    calendar_create:
+      "prepareCalendar",
 
-            number_of_days:
-              numberOfDays,
-          };
+    gmail_read:
+      "gmailRead",
 
-          state.pendingAction =
-            pendingAction;
+    gmail_send:
+      "prepareEmail",
 
-          state =
-            await validateLeaveRequest(
-              state
-            );
+    web_search:
+      "webSearch",
 
-          if (
-            state.requiresConfirmation
-          ) {
-            state.toolResult =
-              `Please review your leave request:\n\n` +
-              `**Leave type:** ${pendingAction.leave_type}\n` +
-              `**Dates:** ${pendingAction.start_date} → ${pendingAction.end_date}\n` +
-              `**Days:** ${pendingAction.number_of_days}\n` +
-              `**Reason:** ${
-                pendingAction.reason ||
-                'Not specified'
-              }\n\n` +
-              `Would you like me to submit this leave request?`;
-          }
-        }
+    general:
+      "generalRAG",
+  }
+);
 
-        break;
-      }
 
-      // ======================================================
-      // CALENDAR EVENTS
-      // ======================================================
+// ============================================================
+// SIMPLE NODES → RESPONSE
+// ============================================================
 
-      case 'calendar_events':
-        state =
-          await queryCalendarEvents(
-            state
-          );
-        break;
+workflow.addEdge(
+  "leaveBalance",
+  "generateResponse"
+);
 
-      // ======================================================
-      // CALENDAR CREATE
-      // ======================================================
+workflow.addEdge(
+  "leavePolicy",
+  "generateResponse"
+);
 
-      case 'calendar_create': {
-        let details =
-          await extractCalendarEventDetails(
-            sanitizedInput
-          );
+workflow.addEdge(
+  "calendarQuery",
+  "generateResponse"
+);
 
-        if (!details) {
-          details = {};
-        }
+workflow.addEdge(
+  "gmailRead",
+  "generateResponse"
+);
 
-        if (
-          !details.date
-        ) {
-          details.date =
-            parseRelativeDate(
-              sanitizedInput
-            );
-        }
+workflow.addEdge(
+  "webSearch",
+  "generateResponse"
+);
 
-        if (
-          details.start_time
-        ) {
-          details.start_time =
-            parseTime(
-              details.start_time
-            );
-        }
+workflow.addEdge(
+  "generalRAG",
+  "generateResponse"
+);
 
-        if (
-          details.end_time
-        ) {
-          details.end_time =
-            parseTime(
-              details.end_time
-            );
-        }
 
-        const pendingAction = {
-          type:
-            'calendar_create',
+// ============================================================
+// LEAVE FLOW
+// ============================================================
 
-          actionId:
-            `calendar_create_${Date.now()}_${Math.random()
-              .toString(36)
-              .slice(2, 8)}`,
+workflow.addEdge(
+  "prepareLeave",
+  "validateLeave"
+);
 
-          title:
-            details.title ||
-            null,
 
-          date:
-            details.date ||
-            null,
+workflow.addConditionalEdges(
 
-          start_time:
-            details.start_time ||
-            null,
+  "validateLeave",
 
-          end_time:
-            details.end_time ||
-            null,
+  state => {
 
-          duration_minutes:
-            details.duration_minutes ||
-            60,
+    if (
+      state.requiresConfirmation
+    ) {
 
-          description:
-            details.description ||
-            null,
-
-          attendees:
-            Array.isArray(
-              details.attendees
-            )
-              ? details.attendees
-              : [],
-
-          location:
-            details.location ||
-            null,
-        };
-
-        state.pendingAction =
-          pendingAction;
-
-        state =
-          await validateCalendarEvent(
-            state
-          );
-
-        if (
-          state.requiresConfirmation
-        ) {
-          const conflictText =
-            state.hasConflicts
-              ? '\n\n⚠️ There is a calendar conflict during this time.'
-              : '\n\n✅ No calendar conflict detected.';
-
-          state.toolResult =
-            `Please review this meeting:\n\n` +
-            `**Title:** ${pendingAction.title}\n` +
-            `**Date:** ${pendingAction.date}\n` +
-            `**Time:** ${pendingAction.start_time} - ${pendingAction.end_time}` +
-            `${
-              pendingAction.location
-                ? `\n**Location:** ${pendingAction.location}`
-                : ''
-            }` +
-            `${
-              pendingAction.description
-                ? `\n**Description:** ${pendingAction.description}`
-                : ''
-            }` +
-            conflictText +
-            `\n\nWould you like me to schedule it?`;
-
-          state.context = {
-            ...state.context,
-            calendarStatus: state.hasConflicts ? 'CONNECTED' : 'CONNECTED',
-            calendarConflicts: state.context?.calendarConflicts || null
-          };
-        }
-
-        break;
-      }
-
-      // ======================================================
-      // GMAIL READ
-      // ======================================================
-
-      case 'gmail_read':
-        state =
-          await gmailReadQuery(
-            state
-          );
-        break;
-
-      // ======================================================
-      // GMAIL SEND
-      // ======================================================
-
-      case 'gmail_send':
-        state =
-          await gmailSendQuery(
-            state
-          );
-        break;
-
-      // ======================================================
-      // TAVILY
-      // ======================================================
-
-      case 'web_search':
-        state =
-          await webSearchQuery(
-            state
-          );
-        break;
-
-      // ======================================================
-      // GENERAL → RAG
-      // ======================================================
-
-      case 'general':
-      default:
-        state =
-          await generalRAGQuery(
-            state
-          );
-        break;
+      return "approval";
     }
 
-    // ========================================================
-    // OUTPUT
-    // ========================================================
 
-    const response =
-      validateAIOutput(
-        state.toolResult ||
-          'I could not generate a response.'
+    return "done";
+  },
+
+  {
+
+    approval:
+      "leaveApproval",
+
+    done:
+      "generateResponse",
+  }
+);
+
+
+workflow.addConditionalEdges(
+
+  "leaveApproval",
+
+  state => {
+
+    // interrupt resume ke baad
+    // agar approvalDecision true hai to submit.
+
+    if (state.approvalDecision === true) {
+      return "submit";
+    }
+
+    return "cancel";
+  },
+
+  {
+
+    submit:
+      "submitLeave",
+
+    cancel:
+      "generateResponse",
+  }
+);
+
+
+workflow.addEdge(
+  "submitLeave",
+  "generateResponse"
+);
+
+
+// ============================================================
+// CALENDAR FLOW
+// ============================================================
+
+workflow.addEdge(
+  "prepareCalendar",
+  "validateCalendar"
+);
+
+
+workflow.addConditionalEdges(
+
+  "validateCalendar",
+
+  state => {
+
+    if (
+      state.requiresConfirmation
+    ) {
+
+      return "approval";
+    }
+
+
+    return "done";
+  },
+
+  {
+
+    approval:
+      "calendarApproval",
+
+    done:
+      "generateResponse",
+  }
+);
+
+
+workflow.addConditionalEdges(
+
+  "calendarApproval",
+
+  state => {
+
+    if (state.approvalDecision === true) {
+      return "create";
+    }
+
+    return "cancel";
+  },
+
+  {
+
+    create:
+      "createCalendar",
+
+    cancel:
+      "generateResponse",
+  }
+);
+
+
+workflow.addEdge(
+  "createCalendar",
+  "generateResponse"
+);
+
+
+// ============================================================
+// EMAIL FLOW
+// ============================================================
+
+workflow.addConditionalEdges(
+
+  "prepareEmail",
+
+  state => {
+
+    if (
+      state.requiresConfirmation
+    ) {
+
+      return "approval";
+    }
+
+
+    return "done";
+  },
+
+  {
+
+    approval:
+      "emailApproval",
+
+    done:
+      "generateResponse",
+  }
+);
+
+
+workflow.addConditionalEdges(
+
+  "emailApproval",
+
+  state => {
+
+    if (state.approvalDecision === true) {
+      return "send";
+    }
+
+    return "cancel";
+  },
+
+  {
+
+    send:
+      "sendEmail",
+
+    cancel:
+      "generateResponse",
+  }
+);
+
+
+workflow.addEdge(
+  "sendEmail",
+  "generateResponse"
+);
+
+
+// ============================================================
+// END
+// ============================================================
+
+workflow.addEdge(
+  "generateResponse",
+  END
+);
+
+
+// ============================================================
+// CHECKPOINTER
+// ============================================================
+//
+// Hinglish:
+//
+// Human-in-the-loop ke liye graph ko state yaad rakhni hogi.
+//
+// MemorySaver development ke liye theek hai.
+//
+// Production mein persistent checkpointer use karna better hai.
+// ============================================================
+
+const checkpointer =
+  new MemorySaver();
+
+
+// ============================================================
+// COMPILE
+// ============================================================
+
+export const employeeCopilotGraph =
+  workflow.compile({
+    checkpointer,
+  });
+
+
+// ============================================================
+// MAIN FUNCTION
+// ============================================================
+//
+// FastAPI/Express controller isi function ko call karega.
+//
+// ============================================================
+
+export async function runEmployeeCopilot({
+
+  userMessage,
+
+  userId,
+
+  userRole,
+
+  conversationId,
+
+  compactContext = null,
+
+}) {
+
+  const threadId =
+    conversationId ||
+    `user_${userId}`;
+
+
+  const config = {
+
+    configurable: {
+
+      thread_id:
+        threadId,
+    },
+  };
+
+
+  try {
+
+    const result =
+      await employeeCopilotGraph.invoke(
+
+        {
+
+          messages: [
+
+            {
+
+              role: "user",
+
+              content:
+                userMessage,
+            },
+          ],
+
+          userId,
+
+          userRole,
+
+          conversationId,
+
+          compactContext,
+
+        },
+
+        config
       );
 
-    const result = {
-      response,
+
+    return {
+
+      response:
+        result.response,
 
       sources:
-        state.context
-          ?.ragResult
-          ?.sources || [],
+        result.sources || [],
 
       requiresConfirmation:
-        Boolean(
-          state.requiresConfirmation
-        ),
+        result.requiresConfirmation ||
+        false,
 
       pendingAction:
-        state.requiresConfirmation
-          ? state.pendingAction
-          : null,
+        result.pendingAction ||
+        null,
 
-      actionMetadata:
-        state.requiresConfirmation
-          ? buildActionMetadata(
-              state.pendingAction,
-              state.context
-            )
-          : null,
+      context:
+        result.context ||
+        null,
 
       error:
+        result.error ||
         null,
     };
 
-    loggingService.logAIResponse(userId, conversationId, intent, response, {
-      requiresConfirmation: result.requiresConfirmation,
-      hasPendingAction: !!result.pendingAction
-    });
-
-    return result;
   } catch (error) {
-    loggingService.logAIError(userId, conversationId, error, { intent });
+
     console.error(
-      '[LangGraphWorkflow]',
+      "[EmployeeCopilotGraph]",
       error
     );
 
+
     return {
+
       response:
-        'I encountered an error while processing your request. Please try again.',
+        "I encountered an error while processing your request. Please try again.",
 
       sources: [],
 
@@ -3774,7 +4396,99 @@ export async function runLangGraphWorkflow(
       pendingAction:
         null,
 
-      actionMetadata:
+      error:
+        error.message,
+    };
+  }
+}
+
+
+// ============================================================
+// CONFIRM / RESUME
+// ============================================================
+//
+// Frontend se user "Yes" kare:
+//
+// Command({ resume: true })
+//
+// User "No" kare:
+//
+// Command({ resume: false })
+//
+// ============================================================
+
+export async function resumeEmployeeCopilot({
+
+  conversationId,
+
+  approved,
+
+}) {
+
+  const config = {
+
+    configurable: {
+
+      thread_id:
+        conversationId,
+    },
+  };
+
+
+  try {
+
+    const result =
+      await employeeCopilotGraph.invoke(
+
+        new Command({
+          resume:
+            approved,
+        }),
+
+        config
+      );
+
+
+    return {
+
+      response:
+        result.response,
+
+      sources:
+        result.sources || [],
+
+      requiresConfirmation:
+        result.requiresConfirmation ||
+        false,
+
+      pendingAction:
+        result.pendingAction ||
+        null,
+
+      error:
+        result.error ||
+        null,
+    };
+
+  } catch (error) {
+
+    console.error(
+      "[EmployeeCopilotResume]",
+      error
+    );
+
+
+    return {
+
+      response:
+        "I could not resume the workflow.",
+
+      sources: [],
+
+      requiresConfirmation:
+        false,
+
+      pendingAction:
         null,
 
       error:
@@ -3782,96 +4496,3 @@ export async function runLangGraphWorkflow(
     };
   }
 }
-
-// ============================================================
-// STREAMING WORKFLOW
-// ============================================================
-//
-// This exposes Gemini token streaming for the next
-// ConversationService/SSE integration.
-//
-// IMPORTANT:
-// Tool execution itself remains non-streaming.
-// The final Gemini generation can stream token-by-token.
-//
-// ============================================================
-
-export async function streamAIResponse(
-  prompt,
-  onToken
-) {
-  if (
-    typeof onToken !== 'function'
-  ) {
-    throw new Error(
-      'onToken callback is required.'
-    );
-  }
-
-  const stream =
-    await llm.stream(prompt);
-
-  let completeResponse = '';
-
-  for await (
-    const chunk of stream
-  ) {
-    let text = '';
-
-    if (
-      typeof chunk?.content ===
-      'string'
-    ) {
-      text =
-        chunk.content;
-    } else if (
-      Array.isArray(
-        chunk?.content
-      )
-    ) {
-      text =
-        chunk.content
-          .map(
-            item =>
-              typeof item ===
-              'string'
-                ? item
-                : item?.text ||
-                  ''
-          )
-          .join('');
-    }
-
-    if (!text) {
-      continue;
-    }
-
-    completeResponse += text;
-
-    await onToken(
-      text
-    );
-  }
-
-  return completeResponse;
-}
-
-// ============================================================
-// EXPORTS FOR TESTING / SERVICES
-// ============================================================
-
-export {
-  classifyIntent,
-  queryCalendarEvents,
-  gmailReadQuery,
-  gmailSendQuery,
-  webSearchQuery,
-  generalRAGQuery,
-  validateLeaveRequest,
-  validateCalendarEvent,
-  extractLeaveDetails,
-  extractCalendarEventDetails,
-  extractEmailDetails,
-  parseRelativeDate,
-  parseTime,
-};

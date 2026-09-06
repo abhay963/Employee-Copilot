@@ -1,6 +1,10 @@
 import { Conversation } from '../models/Conversation.js';
 import { Message } from '../models/Message.js';
-import { runLangGraphWorkflow } from '../ai/langGraphWorkflow.js';
+import {
+  runEmployeeCopilot,
+  resumeEmployeeCopilot,
+} from '../ai/langGraphWorkflow.js';
+
 import conversationStateService from './conversationStateService.js';
 import conversationMemoryService from './conversationMemoryService.js';
 import leaveWorkflowService from './leaveWorkflowService.js';
@@ -28,9 +32,7 @@ class ConversationService {
         error
       );
 
-      throw new Error(
-        'Failed to create conversation'
-      );
+      throw new Error('Failed to create conversation');
     }
   }
 
@@ -38,29 +40,20 @@ class ConversationService {
   // GET CONVERSATION WITH MESSAGES
   // ============================================================
 
-  async getConversationWithMessages(
-    conversationId,
-    userId
-  ) {
+  async getConversationWithMessages(conversationId, userId) {
     try {
       const conversation =
-        await Conversation.findById(
-          conversationId
-        );
+        await Conversation.findById(conversationId);
 
       if (!conversation) {
-        throw new Error(
-          'Conversation not found'
-        );
+        throw new Error('Conversation not found');
       }
 
       if (
         String(conversation.user_id) !==
         String(userId)
       ) {
-        throw new Error(
-          'Access denied'
-        );
+        throw new Error('Access denied');
       }
 
       const messages =
@@ -89,23 +82,17 @@ class ConversationService {
   async getUserConversations(userId) {
     try {
       if (!userId) {
-        throw new Error(
-          'User ID is required'
-        );
+        throw new Error('User ID is required');
       }
 
-      return await Conversation.findByUserId(
-        userId
-      );
+      return await Conversation.findByUserId(userId);
     } catch (error) {
       console.error(
         '[ConversationService] Error getting conversations:',
         error
       );
 
-      throw new Error(
-        'Failed to get conversations'
-      );
+      throw new Error('Failed to get conversations');
     }
   }
 
@@ -113,35 +100,26 @@ class ConversationService {
   // VALIDATE CONVERSATION OWNERSHIP
   // ============================================================
 
-  async validateConversation(
-    conversationId,
-    userId
-  ) {
+  async validateConversation(conversationId, userId) {
     const conversation =
-      await Conversation.findById(
-        conversationId
-      );
+      await Conversation.findById(conversationId);
 
     if (!conversation) {
-      throw new Error(
-        'Conversation not found'
-      );
+      throw new Error('Conversation not found');
     }
 
     if (
       String(conversation.user_id) !==
       String(userId)
     ) {
-      throw new Error(
-        'Conversation access denied'
-      );
+      throw new Error('Conversation access denied');
     }
 
     return conversation;
   }
 
   // ============================================================
-  // PUBLIC VALIDATE METHOD (for controller use)
+  // PUBLIC VALIDATE METHOD
   // ============================================================
 
   async validateConversationForController(
@@ -204,10 +182,11 @@ class ConversationService {
       // Validate input
       // --------------------------------------------------------
 
-      if (!question || !String(question).trim()) {
-        throw new Error(
-          'Question is required'
-        );
+      if (
+        !question ||
+        !String(question).trim()
+      ) {
+        throw new Error('Question is required');
       }
 
       const cleanQuestion =
@@ -226,39 +205,43 @@ class ConversationService {
       // Initialize conversation state
       // --------------------------------------------------------
 
-      await conversationStateService.getOrCreateState(conversationId, userId);
-
-      // --------------------------------------------------------
-      // Get conversation context for memory system
-      // --------------------------------------------------------
-
-      const conversationContext = await conversationMemoryService.getConversationContext(
+      await conversationStateService.getOrCreateState(
         conversationId,
         userId
       );
 
       // --------------------------------------------------------
-      // Resolve contextual references in user message
+      // Get conversation context
       // --------------------------------------------------------
 
-      const { resolvedMessage, resolvedContext } = conversationMemoryService.resolveContextualReferences(
-        cleanQuestion,
-        conversationContext.context
-      );
+      const conversationContext =
+        await conversationMemoryService.getConversationContext(
+          conversationId,
+          userId
+        );
 
       // --------------------------------------------------------
-      // Save user message with duplicate prevention
+      // Resolve contextual references
+      // --------------------------------------------------------
+
+      const {
+        resolvedMessage,
+        resolvedContext,
+      } =
+        conversationMemoryService.resolveContextualReferences(
+          cleanQuestion,
+          conversationContext.context
+        );
+
+      // --------------------------------------------------------
+      // Save user message
       // --------------------------------------------------------
 
       const userMessage =
         await Message.createWithDuplicateCheck({
-          conversation_id:
-            conversationId,
-
+          conversation_id: conversationId,
           role: 'user',
-
           content: cleanQuestion,
-
           sources: [],
         });
 
@@ -272,20 +255,29 @@ class ConversationService {
       );
 
       // --------------------------------------------------------
-      // Run AI workflow with conversationId and compact context
+      // RUN LANGGRAPH
+      // --------------------------------------------------------
+      //
+      // IMPORTANT:
+      //
+      // runEmployeeCopilot() expects an object.
+      //
       // --------------------------------------------------------
 
       const result =
-        await runLangGraphWorkflow(
-          cleanQuestion,
+        await runEmployeeCopilot({
+          userMessage:
+            resolvedMessage || cleanQuestion,
+
           userId,
+
           userRole,
+
           conversationId,
-          null,
-          false,
-          null,
-          conversationContext.context
-        );
+
+          compactContext:
+            conversationContext.context,
+        });
 
       const {
         response = '',
@@ -298,13 +290,12 @@ class ConversationService {
       } = result || {};
 
       // --------------------------------------------------------
-      // Save assistant response with duplicate prevention
+      // Save assistant response
       // --------------------------------------------------------
 
       const assistantMessage =
         await Message.createWithDuplicateCheck({
-          conversation_id:
-            conversationId,
+          conversation_id: conversationId,
 
           role: 'assistant',
 
@@ -319,7 +310,7 @@ class ConversationService {
         });
 
       // --------------------------------------------------------
-      // Update conversation memory state
+      // Update conversation memory
       // --------------------------------------------------------
 
       await conversationMemoryService.updateConversationState(
@@ -330,11 +321,15 @@ class ConversationService {
       );
 
       // --------------------------------------------------------
-      // Generate/update conversation summary if needed
+      // Generate summary if required
       // --------------------------------------------------------
 
       if (conversationContext.needsSummary) {
-        const allMessages = await Message.findByConversationId(conversationId);
+        const allMessages =
+          await Message.findByConversationId(
+            conversationId
+          );
+
         await conversationMemoryService.generateConversationSummary(
           conversationId,
           allMessages
@@ -342,13 +337,22 @@ class ConversationService {
       }
 
       // --------------------------------------------------------
-      // Update timestamp and message count
+      // Update message count
       // --------------------------------------------------------
 
-      const messageCount = conversationContext.messages.length + 2; // +2 for new messages
-      await Conversation.update(conversationId, {
-        message_count: messageCount,
-      });
+      const messageCount =
+        conversationContext.messages.length + 2;
+
+      await Conversation.update(
+        conversationId,
+        {
+          message_count: messageCount,
+        }
+      );
+
+      // --------------------------------------------------------
+      // Return result
+      // --------------------------------------------------------
 
       return {
         userMessage,
@@ -381,20 +385,6 @@ class ConversationService {
   // ============================================================
   // STREAMING MESSAGE
   // ============================================================
-  //
-  // IMPORTANT:
-  //
-  // This method keeps the existing API contract.
-  //
-  // It DOES NOT fake character streaming anymore.
-  //
-  // Real token streaming must happen inside the LangGraph
-  // workflow and be forwarded here.
-  //
-  // The workflow integration is the next major file we will
-  // replace.
-  //
-  // ============================================================
 
   async sendMessageStream(
     conversationId,
@@ -412,9 +402,7 @@ class ConversationService {
         !question ||
         !String(question).trim()
       ) {
-        throw new Error(
-          'Question is required'
-        );
+        throw new Error('Question is required');
       }
 
       const cleanQuestion =
@@ -430,42 +418,45 @@ class ConversationService {
       );
 
       // --------------------------------------------------------
-      // Initialize conversation state
+      // Initialize state
       // --------------------------------------------------------
 
-      await conversationStateService.getOrCreateState(conversationId, userId);
-
-      // --------------------------------------------------------
-      // Get conversation context for memory system
-      // --------------------------------------------------------
-
-      const conversationContext = await conversationMemoryService.getConversationContext(
+      await conversationStateService.getOrCreateState(
         conversationId,
         userId
       );
 
       // --------------------------------------------------------
-      // Resolve contextual references in user message
+      // Get conversation context
       // --------------------------------------------------------
 
-      const { resolvedMessage, resolvedContext } = conversationMemoryService.resolveContextualReferences(
-        cleanQuestion,
-        conversationContext.context
-      );
+      const conversationContext =
+        await conversationMemoryService.getConversationContext(
+          conversationId,
+          userId
+        );
 
       // --------------------------------------------------------
-      // Save user message with duplicate prevention
+      // Resolve contextual references
+      // --------------------------------------------------------
+
+      const {
+        resolvedMessage,
+      } =
+        conversationMemoryService.resolveContextualReferences(
+          cleanQuestion,
+          conversationContext.context
+        );
+
+      // --------------------------------------------------------
+      // Save user message
       // --------------------------------------------------------
 
       const userMessage =
         await Message.createWithDuplicateCheck({
-          conversation_id:
-            conversationId,
-
+          conversation_id: conversationId,
           role: 'user',
-
           content: cleanQuestion,
-
           sources: [],
         });
 
@@ -479,7 +470,7 @@ class ConversationService {
       });
 
       // --------------------------------------------------------
-      // Update conversation title
+      // Update title
       // --------------------------------------------------------
 
       await this.updateTitleIfFirstMessage(
@@ -494,42 +485,27 @@ class ConversationService {
       this.writeSSE(res, {
         type: 'status',
         status: 'processing',
-        message:
-          'Processing your request...',
+        message: 'Processing your request...',
       });
 
       // --------------------------------------------------------
-      // IMPORTANT
-      //
-      // The current runLangGraphWorkflow()
-      // returns the COMPLETE response.
-      //
-      // Therefore we cannot honestly call this
-      // "real token streaming" yet.
-      //
-      // The old implementation used:
-      //
-      //   response.slice(...)
-      //
-      // which was fake streaming.
-      //
-      // We intentionally removed that behavior.
-      //
-      // The LangGraph workflow will be updated next
-      // to expose an async stream.
+      // RUN LANGGRAPH
       // --------------------------------------------------------
 
       const result =
-        await runLangGraphWorkflow(
-          cleanQuestion,
+        await runEmployeeCopilot({
+          userMessage:
+            resolvedMessage || cleanQuestion,
+
           userId,
+
           userRole,
+
           conversationId,
-          null,
-          false,
-          null,
-          conversationContext.context
-        );
+
+          compactContext:
+            conversationContext.context,
+        });
 
       const {
         response = '',
@@ -542,13 +518,12 @@ class ConversationService {
       } = result || {};
 
       // --------------------------------------------------------
-      // Save complete assistant message with duplicate prevention
+      // Save assistant message
       // --------------------------------------------------------
 
       const assistantMessage =
         await Message.createWithDuplicateCheck({
-          conversation_id:
-            conversationId,
+          conversation_id: conversationId,
 
           role: 'assistant',
 
@@ -563,7 +538,7 @@ class ConversationService {
         });
 
       // --------------------------------------------------------
-      // Update conversation memory state
+      // Update conversation memory
       // --------------------------------------------------------
 
       await conversationMemoryService.updateConversationState(
@@ -574,11 +549,15 @@ class ConversationService {
       );
 
       // --------------------------------------------------------
-      // Generate/update conversation summary if needed
+      // Generate summary
       // --------------------------------------------------------
 
       if (conversationContext.needsSummary) {
-        const allMessages = await Message.findByConversationId(conversationId);
+        const allMessages =
+          await Message.findByConversationId(
+            conversationId
+          );
+
         await conversationMemoryService.generateConversationSummary(
           conversationId,
           allMessages
@@ -586,18 +565,21 @@ class ConversationService {
       }
 
       // --------------------------------------------------------
-      // Update timestamp and message count
+      // Update message count
       // --------------------------------------------------------
 
-      const messageCount = conversationContext.messages.length + 2; // +2 for new messages
-      await Conversation.update(conversationId, {
-        message_count: messageCount,
-      });
+      const messageCount =
+        conversationContext.messages.length + 2;
+
+      await Conversation.update(
+        conversationId,
+        {
+          message_count: messageCount,
+        }
+      );
 
       // --------------------------------------------------------
-      // Send response as one complete event
-      //
-      // This is temporary until LangGraph streaming is added.
+      // Send complete assistant response
       // --------------------------------------------------------
 
       this.writeSSE(res, {
@@ -680,16 +662,6 @@ class ConversationService {
   // ============================================================
   // EXECUTE PENDING ACTION
   // ============================================================
-  //
-  // IMPORTANT:
-  //
-  // actionData from frontend is treated only as a fallback
-  // for compatibility.
-  //
-  // The next architecture change should move pending actions
-  // to persistent server-side storage and execute by actionId.
-  //
-  // ============================================================
 
   async executePendingAction(
     conversationId,
@@ -722,17 +694,15 @@ class ConversationService {
       );
 
       // --------------------------------------------------------
-      // Use new workflow services for leave requests
+      // Leave request
       // --------------------------------------------------------
-
-      let result;
 
       if (
         actionId.startsWith(
           'leave_request_'
         )
       ) {
-        result =
+        const result =
           await leaveWorkflowService.confirmAndSubmitLeaveRequest(
             conversationId,
             userId,
@@ -740,7 +710,10 @@ class ConversationService {
           );
 
         if (!result.success) {
-          throw new Error(result.message || 'Leave request submission failed');
+          throw new Error(
+            result.message ||
+            'Leave request submission failed'
+          );
         }
 
         return {
@@ -753,7 +726,8 @@ class ConversationService {
 
               role: 'assistant',
 
-              content: result.message,
+              content:
+                result.message,
 
               sources: [],
             }),
@@ -772,74 +746,40 @@ class ConversationService {
       }
 
       // --------------------------------------------------------
-      // Import action handlers for other types
+      // Resume LangGraph
+      // --------------------------------------------------------
+      //
+      // Human-in-the-loop:
+      //
+      // The graph already has resumeEmployeeCopilot().
+      //
+      // Instead of importing action handlers manually,
+      // resume the paused graph using the same conversationId
+      // as thread_id.
+      //
       // --------------------------------------------------------
 
-      const {
-        createCalendarEvent,
-        sendGmail,
-      } = await import(
-        '../ai/langGraphWorkflow.js'
-      );
-
-      // --------------------------------------------------------
-      // Determine action type
-      // --------------------------------------------------------
+      let approved = true;
 
       if (
-        actionId.startsWith(
-          'calendar_create_'
-        )
+        actionData &&
+        typeof actionData.approved === 'boolean'
       ) {
-        result =
-          await createCalendarEvent({
-            userId,
-
-            pendingAction: {
-              ...actionData,
-              actionId,
-            },
-
-            context: {
-              userRole,
-            },
-          });
-      } else if (
-        actionId.startsWith(
-          'gmail_send_'
-        )
-      ) {
-        result =
-          await sendGmail({
-            userId,
-
-            pendingAction: {
-              ...actionData,
-              actionId,
-            },
-
-            context: {
-              userRole,
-            },
-          });
-      } else {
-        throw new Error(
-          `Unknown action type: ${actionId}`
-        );
+        approved = actionData.approved;
       }
 
-      // --------------------------------------------------------
-      // Normalize tool result
-      // --------------------------------------------------------
+      const result =
+        await resumeEmployeeCopilot({
+          conversationId,
+          approved,
+        });
 
       const toolResult =
-        result?.toolResult ||
         result?.response ||
-        result?.message ||
         'Action completed successfully.';
 
       // --------------------------------------------------------
-      // Save execution result with duplicate prevention
+      // Save execution result
       // --------------------------------------------------------
 
       const assistantMessage =
@@ -851,7 +791,10 @@ class ConversationService {
 
           content: toolResult,
 
-          sources: [],
+          sources:
+            Array.isArray(result?.sources)
+              ? result.sources
+              : [],
         });
 
       // --------------------------------------------------------
@@ -872,11 +815,19 @@ class ConversationService {
             conversationId
           ),
 
-        requiresConfirmation: false,
+        requiresConfirmation:
+          result?.requiresConfirmation ||
+          false,
 
-        pendingAction: null,
+        pendingAction:
+          result?.pendingAction ||
+          null,
 
         actionMetadata: null,
+
+        error:
+          result?.error ||
+          null,
       };
     } catch (error) {
       console.error(
@@ -902,12 +853,10 @@ class ConversationService {
         userId
       );
 
-      // Delete messages first.
       await Message.deleteByConversationId(
         conversationId
       );
 
-      // Delete conversation.
       await Conversation.delete(
         conversationId
       );

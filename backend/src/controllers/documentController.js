@@ -67,6 +67,8 @@ export const getDocumentById = async (req, res) => {
 };
 
 export const uploadDocument = async (req, res) => {
+  let tempFilePath = null;
+
   try {
     // --------------------------------------------------
     // 1. Check uploaded file
@@ -77,6 +79,7 @@ export const uploadDocument = async (req, res) => {
       });
     }
 
+    tempFilePath = req.file.path;
     const userId = req.user.id;
     const userRole = req.user.role;
 
@@ -84,6 +87,9 @@ export const uploadDocument = async (req, res) => {
       title,
       visibility,
       document_type,
+      version,
+      effective_from,
+      effective_until,
     } = req.body;
 
     // --------------------------------------------------
@@ -97,10 +103,6 @@ export const uploadDocument = async (req, res) => {
     // 3. Validate file type
     // --------------------------------------------------
     if (!documentProcessor.isValidFileType(fileType)) {
-      if (fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-
       return res.status(400).json({
         error:
           'Invalid file type. Supported types: PDF, Word, TXT, MD',
@@ -116,10 +118,6 @@ export const uploadDocument = async (req, res) => {
       userRole !== 'hr' &&
       userRole !== 'admin'
     ) {
-      if (fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-
       return res.status(403).json({
         error:
           'HR or Admin access required to upload HR/policy documents',
@@ -134,10 +132,6 @@ export const uploadDocument = async (req, res) => {
       userRole !== 'hr' &&
       userRole !== 'admin'
     ) {
-      if (fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-
       return res.status(403).json({
         error:
           'HR or Admin access required to upload company-wide documents',
@@ -187,6 +181,11 @@ export const uploadDocument = async (req, res) => {
 
       document_type:
         document_type || 'general',
+
+      version,
+      effective_from,
+      effective_until,
+      status: 'active',
     });
 
     console.log(
@@ -194,7 +193,29 @@ export const uploadDocument = async (req, res) => {
     );
 
     // --------------------------------------------------
-    // 8. Process document for RAG
+    // 8. Supersede old policies if this is a new active policy
+    // --------------------------------------------------
+    if (
+      document_type &&
+      ['hr', 'policy'].includes(document_type) &&
+      status === 'active'
+    ) {
+      try {
+        await Document.supersedeOldPolicies(document_type, document.id);
+        console.log(
+          `Superseded old policies for document type: ${document_type}`
+        );
+      } catch (supersedeError) {
+        console.error(
+          'Error superseding old policies:',
+          supersedeError
+        );
+        // Non-critical error - continue with processing
+      }
+    }
+
+    // --------------------------------------------------
+    // 9. Process document for RAG
     //
     // extract → clean → chunk → embed → store
     // --------------------------------------------------
@@ -225,19 +246,39 @@ export const uploadDocument = async (req, res) => {
         processingError
       );
 
-      // Do not fail the document upload.
-      // The document record has already been created.
-      //
-      // RAG processing can be retried later.
+      // RAG processing failed - delete the document record
+      await Document.delete(document.id);
+
+      throw new Error(
+        `Document indexing failed: ${processingError.message}`
+      );
     }
 
     // --------------------------------------------------
-    // 9. Send response
+    // 9. Delete temporary file after successful indexing
+    // --------------------------------------------------
+    if (fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+        console.log(
+          `Temporary file deleted after successful indexing: ${req.file.path}`
+        );
+      } catch (cleanupError) {
+        console.error(
+          'Error deleting temporary file:',
+          cleanupError
+        );
+        // Non-critical error - document is already indexed
+      }
+    }
+
+    // --------------------------------------------------
+    // 10. Send response
     // --------------------------------------------------
     return res.status(200).json({
       success: true,
       document,
-      message: 'Document uploaded successfully',
+      message: 'Document uploaded and indexed successfully',
     });
   } catch (error) {
     console.error(
@@ -246,16 +287,14 @@ export const uploadDocument = async (req, res) => {
     );
 
     // --------------------------------------------------
-    // 10. Cleanup uploaded file if something failed
+    // 11. Cleanup uploaded file if something failed
     // --------------------------------------------------
     if (
-      req.file &&
-      req.file.path &&
-      fs.existsSync(req.file.path)
+      tempFilePath &&
+      fs.existsSync(tempFilePath)
     ) {
       try {
-        fs.unlinkSync(req.file.path);
-
+        fs.unlinkSync(tempFilePath);
         console.log(
           'Uploaded file cleaned up after failure'
         );

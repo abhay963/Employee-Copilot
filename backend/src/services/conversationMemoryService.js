@@ -141,6 +141,20 @@ class ConversationMemoryService {
   // ============================================================
 
   extractStructuredMemory(conversationState, messages) {
+    // Handle undefined or null conversationState
+    if (!conversationState) {
+      return {
+        currentTopic: null,
+        lastCalendarEvent: null,
+        lastLeaveRequest: null,
+        lastGmailContext: null,
+        referencedEntities: [],
+        importantDates: [],
+        pendingAction: null,
+        toolState: {},
+      };
+    }
+
     const structuredMemory = {
       currentTopic: conversationState?.context?.currentTopic || null,
       lastCalendarEvent: conversationState?.context?.lastCalendarEvent || null,
@@ -153,10 +167,10 @@ class ConversationMemoryService {
     };
 
     // Extract recent entity references from messages
-    if (messages.length > 0) {
+    if (messages && Array.isArray(messages) && messages.length > 0) {
       const recentMessages = messages.slice(-5);
       recentMessages.forEach(msg => {
-        if (msg.role === 'user') {
+        if (msg && msg.role === 'user') {
           this.extractEntitiesFromMessage(msg.content, structuredMemory);
         }
       });
@@ -170,7 +184,12 @@ class ConversationMemoryService {
   // ============================================================
 
   extractEntitiesFromMessage(content, structuredMemory) {
-    const text = content.toLowerCase();
+    // Handle undefined or null content
+    if (!content) {
+      return;
+    }
+
+    const text = String(content).toLowerCase();
 
     // Extract dates
     const datePatterns = [
@@ -183,7 +202,7 @@ class ConversationMemoryService {
       const matches = content.match(pattern);
       if (matches) {
         matches.forEach(match => {
-          if (!structuredMemory.importantDates.includes(match)) {
+          if (structuredMemory.importantDates && Array.isArray(structuredMemory.importantDates) && !structuredMemory.importantDates.includes(match)) {
             structuredMemory.importantDates.push(match);
           }
         });
@@ -192,7 +211,7 @@ class ConversationMemoryService {
 
     // Extract calendar event references
     if (text.includes('meeting') || text.includes('appointment') || text.includes('event')) {
-      if (!structuredMemory.referencedEntities.includes('calendar')) {
+      if (structuredMemory.referencedEntities && Array.isArray(structuredMemory.referencedEntities) && !structuredMemory.referencedEntities.includes('calendar')) {
         structuredMemory.referencedEntities.push('calendar');
       }
     }
@@ -206,14 +225,14 @@ class ConversationMemoryService {
 
     // Extract leave references
     if (text.includes('leave') || text.includes('vacation') || text.includes('time off')) {
-      if (!structuredMemory.referencedEntities.includes('leave')) {
+      if (structuredMemory.referencedEntities && Array.isArray(structuredMemory.referencedEntities) && !structuredMemory.referencedEntities.includes('leave')) {
         structuredMemory.referencedEntities.push('leave');
       }
     }
 
     // Extract email references
     if (text.includes('email') || text.includes('mail') || text.includes('message')) {
-      if (!structuredMemory.referencedEntities.includes('email')) {
+      if (structuredMemory.referencedEntities && Array.isArray(structuredMemory.referencedEntities) && !structuredMemory.referencedEntities.includes('email')) {
         structuredMemory.referencedEntities.push('email');
       }
     }
@@ -474,6 +493,11 @@ SUMMARY:`;
   buildLLMContext(compactContext, systemPrompt) {
     let contextParts = [];
 
+    // Handle undefined or null compactContext
+    if (!compactContext) {
+      return systemPrompt;
+    }
+
     // Add system prompt
     contextParts.push(systemPrompt);
 
@@ -502,7 +526,7 @@ SUMMARY:`;
         memoryParts.push(`Last email interaction: ${compactContext.structuredMemory.lastGmailContext.lastQuery}`);
       }
 
-      if (compactContext.structuredMemory.importantDates && compactContext.structuredMemory.importantDates.length > 0) {
+      if (compactContext.structuredMemory.importantDates && Array.isArray(compactContext.structuredMemory.importantDates) && compactContext.structuredMemory.importantDates.length > 0) {
         memoryParts.push(`Important dates mentioned: ${compactContext.structuredMemory.importantDates.join(', ')}`);
       }
 
@@ -516,7 +540,7 @@ SUMMARY:`;
     }
 
     // Add recent messages with token optimization
-    if (compactContext.recentMessages && compactContext.recentMessages.length > 0) {
+    if (compactContext.recentMessages && Array.isArray(compactContext.recentMessages) && compactContext.recentMessages.length > 0) {
       const recentMessagesText = compactContext.recentMessages
         .map(msg => this.optimizeMessageForTokens(msg))
         .join('\n');
@@ -532,14 +556,20 @@ SUMMARY:`;
   // ============================================================
 
   optimizeMessageForTokens(message) {
-    let content = message.content;
+    // Handle undefined or null message
+    if (!message) {
+      return '';
+    }
+
+    let content = message.content || '';
     
     // Truncate very long messages to save tokens
     if (content.length > 500) {
       content = content.substring(0, 500) + '...';
     }
     
-    return `${message.role.toUpperCase()}: ${content}`;
+    const role = message.role || 'USER';
+    return `${role.toUpperCase()}: ${content}`;
   }
 
   // ============================================================
@@ -583,24 +613,42 @@ SUMMARY:`;
     const resolvedMessage = userMessage;
     const resolvedContext = {};
 
+    // Handle undefined or null compactContext
+    if (!compactContext) {
+      return {
+        resolvedMessage,
+        resolvedContext,
+      };
+    }
+
+    // Handle undefined or null structuredMemory
+    if (!compactContext.structuredMemory) {
+      return {
+        resolvedMessage,
+        resolvedContext,
+      };
+    }
+
+    const structuredMemory = compactContext.structuredMemory;
+
     // Resolve temporal references like "tomorrow", "next week" based on conversation state
     if (text.includes('tomorrow') || text.includes('next') || text.includes('this')) {
-      if (compactContext.structuredMemory.importantDates.length > 0) {
-        resolvedContext.temporalContext = compactContext.structuredMemory.importantDates;
+      if (structuredMemory.importantDates && Array.isArray(structuredMemory.importantDates) && structuredMemory.importantDates.length > 0) {
+        resolvedContext.temporalContext = structuredMemory.importantDates;
       }
     }
 
     // Resolve entity references like "it", "that", "him" based on conversation state
     if (text.includes('it') || text.includes('that') || text.includes('him') || text.includes('her')) {
-      if (compactContext.structuredMemory.referencedEntities.length > 0) {
-        resolvedContext.entityContext = compactContext.structuredMemory.referencedEntities;
+      if (structuredMemory.referencedEntities && Array.isArray(structuredMemory.referencedEntities) && structuredMemory.referencedEntities.length > 0) {
+        resolvedContext.entityContext = structuredMemory.referencedEntities;
       }
     }
 
     // Resolve action references like "change it", "send it", "add to it"
     if (text.includes('change') || text.includes('send') || text.includes('add') || text.includes('update')) {
-      if (compactContext.structuredMemory.pendingAction) {
-        resolvedContext.actionContext = compactContext.structuredMemory.pendingAction;
+      if (structuredMemory.pendingAction) {
+        resolvedContext.actionContext = structuredMemory.pendingAction;
       }
     }
 

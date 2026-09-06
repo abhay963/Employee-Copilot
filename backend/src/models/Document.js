@@ -118,6 +118,10 @@ export class Document {
       owner_id,
       visibility = 'private',
       document_type = 'general',
+      version = null,
+      effective_from = null,
+      effective_until = null,
+      status = 'active',
     } = data;
 
     const result = await query(
@@ -131,7 +135,11 @@ export class Document {
         content,
         owner_id,
         visibility,
-        document_type
+        document_type,
+        version,
+        effective_from,
+        effective_until,
+        status
       )
       VALUES (
         $1,
@@ -142,7 +150,11 @@ export class Document {
         $6,
         $7,
         $8,
-        $9
+        $9,
+        $10,
+        $11,
+        $12,
+        $13
       )
       RETURNING *
       `,
@@ -156,6 +168,10 @@ export class Document {
         owner_id,
         visibility,
         document_type,
+        version,
+        effective_from,
+        effective_until,
+        status,
       ]
     );
 
@@ -235,5 +251,63 @@ export class Document {
     return (
       result.rows[0].owner_id === userId
     );
+  }
+
+  // Get active policy by document type
+  static async findActivePolicy(documentType) {
+    const currentDate = new Date().toISOString().split('T')[0];
+
+    const result = await query(
+      `
+      SELECT *
+      FROM documents
+      WHERE document_type = $1
+        AND status = 'active'
+        AND (effective_from IS NULL OR effective_from <= $2)
+        AND (effective_until IS NULL OR effective_until >= $2)
+      ORDER BY 
+        effective_from DESC NULLS LAST,
+        created_at DESC
+      LIMIT 1
+      `,
+      [documentType, currentDate]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  // Get all versions of a policy by type
+  static async findPolicyVersions(documentType) {
+    const result = await query(
+      `
+      SELECT *
+      FROM documents
+      WHERE document_type = $1
+      ORDER BY 
+        effective_from DESC NULLS LAST,
+        created_at DESC
+      `,
+      [documentType]
+    );
+
+    return result.rows;
+  }
+
+  // Supersede old policies when a new one is activated
+  static async supersedeOldPolicies(documentType, newDocumentId) {
+    const result = await query(
+      `
+      UPDATE documents
+      SET status = 'superseded',
+          updated_at = CURRENT_TIMESTAMP
+      WHERE document_type = $1
+        AND status = 'active'
+        AND id != $2
+      RETURNING *
+      `,
+      [documentType, newDocumentId]
+    );
+
+    return result.rows;
   }
 }
