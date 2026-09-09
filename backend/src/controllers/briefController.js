@@ -84,7 +84,8 @@ class BriefController {
       },
       sources: [],
       items: [],
-      calendarEvents: [],
+      todayEvents: [],
+      upcomingEvents: [],
       emails: [],
       leaveBalance: null,
       pendingLeaveRequests: [],
@@ -106,7 +107,8 @@ class BriefController {
       const calendarData = await this.getCalendarData(userId, userRole);
       data.items.push(...calendarData.items);
       data.sources.push(...calendarData.sources);
-      data.calendarEvents = calendarData.calendarEvents;
+      data.todayEvents = calendarData.todayEvents;
+      data.upcomingEvents = calendarData.upcomingEvents;
     } catch (error) {
       console.error('[BriefController] Error gathering calendar data:', error);
     }
@@ -214,30 +216,36 @@ class BriefController {
 
   async getCalendarData(userId, userRole) {
     const items = [];
-    const calendarEvents = [];
+    const todayEvents = [];
+    const upcomingEvents = [];
     const sources = ['calendar'];
 
     try {
       const isConnected = await googleCalendarService.isConnected(userId);
       
       if (isConnected) {
-        // Get today's events
-        const today = new Date();
+        // Get today's date in user's timezone
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
+        const nextWeek = new Date(today);
+        nextWeek.setDate(nextWeek.getDate() + 7);
         
         const formatDate = (date) => date.toISOString().split('T')[0];
         
+        // Fetch events for today through next week
         const events = await googleCalendarService.getEvents(
           userId,
           formatDate(today),
-          formatDate(tomorrow)
+          formatDate(nextWeek)
         );
 
         if (events && events.length > 0) {
           events.forEach(event => {
             const startTime = event.start?.dateTime || event.start?.date;
             const endTime = event.end?.dateTime || event.end?.date;
+            const eventDate = new Date(startTime);
             
             const eventData = {
               category: 'calendar',
@@ -248,10 +256,17 @@ class BriefController {
               endTime: endTime,
               actionable: false,
               time: startTime,
+              isToday: eventDate >= today && eventDate < tomorrow,
             };
             
+            // Separate today's events from upcoming
+            if (eventData.isToday) {
+              todayEvents.push(eventData);
+            } else if (eventDate >= tomorrow) {
+              upcomingEvents.push(eventData);
+            }
+            
             items.push(eventData);
-            calendarEvents.push(eventData);
           });
         }
       } else {
@@ -262,7 +277,7 @@ class BriefController {
       sources.push('calendar (error)');
     }
 
-    return { items, sources, calendarEvents };
+    return { items, sources, todayEvents, upcomingEvents };
   }
 
   async getEmailData(userId, userRole) {
@@ -274,13 +289,11 @@ class BriefController {
       const isConnected = await gmailService.isConnected(userId);
       
       if (isConnected) {
-        const recentEmails = await gmailService.getRecentEmails(userId, 5);
+        const recentEmails = await gmailService.getRecentEmails(userId, 10);
         
         if (recentEmails && recentEmails.length > 0) {
-          const importantEmails = recentEmails.filter(email => 
-            email.labels?.includes('IMPORTANT') || 
-            email.labels?.includes('UNREAD')
-          );
+          // Smart email prioritization for daily brief
+          const importantEmails = this.prioritizeEmails(recentEmails);
 
           if (importantEmails.length > 0) {
             items.push({
@@ -294,13 +307,43 @@ class BriefController {
             // Store actual email data for the brief
             emails.push(...importantEmails.map(email => ({
               id: email.id,
-              from: email.from || 'Unknown',
+              from: this.extractSenderName(email.from),
               subject: email.subject || 'No subject',
               snippet: email.snippet || '',
               timestamp: email.timestamp || new Date(),
               labels: email.labels || [],
+              isUnread: email.labels?.includes('UNREAD'),
             })));
+          } else {
+            // Only show "Inbox is clear" if there are genuinely no emails
+            if (recentEmails.length === 0) {
+              items.push({
+                category: 'email',
+                priority: 'low',
+                title: 'Inbox is clear',
+                description: 'No new emails',
+                actionable: false,
+              });
+            } else {
+              // There are emails but none classified as important
+              items.push({
+                category: 'email',
+                priority: 'low',
+                title: 'No priority emails',
+                description: `${recentEmails.length} emails in inbox`,
+                actionable: false,
+              });
+            }
           }
+        } else {
+          // No emails at all
+          items.push({
+            category: 'email',
+            priority: 'low',
+            title: 'Inbox is clear',
+            description: 'No new emails',
+            actionable: false,
+          });
         }
       } else {
         sources.push('gmail (not connected)');
@@ -311,6 +354,69 @@ class BriefController {
     }
 
     return { items, sources, emails };
+  }
+
+  prioritizeEmails(emails) {
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    
+    return emails.filter(email => {
+      const emailDate = new Date(email.timestamp || now);
+      const isRecent = emailDate >= oneDayAgo;
+      const isUnread = email.labels?.includes('UNREAD');
+      const isImportant = email.labels?.includes('IMPORTANT');
+      const hasCalendarInvite = this.isCalendarInvite(email);
+      const isFromHR = this.isFromHR(email);
+      const isFromManager = this.isFromManager(email);
+      
+      // High priority: recent + important, or recent + unread, or calendar invites
+      if (isRecent && (isImportant || isUnread || hasCalendarInvite)) {
+        return true;
+      }
+      
+      // Medium priority: HR or manager emails, or recent important
+      if (isFromHR || isFromManager || (isImportant && isRecent)) {
+        return true;
+      }
+      
+      return false;
+    }).slice(0, 5); // Limit to top 5 important emails
+  }
+
+  extractSenderName(fromString) {
+    if (!fromString) return 'Unknown';
+    
+    // Handle format: "Name <email@example.com>" or just "email@example.com"
+    const match = fromString.match(/"?([^"<]+)"?\s*<([^>]+)>/);
+    if (match) {
+      return match[1].trim();
+    }
+    
+    // If no angle brackets, return the string
+    return fromString.split('<')[0].trim();
+  }
+
+  isCalendarInvite(email) {
+    const subject = (email.subject || '').toLowerCase();
+    const keywords = ['invite', 'invitation', 'meeting', 'calendar', 'schedule', 'agenda'];
+    return keywords.some(keyword => subject.includes(keyword));
+  }
+
+  isFromHR(email) {
+    const from = (email.from || '').toLowerCase();
+    const subject = (email.subject || '').toLowerCase();
+    const hrKeywords = ['hr', 'human resources', 'people', 'leave', 'policy', 'benefits'];
+    
+    return hrKeywords.some(keyword => 
+      from.includes(keyword) || subject.includes(keyword)
+    );
+  }
+
+  isFromManager(email) {
+    const from = (email.from || '').toLowerCase();
+    const managerKeywords = ['manager', 'lead', 'director', 'head', 'supervisor'];
+    
+    return managerKeywords.some(keyword => from.includes(keyword));
   }
 
   async getHRData(userId) {
@@ -414,45 +520,63 @@ class BriefController {
 
     const sourcesSummary = data.sources.join(', ');
 
-    // Add calendar information
-    const calendarInfo = data.calendarEvents && data.calendarEvents.length > 0
-      ? `\n\nCALENDAR EVENTS:\n${data.calendarEvents.map(e => `- ${e.title} at ${e.startTime ? new Date(e.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'All day'}`).join('\n')}`
-      : '\n\nCALENDAR: No events today';
+    // Add today's calendar information
+    const todayCalendarInfo = data.todayEvents && data.todayEvents.length > 0
+      ? `\n\nTODAY'S CALENDAR (${data.todayEvents.length} meetings):\n${data.todayEvents.map(e => `- ${e.title} at ${e.startTime ? new Date(e.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'All day'}`).join('\n')}`
+      : '\n\nTODAY\'S CALENDAR: No meetings today';
+
+    // Add upcoming calendar information
+    const upcomingCalendarInfo = data.upcomingEvents && data.upcomingEvents.length > 0
+      ? `\n\nUPCOMING CALENDAR (next 3):\n${data.upcomingEvents.slice(0, 3).map(e => {
+        const eventDate = new Date(e.startTime);
+        const dateStr = eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const timeStr = e.startTime ? new Date(e.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'All day';
+        return `- ${dateStr} · ${timeStr} · ${e.title}`;
+      }).join('\n')}`
+      : '\n\nUPCOMING CALENDAR: No upcoming events';
 
     // Add email information
     const emailInfo = data.emails && data.emails.length > 0
-      ? `\n\nIMPORTANT EMAILS:\n${data.emails.map(e => `- From ${e.from}: ${e.subject}`).join('\n')}`
+      ? `\n\nIMPORTANT EMAILS (${data.emails.length}):\n${data.emails.map(e => `- From ${e.from}: ${e.subject}`).join('\n')}`
       : '\n\nEMAILS: No important emails';
 
     // Add leave information
     const leaveInfo = data.leaveBalance
-      ? `\n\nLEAVE BALANCE: ${data.leaveBalance.annual} annual, ${data.leaveBalance.sick} sick, ${data.leaveBalance.personal} personal days`
+      ? `\n\nLEAVE BALANCE: Annual ${data.leaveBalance.annual}, Sick ${data.leaveBalance.sick}, Personal ${data.leaveBalance.personal}`
       : '\n\nLEAVE: No balance information';
+
+    const pendingLeaveInfo = data.pendingLeaveRequests && data.pendingLeaveRequests.length > 0
+      ? `\n\nPENDING LEAVE REQUESTS: ${data.pendingLeaveRequests.length}`
+      : '\n\nPENDING LEAVE REQUESTS: 0';
 
     return `You are an AI assistant for an Employee Copilot system. Generate a comprehensive daily brief for a ${userRole} user.
 
 USER ROLE: ${userRole.toUpperCase()}
 AVAILABLE DATA SOURCES: ${sourcesSummary}
-${calendarInfo}
+${todayCalendarInfo}
+${upcomingCalendarInfo}
 ${emailInfo}
 ${leaveInfo}
+${pendingLeaveInfo}
 
 ITEMS TO INCLUDE:
 ${itemsSummary}
 
 GUIDELINES:
-1. Create a comprehensive summary (2-3 sentences) of the user's day
-2. Prioritize urgent actions, pending approvals, and upcoming events
+1. Create a comprehensive summary (2-3 sentences) focused on TODAY's activities
+2. Focus on today's meetings, important emails, and pending actions
 3. Be specific about times, dates, and action items
-4. Generate genuine AI insights based on the actual data
-5. Format as JSON with this structure:
+4. Generate genuine AI insights based on the actual TODAY data
+5. DO NOT invent meetings, emails, or priorities
+6. If there are no meetings today, clearly state that
+7. Format as JSON with this structure:
 {
-  "summary": "Comprehensive 2-3 sentence summary of the day",
+  "summary": "Comprehensive 2-3 sentence summary of TODAY",
   "dayAtAGlance": {
-    "meetingCount": number,
+    "meetingCount": number (TODAY only),
     "emailCount": number,
     "pendingLeaveRequests": number,
-    "busiestPeriod": "time range or null"
+    "focus": "Today's actual focus or 'Today'"
   },
   "priorities": [
     {
@@ -460,32 +584,42 @@ GUIDELINES:
       "title": "Priority title",
       "description": "Description",
       "time": "time if applicable",
-      "category": "category"
+      "category": "category",
+      "priority": "HIGH|MEDIUM|LOW"
     }
   ],
-  "calendarEvents": [
+  "todayEvents": [
     {
-      "time": "HH:MM",
+      "time": "HH:MM AM/PM",
       "title": "Event title",
       "description": "Description if available"
     }
   ],
+  "upcomingEvents": [
+    {
+      "date": "MM/DD",
+      "time": "HH:MM AM/PM",
+      "title": "Event title"
+    }
+  ],
   "importantEmails": [
     {
-      "from": "Sender",
+      "from": "Sender name",
       "subject": "Subject",
       "time": "time ago",
-      "snippet": "Brief snippet"
+      "snippet": "Brief snippet",
+      "isUnread": boolean
     }
   ],
   "leaveInformation": {
-    "availableDays": "total available",
-    "pendingRequests": number,
-    "nextAvailable": "if applicable"
+    "annual": number,
+    "sick": number,
+    "personal": number,
+    "pendingRequests": number
   },
-  "aiInsight": "Genuine insight based on actual data patterns (e.g., gaps between meetings, preparation time needed, etc.)",
-  "companyUpdates": "Relevant company updates if available from data sources",
-  "recommendation": "One actionable AI recommendation",
+  "aiInsight": "Genuine insight based on TODAY's actual data patterns",
+  "companyUpdates": "Relevant company updates if available",
+  "recommendation": "One actionable AI recommendation for TODAY",
   "sources": ["list of data sources used"]
 }
 
@@ -504,7 +638,8 @@ Return ONLY the JSON, no additional text.`;
         
         // Add raw data for frontend display
         parsed.rawData = {
-          calendarEvents: originalData.calendarEvents || [],
+          todayEvents: originalData.todayEvents || [],
+          upcomingEvents: originalData.upcomingEvents || [],
           emails: originalData.emails || [],
           leaveBalance: originalData.leaveBalance || null,
           pendingLeaveRequests: originalData.pendingLeaveRequests || [],
@@ -538,13 +673,14 @@ Return ONLY the JSON, no additional text.`;
     return {
       summary,
       dayAtAGlance: {
-        meetingCount: data.calendarEvents?.length || 0,
+        meetingCount: data.todayEvents?.length || 0,
         emailCount: data.emails?.length || 0,
         pendingLeaveRequests: data.pendingLeaveRequests?.length || 0,
-        busiestPeriod: this.calculateBusiestPeriod(data.calendarEvents),
+        focus: 'Today',
       },
       priorities: this.extractPriorities(data.items),
-      calendarEvents: this.formatCalendarEvents(data.calendarEvents),
+      todayEvents: this.formatTodayEvents(data.todayEvents),
+      upcomingEvents: this.formatUpcomingEvents(data.upcomingEvents),
       importantEmails: this.formatEmails(data.emails),
       leaveInformation: this.formatLeaveInfo(data.leaveBalance, data.pendingLeaveRequests),
       aiInsight,
@@ -552,7 +688,8 @@ Return ONLY the JSON, no additional text.`;
       recommendation,
       sources: data.sources,
       rawData: {
-        calendarEvents: data.calendarEvents || [],
+        todayEvents: data.todayEvents || [],
+        upcomingEvents: data.upcomingEvents || [],
         emails: data.emails || [],
         leaveBalance: data.leaveBalance || null,
         pendingLeaveRequests: data.pendingLeaveRequests || [],
@@ -563,36 +700,36 @@ Return ONLY the JSON, no additional text.`;
   generateAIInsight(data) {
     const insights = [];
     
-    // Check for meeting gaps
-    if (data.calendarEvents && data.calendarEvents.length > 1) {
-      const sortedEvents = data.calendarEvents.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+    // Check for meeting gaps in TODAY's events
+    if (data.todayEvents && data.todayEvents.length > 1) {
+      const sortedEvents = data.todayEvents.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
       for (let i = 0; i < sortedEvents.length - 1; i++) {
         const currentEnd = new Date(sortedEvents[i].endTime);
         const nextStart = new Date(sortedEvents[i + 1].startTime);
         const gap = (nextStart - currentEnd) / (1000 * 60); // gap in minutes
         
         if (gap >= 15 && gap <= 60) {
-          insights.push(`You have a ${Math.round(gap)}-minute gap between meetings. This could be a good time to review your pending emails.`);
+          insights.push(`You have a ${Math.round(gap)}-minute gap between meetings today. This could be a good time to review your pending emails.`);
           break;
         }
       }
     }
     
-    // Check for back-to-back meetings
-    if (data.calendarEvents && data.calendarEvents.length >= 3) {
-      const consecutiveMeetings = data.calendarEvents.filter((event, index) => {
+    // Check for back-to-back meetings TODAY
+    if (data.todayEvents && data.todayEvents.length >= 3) {
+      const consecutiveMeetings = data.todayEvents.filter((event, index) => {
         if (index === 0) return false;
-        const prevEnd = new Date(data.calendarEvents[index - 1].endTime);
+        const prevEnd = new Date(data.todayEvents[index - 1].endTime);
         const currentStart = new Date(event.startTime);
         return (currentStart - prevEnd) / (1000 * 60) <= 5;
       });
       
       if (consecutiveMeetings.length >= 2) {
-        insights.push('You have back-to-back meetings scheduled. Consider preparing for your most important meeting beforehand.');
+        insights.push('You have back-to-back meetings scheduled today. Consider preparing for your most important meeting beforehand.');
       }
     }
     
-    // Check for no urgent items
+    // Check for no urgent items today
     const highPriorityItems = data.items.filter(item => item.priority === 'high');
     if (highPriorityItems.length === 0) {
       insights.push('You have no urgent items today. This may be a good time to review the latest company updates or plan ahead.');
@@ -606,25 +743,6 @@ Return ONLY the JSON, no additional text.`;
     return insights.length > 0 ? insights[0] : 'Review your calendar and emails for any upcoming commitments.';
   }
 
-  calculateBusiestPeriod(calendarEvents) {
-    if (!calendarEvents || calendarEvents.length < 2) return null;
-    
-    const times = calendarEvents
-      .map(event => new Date(event.startTime).getHours())
-      .sort((a, b) => a - b);
-    
-    if (times.length === 0) return null;
-    
-    const startHour = times[0];
-    const endHour = times[times.length - 1];
-    
-    if (endHour - startHour >= 2) {
-      return `${startHour} AM – ${endHour} PM`;
-    }
-    
-    return null;
-  }
-
   extractPriorities(items) {
     return items
       .filter(item => item.priority === 'high' || item.priority === 'medium')
@@ -635,17 +753,31 @@ Return ONLY the JSON, no additional text.`;
         description: item.description || '',
         time: item.time ? new Date(item.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '',
         category: item.category,
+        priority: item.priority?.toUpperCase() || 'MEDIUM',
       }));
   }
 
-  formatCalendarEvents(calendarEvents) {
-    if (!calendarEvents) return [];
+  formatTodayEvents(todayEvents) {
+    if (!todayEvents) return [];
     
-    return calendarEvents.map(event => ({
+    return todayEvents.map(event => ({
       time: event.startTime ? new Date(event.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'All day',
       title: event.title,
       description: event.description || '',
     }));
+  }
+
+  formatUpcomingEvents(upcomingEvents) {
+    if (!upcomingEvents) return [];
+    
+    return upcomingEvents.slice(0, 3).map(event => {
+      const eventDate = new Date(event.startTime);
+      return {
+        date: eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        time: event.startTime ? new Date(event.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'All day',
+        title: event.title,
+      };
+    });
   }
 
   formatEmails(emails) {
@@ -656,18 +788,16 @@ Return ONLY the JSON, no additional text.`;
       subject: email.subject,
       time: email.timestamp ? this.getTimeAgo(new Date(email.timestamp)) : 'Unknown',
       snippet: email.snippet || '',
+      isUnread: email.isUnread || false,
     }));
   }
 
   formatLeaveInfo(leaveBalance, pendingLeaveRequests) {
-    const totalAvailable = leaveBalance 
-      ? (leaveBalance.annual || 0) + (leaveBalance.sick || 0) + (leaveBalance.personal || 0)
-      : 0;
-    
     return {
-      availableDays: `${totalAvailable} Days Available`,
+      annual: leaveBalance?.annual || 0,
+      sick: leaveBalance?.sick || 0,
+      personal: leaveBalance?.personal || 0,
       pendingRequests: pendingLeaveRequests?.length || 0,
-      nextAvailable: null,
     };
   }
 
@@ -675,9 +805,9 @@ Return ONLY the JSON, no additional text.`;
     const seconds = Math.floor((new Date() - date) / 1000);
     
     if (seconds < 60) return 'Just now';
-    if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`;
-    if (seconds < 604800) return `${Math.floor(seconds / 86400)} days ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d`;
     
     return date.toLocaleDateString();
   }

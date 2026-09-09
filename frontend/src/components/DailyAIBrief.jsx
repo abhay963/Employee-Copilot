@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import {
@@ -59,7 +58,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
   }, [currentTime]);
 
   // ==========================================================
-  // LOAD EXISTING BRIEF
+  // LOAD LATEST BRIEF
   // ==========================================================
 
   useEffect(() => {
@@ -87,56 +86,63 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
         'Error loading latest brief:',
         err
       );
+
+      setError(
+        err?.error ||
+          err?.message ||
+          'Failed to load daily brief'
+      );
     } finally {
       setInitialLoading(false);
     }
   };
 
   // ==========================================================
-  // GENERATE / REFRESH BRIEF
+  // GENERATE / REFRESH
   // ==========================================================
 
-  const generateBrief = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+ const generateBrief = async () => {
+  try {
+    setLoading(true);
+    setError(null);
 
-      const response =
-        await briefAPI.generateDailyBrief();
+    const response =
+      await briefAPI.generateDailyBrief();
 
-      if (!response?.success) {
-        throw new Error(
-          response?.error ||
-            'Failed to generate brief'
-        );
-      }
-
-      setBrief(response.brief);
-
-      const generatedDate =
-        response.brief?.generatedAt
-          ? new Date(response.brief.generatedAt)
-          : new Date();
-
-      setLastGenerated(generatedDate);
-
-      toast.success('Brief updated');
-    } catch (err) {
-      console.error(
-        'Error generating brief:',
-        err
+    if (!response?.success) {
+      throw new Error(
+        response?.error ||
+          'Failed to generate brief'
       );
-
-      const message =
-        err?.message ||
-        'Failed to refresh brief';
-
-      setError(message);
-      toast.error(message);
-    } finally {
-      setLoading(false);
     }
-  };
+
+    setBrief(response.brief);
+
+    // Always use the actual refresh time for the UI.
+    // This guarantees "Last updated" changes after
+    // every successful refresh.
+    const refreshedAt = new Date();
+
+    setLastGenerated(refreshedAt);
+
+    toast.success('Brief updated');
+  } catch (err) {
+    console.error(
+      'Error generating brief:',
+      err
+    );
+
+    const message =
+      err?.error ||
+      err?.message ||
+      'Failed to refresh brief';
+
+    setError(message);
+    toast.error(message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // ==========================================================
   // HELPERS
@@ -178,31 +184,123 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
     );
   }, [currentTime]);
 
-  const timeAgo = date => {
-    if (!date) return 'Not generated';
+ const timeAgo = date => {
+  if (!date) return 'Not generated';
 
-    const seconds = Math.max(
-      0,
-      Math.floor(
-        (Date.now() - new Date(date).getTime()) /
-          1000
-      )
+  const seconds = Math.max(
+    0,
+    Math.floor(
+      (Date.now() - new Date(date).getTime()) /
+        1000
+    )
+  );
+
+  if (seconds < 60) {
+    return 'Just now';
+  }
+
+  if (seconds < 3600) {
+    return `${Math.floor(seconds / 60)}m ago`;
+  }
+
+  if (seconds < 86400) {
+    return `${Math.floor(seconds / 3600)}h ago`;
+  }
+
+  return `${Math.floor(seconds / 86400)}d ago`;
+};
+  // ==========================================================
+  // CONTROLLER DATA NORMALIZATION
+  // ==========================================================
+  //
+  // Controller provides:
+  //
+  // todayEvents
+  // upcomingEvents
+  // emails / importantEmails
+  // leaveInformation
+  // rawData
+  //
+  // We intentionally prefer actual raw/controller data over
+  // AI-generated counts so the frontend cannot display
+  // incorrect calculated values.
+  // ==========================================================
+
+  const todayEvents = useMemo(() => {
+    return (
+      brief?.todayEvents ||
+      brief?.rawData?.todayEvents ||
+      []
+    );
+  }, [brief]);
+
+  const upcomingEvents = useMemo(() => {
+    return (
+      brief?.upcomingEvents ||
+      brief?.rawData?.upcomingEvents ||
+      []
+    );
+  }, [brief]);
+
+  const importantEmails = useMemo(() => {
+    return (
+      brief?.importantEmails ||
+      brief?.rawData?.emails ||
+      []
+    );
+  }, [brief]);
+
+  const leaveInformation = useMemo(() => {
+    if (brief?.leaveInformation) {
+      return brief.leaveInformation;
+    }
+
+    const balance =
+      brief?.rawData?.leaveBalance;
+
+    const pending =
+      brief?.rawData?.pendingLeaveRequests;
+
+    if (!balance && !pending) {
+      return null;
+    }
+
+    return {
+      annual: balance?.annual ?? 0,
+      sick: balance?.sick ?? 0,
+      personal: balance?.personal ?? 0,
+      pendingRequests:
+        pending?.length ?? 0,
+    };
+  }, [brief]);
+
+  // ==========================================================
+  // IMPORTANT:
+  // COUNTS COME FROM ACTUAL ARRAYS
+  // ==========================================================
+
+  const meetingCount = todayEvents.length;
+
+  const emailCount =
+    importantEmails.length;
+
+  const pendingRequests =
+    Number(
+      leaveInformation?.pendingRequests ?? 0
     );
 
-    if (seconds < 60) {
-      return 'Just now';
-    }
+  // ==========================================================
+  // FOCUS
+  // ==========================================================
 
-    if (seconds < 3600) {
-      return `${Math.floor(seconds / 60)}m ago`;
-    }
+  const focusText =
+    todayEvents.length > 0
+      ? 'Today'
+      : 'Open day';
 
-    if (seconds < 86400) {
-      return `${Math.floor(seconds / 3600)}h ago`;
-    }
-
-    return `${Math.floor(seconds / 86400)}d ago`;
-  };
+  // ==========================================================
+  // EMAIL INITIALS
+  // ==========================================================
 
   const getEmailInitials = from => {
     if (!from) return '•';
@@ -212,10 +310,16 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
       .trim()
       .split(/\s+/)
       .slice(0, 2)
-      .map(name => name.charAt(0))
+      .map(name =>
+        name.charAt(0)
+      )
       .join('')
       .toUpperCase();
   };
+
+  // ==========================================================
+  // PRIORITY LEVEL
+  // ==========================================================
 
   const getPriorityLevel = priority => {
     const text = `${priority?.priority || ''} ${
@@ -238,6 +342,10 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
     return 'MEDIUM';
   };
 
+  // ==========================================================
+  // EVENT PLATFORM
+  // ==========================================================
+
   const getPlatform = event => {
     return (
       event?.platform ||
@@ -247,37 +355,18 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
     );
   };
 
-  const getAvailableLeave = () => {
-    const value =
-      brief?.leaveInformation
-        ?.availableDays;
+  // ==========================================================
+  // LEAVE VALUES
+  // ==========================================================
 
-    if (
-      value === null ||
-      value === undefined ||
-      value === ''
-    ) {
-      return '—';
-    }
+  const annualLeave =
+    leaveInformation?.annual ?? 0;
 
-    return value;
-  };
+  const sickLeave =
+    leaveInformation?.sick ?? 0;
 
-  const getPendingLeave = () => {
-    const value =
-      brief?.leaveInformation
-        ?.pendingRequests;
-
-    if (
-      value === null ||
-      value === undefined ||
-      value === ''
-    ) {
-      return 0;
-    }
-
-    return value;
-  };
+  const personalLeave =
+    leaveInformation?.personal ?? 0;
 
   // ==========================================================
   // LOADING
@@ -291,6 +380,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
             size={14}
             className="animate-spin text-violet-400"
           />
+
           Loading brief
         </div>
       </div>
@@ -305,9 +395,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
     return (
       <div className="min-h-full px-5 py-8 lg:px-8">
         <div className="mx-auto max-w-6xl">
-
           <div className="flex min-h-[500px] items-center justify-center">
-
             <div className="w-full max-w-md text-center">
 
               <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-500/10">
@@ -339,18 +427,26 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
                       size={14}
                       className="animate-spin"
                     />
+
                     Generating
                   </>
                 ) : (
                   <>
                     <Sparkles size={14} />
+
                     Generate Brief
                   </>
                 )}
               </button>
 
-            </div>
+              {error && (
+                <div className="mt-4 flex items-center justify-center gap-2 text-[10px] text-red-300/70">
+                  <CircleAlert size={12} />
+                  {error}
+                </div>
+              )}
 
+            </div>
           </div>
         </div>
       </div>
@@ -358,40 +454,13 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
   }
 
   // ==========================================================
-  // DATA
+  // PRIORITIES
   // ==========================================================
 
-  const meetings =
-    brief.calendarEvents || [];
-
   const priorities =
-    brief.priorities || [];
-
-  const emails =
-    brief.importantEmails || [];
-
-  const hasLeave =
-    brief.leaveInformation !== null &&
-    brief.leaveInformation !== undefined;
-
-  const meetingCount =
-    brief.dayAtAGlance?.meetingCount ??
-    meetings.length ??
-    0;
-
-  const emailCount =
-    brief.dayAtAGlance?.emailCount ??
-    emails.length ??
-    0;
-
-  const pendingRequests =
-    brief.dayAtAGlance
-      ?.pendingLeaveRequests ??
-    getPendingLeave();
-
-  const busiestPeriod =
-    brief.dayAtAGlance?.busiestPeriod ||
-    'All day';
+    Array.isArray(brief.priorities)
+      ? brief.priorities
+      : [];
 
   // ==========================================================
   // MAIN
@@ -411,6 +480,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
             <div>
+
               <div className="flex items-center gap-2">
 
                 <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
@@ -425,6 +495,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
               </div>
 
               <div className="mt-1 flex items-center gap-2 text-xs text-white/35">
+
                 <span>
                   Daily Brief
                 </span>
@@ -436,12 +507,15 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
                 <span>
                   {shortDate}
                 </span>
+
               </div>
+
             </div>
 
             <div className="flex items-center gap-3">
 
               <div className="hidden text-right sm:block">
+
                 <p className="text-[10px] uppercase tracking-wider text-white/25">
                   Last updated
                 </p>
@@ -449,6 +523,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
                 <p className="mt-0.5 text-xs font-medium text-white/45">
                   {timeAgo(lastGenerated)}
                 </p>
+
               </div>
 
               <button
@@ -458,6 +533,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
                 title="Refresh daily brief"
                 className="group inline-flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-xs font-medium text-white/55 transition-all hover:border-violet-400/30 hover:bg-violet-500/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
+
                 <RefreshCw
                   size={13}
                   className={
@@ -470,6 +546,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
                 <span className="hidden sm:inline">
                   Refresh
                 </span>
+
               </button>
 
             </div>
@@ -478,12 +555,29 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
 
           {loading && (
             <div className="mt-3 flex items-center gap-2 text-[10px] text-violet-300/60">
+
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />
+
               Updating your brief...
+
             </div>
           )}
 
         </header>
+
+        {/* ====================================================
+            ERROR
+        ==================================================== */}
+
+        {error && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/10 bg-red-500/[0.04] px-3 py-2 text-[10px] text-red-300/70">
+
+            <CircleAlert size={12} />
+
+            {error}
+
+          </div>
+        )}
 
         {/* ====================================================
             METRIC CARDS
@@ -491,23 +585,39 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
 
         <section className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
 
+          {/* MEETINGS */}
+
           <MetricCard
             icon={
               <CalendarDays size={16} />
             }
             label="Meetings"
-            value={meetingCount}
+            value={
+              meetingCount === 1
+                ? '1 today'
+                : `${meetingCount} today`
+            }
             accent="violet"
+            compactValue
           />
+
+          {/* EMAILS */}
 
           <MetricCard
             icon={
               <Mail size={16} />
             }
             label="Emails"
-            value={emailCount}
+            value={
+              emailCount === 0
+                ? '0 priority'
+                : `${emailCount} priority`
+            }
             accent="blue"
+            compactValue
           />
+
+          {/* LEAVE */}
 
           <MetricCard
             icon={
@@ -516,17 +626,12 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
               </span>
             }
             label="Leave"
-            value={
-              hasLeave
-                ? getAvailableLeave()
-                : '—'
-            }
+            value={`${pendingRequests} pending`}
             accent="emerald"
+            compactValue
           />
 
-          {/* ==================================================
-              WALL CLOCK
-          ================================================== */}
+          {/* KEEP EXISTING CLOCK */}
 
           <WallClock
             currentTime={currentTime}
@@ -554,13 +659,17 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
               iconClass="text-violet-400"
               title="Today"
               action={
-                meetings.length > 0
-                  ? `${meetings.length} events`
+                meetingCount > 0
+                  ? `${meetingCount} ${
+                      meetingCount === 1
+                        ? 'meeting'
+                        : 'meetings'
+                    }`
                   : 'Clear'
               }
             />
 
-            {meetings.length > 0 ? (
+            {todayEvents.length > 0 ? (
 
               <div className="mt-5">
 
@@ -570,12 +679,13 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
 
                   <div className="space-y-4">
 
-                    {meetings
+                    {todayEvents
                       .slice(0, 5)
                       .map(
                         (event, index) => (
+
                           <div
-                            key={`${event.title}-${index}`}
+                            key={`today-${event.title}-${index}`}
                             className="relative flex items-start gap-4"
                           >
 
@@ -590,11 +700,11 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
                                     'Untitled event'}
                                 </p>
 
-                                <span className="mt-1 inline-flex rounded-md border border-white/[0.06] bg-white/[0.025] px-1.5 py-0.5 text-[9px] text-white/30">
-                                  {getPlatform(
-                                    event
-                                  )}
-                                </span>
+                                {getPlatform(event) && (
+                                  <span className="mt-1 inline-flex rounded-md border border-white/[0.06] bg-white/[0.025] px-1.5 py-0.5 text-[9px] text-white/30">
+                                    {getPlatform(event)}
+                                  </span>
+                                )}
 
                               </div>
 
@@ -606,6 +716,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
                             </div>
 
                           </div>
+
                         )
                       )}
 
@@ -613,19 +724,24 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
 
                 </div>
 
-                <div className="mt-5 flex items-center gap-2 border-t border-white/[0.06] pt-3 text-[10px] text-white/30">
+                {brief.dayAtAGlance?.focus && (
+                  <div className="mt-5 flex items-center gap-2 border-t border-white/[0.06] pt-3 text-[10px] text-white/30">
 
-                  <Clock3 size={11} />
+                    <Clock3 size={11} />
 
-                  <span>
-                    Peak
-                  </span>
+                    <span>
+                      Focus
+                    </span>
 
-                  <span className="font-medium text-white/55">
-                    {busiestPeriod}
-                  </span>
+                    <span className="font-medium text-white/55">
+                      {compactText(
+                        brief.dayAtAGlance.focus,
+                        60
+                      )}
+                    </span>
 
-                </div>
+                  </div>
+                )}
 
               </div>
 
@@ -715,7 +831,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
           </DashboardCard>
 
           {/* ==================================================
-              EMAILS
+              IMPORTANT EMAILS
           ================================================== */}
 
           <DashboardCard>
@@ -727,24 +843,26 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
               iconClass="text-blue-400"
               title="Important Emails"
               action={
-                emails.length > 0
-                  ? 'View all'
+                importantEmails.length > 0
+                  ? `${Math.min(
+                      importantEmails.length,
+                      3
+                    )} shown`
                   : null
               }
-              actionIcon
             />
 
-            {emails.length > 0 ? (
+            {importantEmails.length > 0 ? (
 
               <div className="mt-3 divide-y divide-white/[0.05]">
 
-                {emails
+                {importantEmails
                   .slice(0, 3)
                   .map(
                     (email, index) => (
 
                       <div
-                        key={`${email.subject}-${index}`}
+                        key={`${email.id || email.subject}-${index}`}
                         className="flex items-center gap-3 py-3 first:pt-1 last:pb-1"
                       >
 
@@ -754,7 +872,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
                             email.from
                           )}
 
-                          {index === 0 && (
+                          {email.isUnread && (
                             <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-violet-400 ring-2 ring-[#0b0b0b]" />
                           )}
 
@@ -796,7 +914,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
                 icon={
                   <Mail size={16} />
                 }
-                text="Inbox is clear"
+                text="No priority emails"
               />
 
             )}
@@ -820,32 +938,108 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
               action={`${pendingRequests} pending`}
             />
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="mt-5 grid grid-cols-3 gap-2">
 
               <StatBox
-                value={
-                  hasLeave
-                    ? getAvailableLeave()
-                    : '—'
-                }
-                label="Available"
+                value={annualLeave}
+                label="Annual"
               />
 
               <StatBox
-                value={getPendingLeave()}
-                label="Pending"
+                value={sickLeave}
+                label="Sick"
+              />
+
+              <StatBox
+                value={personalLeave}
+                label="Personal"
               />
 
             </div>
 
+            {pendingRequests > 0 && (
+              <div className="mt-3 rounded-lg border border-amber-400/10 bg-amber-500/[0.035] px-3 py-2">
+
+                <p className="text-[10px] text-amber-300/70">
+                  {pendingRequests}{' '}
+                  pending leave request
+                  {pendingRequests > 1
+                    ? 's'
+                    : ''}
+                </p>
+
+              </div>
+            )}
+
           </DashboardCard>
+
+          {/* ==================================================
+              UPCOMING
+          ================================================== */}
+
+          {upcomingEvents.length > 0 && (
+            <DashboardCard>
+
+              <CardHeader
+                icon={
+                  <CalendarDays size={15} />
+                }
+                iconClass="text-indigo-400"
+                title="Upcoming"
+                action={`${Math.min(
+                  upcomingEvents.length,
+                  3
+                )} events`}
+              />
+
+              <div className="mt-3 divide-y divide-white/[0.05]">
+
+                {upcomingEvents
+                  .slice(0, 3)
+                  .map(
+                    (event, index) => (
+
+                      <div
+                        key={`upcoming-${event.title}-${index}`}
+                        className="flex items-center gap-3 py-3 first:pt-1 last:pb-1"
+                      >
+
+                        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-300">
+                          <CalendarDays size={14} />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+
+                          <p className="truncate text-xs font-medium text-white/70">
+                            {event.title ||
+                              'Untitled event'}
+                          </p>
+
+                          <p className="mt-0.5 text-[9px] text-white/30">
+                            {event.date ||
+                              'Upcoming'}
+                            {event.time
+                              ? ` · ${event.time}`
+                              : ''}
+                          </p>
+
+                        </div>
+
+                      </div>
+
+                    )
+                  )}
+
+              </div>
+
+            </DashboardCard>
+          )}
 
           {/* ==================================================
               AI INSIGHT
           ================================================== */}
 
           {brief.aiInsight && (
-
             <DashboardCard
               className="border-amber-400/10 bg-gradient-to-br from-amber-500/[0.05] to-transparent"
             >
@@ -870,7 +1064,6 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
               </div>
 
             </DashboardCard>
-
           )}
 
           {/* ==================================================
@@ -878,7 +1071,6 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
           ================================================== */}
 
           {brief.companyUpdates && (
-
             <DashboardCard>
 
               <CardHeader
@@ -919,7 +1111,6 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
               </div>
 
             </DashboardCard>
-
           )}
 
         </section>
@@ -929,8 +1120,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
         ==================================================== */}
 
         {brief.sources?.length > 0 && (
-
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
 
             <span className="text-[9px] uppercase tracking-wider text-white/20">
               Sources
@@ -950,21 +1140,10 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
             )}
 
           </div>
-
-        )}
-
-        {/* ====================================================
-            ERROR
-        ==================================================== */}
-
-        {error && (
-          <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-500/10 bg-red-500/[0.04] px-3 py-2 text-[10px] text-red-300/70">
-            <CircleAlert size={12} />
-            {error}
-          </div>
         )}
 
       </div>
+
     </div>
   );
 };
@@ -977,14 +1156,22 @@ const WallClock = ({
   currentTime,
   clockTime,
 }) => {
-  const seconds = currentTime.getSeconds();
-  const minutes = currentTime.getMinutes();
-  const hours = currentTime.getHours();
+  const seconds =
+    currentTime.getSeconds();
 
-  // Analog clock angles
-  const secondAngle = seconds * 6;
+  const minutes =
+    currentTime.getMinutes();
+
+  const hours =
+    currentTime.getHours();
+
+  const secondAngle =
+    seconds * 6;
+
   const minuteAngle =
-    minutes * 6 + seconds * 0.1;
+    minutes * 6 +
+    seconds * 0.1;
+
   const hourAngle =
     (hours % 12) * 30 +
     minutes * 0.5;
@@ -993,16 +1180,15 @@ const WallClock = ({
     <div
       className="
         relative
+        overflow-hidden
         rounded-xl
         border
         border-amber-400/10
         bg-amber-500/[0.035]
         p-4
-        overflow-hidden
       "
     >
 
-      {/* Header */}
       <div className="flex items-center justify-between">
 
         <span className="text-amber-300">
@@ -1015,7 +1201,6 @@ const WallClock = ({
 
       </div>
 
-      {/* Clock Area */}
       <div className="mt-3 flex items-center justify-center">
 
         <div
@@ -1031,10 +1216,7 @@ const WallClock = ({
           "
         >
 
-          {/* Outer ring */}
           <div className="absolute inset-[4px] rounded-full border border-white/[0.05]" />
-
-          {/* Hour markers */}
 
           <ClockMarker
             position="top"
@@ -1042,7 +1224,7 @@ const WallClock = ({
           />
 
           <ClockMarker
-            position="top-right"
+            position="topRight"
             className="h-1 w-1"
           />
 
@@ -1052,7 +1234,7 @@ const WallClock = ({
           />
 
           <ClockMarker
-            position="bottom-right"
+            position="bottomRight"
             className="h-1 w-1"
           />
 
@@ -1062,7 +1244,7 @@ const WallClock = ({
           />
 
           <ClockMarker
-            position="bottom-left"
+            position="bottomLeft"
             className="h-1 w-1"
           />
 
@@ -1072,11 +1254,10 @@ const WallClock = ({
           />
 
           <ClockMarker
-            position="top-left"
+            position="topLeft"
             className="h-1 w-1"
           />
 
-          {/* Hour hand */}
           <ClockHand
             angle={hourAngle}
             length="25px"
@@ -1084,7 +1265,6 @@ const WallClock = ({
             color="bg-white/80"
           />
 
-          {/* Minute hand */}
           <ClockHand
             angle={minuteAngle}
             length="33px"
@@ -1092,7 +1272,6 @@ const WallClock = ({
             color="bg-white"
           />
 
-          {/* Second hand */}
           <ClockHand
             angle={secondAngle}
             length="36px"
@@ -1101,14 +1280,12 @@ const WallClock = ({
             smooth
           />
 
-          {/* Center dot */}
           <div className="absolute left-1/2 top-1/2 z-30 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#080808] bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
 
         </div>
 
       </div>
 
-      {/* Digital time */}
       <div className="mt-2 text-center">
 
         <div className="font-mono text-sm font-semibold tracking-[0.08em] text-white/85">
@@ -1180,6 +1357,7 @@ const ClockHand = ({
   color,
   smooth = false,
 }) => {
+
   return (
     <div
       className={`
@@ -1190,7 +1368,11 @@ const ClockHand = ({
         origin-bottom
         rounded-full
         ${color}
-        ${smooth ? 'transition-transform duration-500 ease-linear' : ''}
+        ${
+          smooth
+            ? 'transition-transform duration-500 ease-linear'
+            : ''
+        }
       `}
       style={{
         width,
@@ -1212,6 +1394,7 @@ const DashboardCard = ({
   children,
   className = '',
 }) => {
+
   return (
     <div
       className={`
@@ -1241,6 +1424,7 @@ const CardHeader = ({
   action,
   actionIcon = false,
 }) => {
+
   return (
     <div className="flex items-center justify-between">
 
@@ -1257,17 +1441,13 @@ const CardHeader = ({
       </div>
 
       {action && (
-        <button
-          type="button"
-          className="flex items-center gap-1 text-[9px] font-medium text-white/25 transition hover:text-violet-300"
-        >
+        <span className="flex items-center gap-1 text-[9px] font-medium text-white/25">
           {action}
 
           {actionIcon && (
             <ChevronRight size={10} />
           )}
-
-        </button>
+        </span>
       )}
 
     </div>
@@ -1324,7 +1504,10 @@ const MetricCard = ({
 
       <div
         className={`
-          mt-3 font-semibold tracking-tight text-white
+          mt-3
+          font-semibold
+          tracking-tight
+          text-white
           ${
             compactValue
               ? 'text-base'
@@ -1347,6 +1530,7 @@ const StatBox = ({
   value,
   label,
 }) => {
+
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
 
@@ -1392,7 +1576,7 @@ const PriorityBadge = ({
         text-[8px]
         font-semibold
         tracking-wider
-        ${styles[level]}
+        ${styles[level] || styles.MEDIUM}
       `}
     >
       {level}
@@ -1408,6 +1592,7 @@ const EmptyState = ({
   icon,
   text,
 }) => {
+
   return (
     <div className="flex items-center gap-2 py-8 text-[10px] text-white/25">
 
@@ -1429,6 +1614,7 @@ const compactText = (
   value,
   maxLength = 100
 ) => {
+
   if (!value) return '';
 
   const text = String(value)
@@ -1439,7 +1625,9 @@ const compactText = (
     return text;
   }
 
-  return `${text.slice(0, maxLength).trim()}…`;
+  return `${text
+    .slice(0, maxLength)
+    .trim()}…`;
 };
 
 // ============================================================
@@ -1447,6 +1635,7 @@ const compactText = (
 // ============================================================
 
 const extractUpdateTitle = value => {
+
   if (!value) {
     return 'Company update';
   }
@@ -1469,10 +1658,11 @@ const extractUpdateTitle = value => {
 };
 
 // ============================================================
-// SIMPLE BOOK ICON
+// BOOK ICON
 // ============================================================
 
 const BookIcon = () => {
+
   return (
     <svg
       width="15"
@@ -1483,6 +1673,7 @@ const BookIcon = () => {
       strokeWidth="1.8"
     >
       <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
     </svg>
   );
