@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import {
@@ -17,7 +18,6 @@ import {
 import { briefAPI } from '../services/api';
 import { useUser } from '../context/UserContext';
 
-
 // ============================================================
 // DAILY AI BRIEF
 // ============================================================
@@ -30,6 +30,33 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastGenerated, setLastGenerated] = useState(null);
+
+  // ==========================================================
+  // LIVE CLOCK
+  // ==========================================================
+
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // ==========================================================
+  // DIGITAL TIME
+  // ==========================================================
+
+  const clockTime = useMemo(() => {
+    return currentTime.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+  }, [currentTime]);
 
   // ==========================================================
   // LOAD EXISTING BRIEF
@@ -116,13 +143,13 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
   // ==========================================================
 
   const greeting = useMemo(() => {
-    const hour = new Date().getHours();
+    const hour = currentTime.getHours();
 
     if (hour < 12) return 'Good morning';
     if (hour < 17) return 'Good afternoon';
 
     return 'Good evening';
-  }, []);
+  }, [currentTime]);
 
   const displayName = useMemo(() => {
     const name =
@@ -142,14 +169,14 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
   }, [user]);
 
   const shortDate = useMemo(() => {
-    return new Date().toLocaleDateString(
+    return currentTime.toLocaleDateString(
       'en-US',
       {
         month: 'short',
         day: 'numeric',
       }
     );
-  }, []);
+  }, [currentTime]);
 
   const timeAgo = date => {
     if (!date) return 'Not generated';
@@ -204,9 +231,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
       return 'HIGH';
     }
 
-    if (
-      text.includes('low')
-    ) {
+    if (text.includes('low')) {
       return 'LOW';
     }
 
@@ -460,7 +485,6 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
 
         </header>
 
-
         {/* ====================================================
             METRIC CARDS
         ==================================================== */}
@@ -500,25 +524,22 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
             accent="emerald"
           />
 
-          <MetricCard
-            icon={
-              <Zap size={16} />
-            }
-            label="Focus"
-            value={busiestPeriod}
-            accent="amber"
-            compactValue
+          {/* ==================================================
+              WALL CLOCK
+          ================================================== */}
+
+          <WallClock
+            currentTime={currentTime}
+            clockTime={clockTime}
           />
 
         </section>
-
 
         {/* ====================================================
             MAIN GRID
         ==================================================== */}
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-
 
           {/* ==================================================
               TODAY
@@ -621,7 +642,6 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
 
           </DashboardCard>
 
-
           {/* ==================================================
               PRIORITIES
           ================================================== */}
@@ -693,7 +713,6 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
             )}
 
           </DashboardCard>
-
 
           {/* ==================================================
               EMAILS
@@ -784,7 +803,6 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
 
           </DashboardCard>
 
-
           {/* ==================================================
               LEAVE
           ================================================== */}
@@ -820,26 +838,7 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
 
             </div>
 
-            <div className="mt-4 flex gap-2">
-
-              <button
-                type="button"
-                className="flex-1 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-[10px] font-medium text-white/50 transition hover:border-violet-400/20 hover:bg-violet-500/10 hover:text-violet-300"
-              >
-                View Balance
-              </button>
-
-              <button
-                type="button"
-                className="flex-1 rounded-lg bg-violet-500/10 px-3 py-2 text-[10px] font-medium text-violet-300 transition hover:bg-violet-500/20"
-              >
-                Apply Leave
-              </button>
-
-            </div>
-
           </DashboardCard>
-
 
           {/* ==================================================
               AI INSIGHT
@@ -868,22 +867,11 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
                   )}
                 </p>
 
-                <button
-                  type="button"
-                  className="mt-4 inline-flex items-center gap-1 text-[10px] font-medium text-violet-300 transition hover:text-violet-200"
-                >
-                  Review meeting notes
-                  <ChevronRight
-                    size={11}
-                  />
-                </button>
-
               </div>
 
             </DashboardCard>
 
           )}
-
 
           {/* ==================================================
               COMPANY UPDATE
@@ -936,9 +924,6 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
 
         </section>
 
-
-
-
         {/* ====================================================
             SOURCES
         ==================================================== */}
@@ -984,6 +969,240 @@ const DailyAIBrief = ({ userRole = 'employee' }) => {
   );
 };
 
+// ============================================================
+// WALL CLOCK
+// ============================================================
+
+const WallClock = ({
+  currentTime,
+  clockTime,
+}) => {
+  const seconds = currentTime.getSeconds();
+  const minutes = currentTime.getMinutes();
+  const hours = currentTime.getHours();
+
+  // Analog clock angles
+  const secondAngle = seconds * 6;
+  const minuteAngle =
+    minutes * 6 + seconds * 0.1;
+  const hourAngle =
+    (hours % 12) * 30 +
+    minutes * 0.5;
+
+  return (
+    <div
+      className="
+        relative
+        rounded-xl
+        border
+        border-amber-400/10
+        bg-amber-500/[0.035]
+        p-4
+        overflow-hidden
+      "
+    >
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+
+        <span className="text-amber-300">
+          <Clock3 size={16} />
+        </span>
+
+        <span className="text-[9px] font-medium uppercase tracking-wider text-white/25">
+          Time
+        </span>
+
+      </div>
+
+      {/* Clock Area */}
+      <div className="mt-3 flex items-center justify-center">
+
+        <div
+          className="
+            relative
+            h-[92px]
+            w-[92px]
+            rounded-full
+            border
+            border-white/[0.12]
+            bg-[#080808]
+            shadow-[0_0_30px_rgba(245,158,11,0.05)]
+          "
+        >
+
+          {/* Outer ring */}
+          <div className="absolute inset-[4px] rounded-full border border-white/[0.05]" />
+
+          {/* Hour markers */}
+
+          <ClockMarker
+            position="top"
+            className="h-1.5 w-1"
+          />
+
+          <ClockMarker
+            position="top-right"
+            className="h-1 w-1"
+          />
+
+          <ClockMarker
+            position="right"
+            className="h-1 w-1.5"
+          />
+
+          <ClockMarker
+            position="bottom-right"
+            className="h-1 w-1"
+          />
+
+          <ClockMarker
+            position="bottom"
+            className="h-1.5 w-1"
+          />
+
+          <ClockMarker
+            position="bottom-left"
+            className="h-1 w-1"
+          />
+
+          <ClockMarker
+            position="left"
+            className="h-1 w-1.5"
+          />
+
+          <ClockMarker
+            position="top-left"
+            className="h-1 w-1"
+          />
+
+          {/* Hour hand */}
+          <ClockHand
+            angle={hourAngle}
+            length="25px"
+            width="3px"
+            color="bg-white/80"
+          />
+
+          {/* Minute hand */}
+          <ClockHand
+            angle={minuteAngle}
+            length="33px"
+            width="2px"
+            color="bg-white"
+          />
+
+          {/* Second hand */}
+          <ClockHand
+            angle={secondAngle}
+            length="36px"
+            width="1px"
+            color="bg-amber-400"
+            smooth
+          />
+
+          {/* Center dot */}
+          <div className="absolute left-1/2 top-1/2 z-30 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#080808] bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
+
+        </div>
+
+      </div>
+
+      {/* Digital time */}
+      <div className="mt-2 text-center">
+
+        <div className="font-mono text-sm font-semibold tracking-[0.08em] text-white/85">
+          {clockTime}
+        </div>
+
+      </div>
+
+    </div>
+  );
+};
+
+// ============================================================
+// CLOCK MARKER
+// ============================================================
+
+const ClockMarker = ({
+  position,
+  className = '',
+}) => {
+
+  const positions = {
+    top:
+      'left-1/2 top-[7px] -translate-x-1/2',
+
+    topRight:
+      'right-[14px] top-[14px]',
+
+    right:
+      'right-[7px] top-1/2 -translate-y-1/2',
+
+    bottomRight:
+      'bottom-[14px] right-[14px]',
+
+    bottom:
+      'bottom-[7px] left-1/2 -translate-x-1/2',
+
+    bottomLeft:
+      'bottom-[14px] left-[14px]',
+
+    left:
+      'left-[7px] top-1/2 -translate-y-1/2',
+
+    topLeft:
+      'left-[14px] top-[14px]',
+  };
+
+  return (
+    <span
+      className={`
+        absolute
+        rounded-full
+        bg-white/30
+        ${positions[position]}
+        ${className}
+      `}
+    />
+  );
+};
+
+// ============================================================
+// CLOCK HAND
+// ============================================================
+
+const ClockHand = ({
+  angle,
+  length,
+  width,
+  color,
+  smooth = false,
+}) => {
+  return (
+    <div
+      className={`
+        absolute
+        left-1/2
+        top-1/2
+        z-20
+        origin-bottom
+        rounded-full
+        ${color}
+        ${smooth ? 'transition-transform duration-500 ease-linear' : ''}
+      `}
+      style={{
+        width,
+        height: length,
+        transform: `
+          translate(-50%, -100%)
+          rotate(${angle}deg)
+        `,
+      }}
+    />
+  );
+};
 
 // ============================================================
 // DASHBOARD CARD
@@ -1010,7 +1229,6 @@ const DashboardCard = ({
     </div>
   );
 };
-
 
 // ============================================================
 // CARD HEADER
@@ -1048,13 +1266,13 @@ const CardHeader = ({
           {actionIcon && (
             <ChevronRight size={10} />
           )}
+
         </button>
       )}
 
     </div>
   );
 };
-
 
 // ============================================================
 // METRIC CARD
@@ -1071,10 +1289,13 @@ const MetricCard = ({
   const accentClasses = {
     violet:
       'border-violet-400/10 bg-violet-500/[0.035] text-violet-300',
+
     blue:
       'border-blue-400/10 bg-blue-500/[0.035] text-blue-300',
+
     emerald:
       'border-emerald-400/10 bg-emerald-500/[0.035] text-emerald-300',
+
     amber:
       'border-amber-400/10 bg-amber-500/[0.035] text-amber-300',
   };
@@ -1118,7 +1339,6 @@ const MetricCard = ({
   );
 };
 
-
 // ============================================================
 // STAT BOX
 // ============================================================
@@ -1142,7 +1362,6 @@ const StatBox = ({
   );
 };
 
-
 // ============================================================
 // PRIORITY BADGE
 // ============================================================
@@ -1152,9 +1371,12 @@ const PriorityBadge = ({
 }) => {
 
   const styles = {
-    HIGH: 'border-red-400/15 bg-red-400/10 text-red-300',
+    HIGH:
+      'border-red-400/15 bg-red-400/10 text-red-300',
+
     MEDIUM:
       'border-amber-400/15 bg-amber-400/10 text-amber-300',
+
     LOW:
       'border-emerald-400/15 bg-emerald-400/10 text-emerald-300',
   };
@@ -1178,7 +1400,6 @@ const PriorityBadge = ({
   );
 };
 
-
 // ============================================================
 // EMPTY STATE
 // ============================================================
@@ -1199,7 +1420,6 @@ const EmptyState = ({
     </div>
   );
 };
-
 
 // ============================================================
 // COMPACT TEXT
@@ -1222,7 +1442,6 @@ const compactText = (
   return `${text.slice(0, maxLength).trim()}…`;
 };
 
-
 // ============================================================
 // COMPANY UPDATE TITLE
 // ============================================================
@@ -1236,7 +1455,6 @@ const extractUpdateTitle = value => {
     .replace(/\s+/g, ' ')
     .trim();
 
-  // Prefer first sentence / short heading
   const firstSentence =
     text.split(/[.!?]/)[0];
 
@@ -1249,7 +1467,6 @@ const extractUpdateTitle = value => {
 
   return 'New company update';
 };
-
 
 // ============================================================
 // SIMPLE BOOK ICON
@@ -1270,6 +1487,5 @@ const BookIcon = () => {
     </svg>
   );
 };
-
 
 export default DailyAIBrief;
