@@ -23,6 +23,10 @@ export class User {
     return result.rows;
   }
 
+  static async getAll() {
+    return this.findAll();
+  }
+
   static async findByRole(role) {
     const result = await query('SELECT * FROM users WHERE role = $1 ORDER BY created_at DESC', [role]);
     return result.rows;

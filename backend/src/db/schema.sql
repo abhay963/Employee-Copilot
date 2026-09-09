@@ -339,4 +339,38 @@ BEGIN
     END IF;
 END $$;
 
+-- Daily briefs table for persistent AI-generated briefs
+CREATE TABLE IF NOT EXISTS daily_briefs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    brief_data JSONB NOT NULL,
+    sources TEXT[] DEFAULT '{}',
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, generated_at)
+);
+
+CREATE INDEX IF NOT EXISTS daily_briefs_user_idx ON daily_briefs(user_id);
+CREATE INDEX IF NOT EXISTS daily_briefs_generated_at_idx ON daily_briefs(generated_at DESC);
+
+-- Function to get the latest brief for a user
+CREATE OR REPLACE FUNCTION get_latest_brief_for_user(p_user_id UUID)
+RETURNS TABLE (
+    id UUID,
+    user_id UUID,
+    brief_data JSONB,
+    sources TEXT[],
+    generated_at TIMESTAMP,
+    updated_at TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT db.id, db.user_id, db.brief_data, db.sources, db.generated_at, db.updated_at
+    FROM daily_briefs db
+    WHERE db.user_id = p_user_id
+    ORDER BY db.generated_at DESC
+    LIMIT 1;
+END;
+$$ LANGUAGE plpgsql;
+
 

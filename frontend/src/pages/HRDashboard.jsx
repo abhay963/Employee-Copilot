@@ -32,6 +32,7 @@ import LeaveManagement from '../components/LeaveManagement';
 import EmployeeCalendar from '../components/EmployeeCalendar';
 import Profile from '../components/Profile';
 import Gmail from '../components/Gmail';
+import DailyAIBrief from '../components/DailyAIBrief';
 
 const HRDashboard = () => {
   const { user, isHR, logout } = useUser();
@@ -492,6 +493,11 @@ const HRDashboard = () => {
 
   const navigationItems = [
     {
+      id: 'brief',
+      label: 'Daily Brief',
+      icon: Sparkles,
+    },
+    {
       id: 'copilot',
       label: 'Copilot',
       icon: MessageSquare,
@@ -537,6 +543,9 @@ const HRDashboard = () => {
       case 'copilot':
         return 'Employee Copilot';
 
+      case 'brief':
+        return 'Daily AI Brief';
+
       case 'documents':
         return 'Documents';
 
@@ -568,6 +577,9 @@ const HRDashboard = () => {
     switch (activeTab) {
       case 'copilot':
         return 'Your intelligent workplace assistant';
+
+      case 'brief':
+        return 'Your personalized daily summary';
 
       case 'documents':
         return 'Manage company documents';
@@ -1203,6 +1215,18 @@ const HRDashboard = () => {
 
               </section>
 
+            </div>
+          )}
+
+          {/* ====================================================
+              DAILY AI BRIEF
+          ==================================================== */}
+
+          {activeTab === 'brief' && (
+            <div className="h-full overflow-y-auto p-4 lg:p-7">
+              <div className="max-w-[1500px] mx-auto">
+                <DailyAIBrief userRole="hr" />
+              </div>
             </div>
           )}
 

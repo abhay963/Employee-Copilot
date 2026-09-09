@@ -23,6 +23,7 @@ import LeaveManagement from '../components/LeaveManagement';
 import Profile from '../components/Profile';
 import EmployeeCalendar from '../components/EmployeeCalendar';
 import Gmail from '../components/Gmail';
+import DailyAIBrief from '../components/DailyAIBrief';
 
 const EmployeeDashboard = () => {
   const { user, isEmployee, logout } = useUser();
@@ -367,6 +368,11 @@ const EmployeeDashboard = () => {
 
   const navigationItems = [
     {
+      id: 'brief',
+      label: 'Daily Brief',
+      icon: Sparkles,
+    },
+    {
       id: 'copilot',
       label: 'Copilot',
       icon: MessageSquare,
@@ -402,6 +408,12 @@ const EmployeeDashboard = () => {
       title: 'Employee Copilot',
       description:
         'Your intelligent workplace assistant',
+    },
+
+    brief: {
+      title: 'Daily AI Brief',
+      description:
+        'Your personalized daily summary',
     },
 
     gmail: {
@@ -1048,6 +1060,18 @@ const EmployeeDashboard = () => {
 
               </section>
 
+            </div>
+          )}
+
+          {/* ====================================================
+              DAILY AI BRIEF
+          ==================================================== */}
+
+          {activeTab === 'brief' && (
+            <div className="h-full overflow-y-auto p-4 lg:p-7">
+              <div className="max-w-[1500px] mx-auto">
+                <DailyAIBrief userRole="employee" />
+              </div>
             </div>
           )}
 

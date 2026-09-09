@@ -11,6 +11,7 @@ import leaveRoutes from './routes/leaveRoutes.js';
 import googleRoutes from './routes/googleRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import validEmployeeIdRoutes from './routes/validEmployeeIdRoutes.js';
+import briefRoutes from './routes/briefRoutes.js';
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use('/api/leave', leaveRoutes);
 app.use('/api/google', googleRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin/valid-employee-ids', validEmployeeIdRoutes);
+app.use('/api/brief', briefRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
