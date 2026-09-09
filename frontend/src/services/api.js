@@ -60,22 +60,38 @@ api.interceptors.response.use(
       // --------------------------------------------------------
 
       if (error.response.status === 401) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        const errorData = error.response.data || {};
+        const errorCode = errorData.code;
 
-        const publicRoutes = [
-          '/',
-          '/login',
-          '/register',
+        // Distinguish between application JWT failures and Google OAuth failures
+        const googleOAuthErrors = [
+          'GOOGLE_GMAIL_NOT_CONNECTED',
+          'GOOGLE_GMAIL_RECONNECT_REQUIRED',
+          'GOOGLE_CALENDAR_NOT_CONNECTED',
+          'GOOGLE_CALENDAR_RECONNECT_REQUIRED',
+          'GOOGLE_PERMISSION_REQUIRED',
         ];
 
-        if (
-          !publicRoutes.includes(
-            window.location.pathname
-          )
-        ) {
-          window.location.href = '/login';
+        // Only logout for actual application authentication failures
+        if (!googleOAuthErrors.includes(errorCode)) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+
+          const publicRoutes = [
+            '/',
+            '/login',
+            '/register',
+          ];
+
+          if (
+            !publicRoutes.includes(
+              window.location.pathname
+            )
+          ) {
+            window.location.href = '/login';
+          }
         }
+        // For Google OAuth errors, let the component handle the UI
       }
 
       // Return detailed error information
