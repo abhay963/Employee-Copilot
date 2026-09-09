@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { config } from '../config/index.js';
+import { config } from '../../config/index.js';
 
 // ============================================================
 // CONSTANTS
@@ -88,7 +88,7 @@ class EmbeddingService {
     }
 
     // --------------------------------------------------------
-    // L2 normalization
+    // L2 NORMALIZATION
     // --------------------------------------------------------
 
     const magnitude = Math.sqrt(

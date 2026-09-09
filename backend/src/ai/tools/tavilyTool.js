@@ -1,107 +1,77 @@
-import { config } from '../../config/index.js';
+import { config } from "../../config/index.js";
 
 // ============================================================
-// TAVILY WEB SEARCH TOOL
+// TAVILY SEARCH TOOL
 // ============================================================
 
 class TavilyTool {
   constructor() {
-    if (!config.tavilyApiKey) {
-      console.warn(
-        'TAVILY_API_KEY not configured. Web search will not be available.'
-      );
-      this.isConfigured = false;
-      return;
-    }
-
-    this.isConfigured = true;
     this.apiKey = config.tavilyApiKey;
-    this.apiUrl = 'https://api.tavily.com/search';
+    this.baseUrl = "https://api.tavily.com/search";
+  }
 
-    console.log('Tavily search tool initialized');
+  get isConfigured() {
+    return !!this.apiKey;
   }
 
   async search(query, options = {}) {
     try {
       if (!this.isConfigured) {
-        throw new Error('Tavily search tool is not configured');
+        return {
+          success: false,
+          error: "Tavily API key not configured",
+        };
       }
-
-      if (!query || typeof query !== 'string') {
-        throw new Error('A valid search query is required');
-      }
-
-      console.log(`Searching web for: ${query}`);
 
       const {
         maxResults = 5,
-        searchDepth = 'basic',
+        searchDepth = "basic",
         includeAnswer = true,
-        includeRawContent = false,
       } = options;
 
-      const requestBody = {
-        api_key: this.apiKey,
-        query,
-        max_results: maxResults,
-        search_depth: searchDepth,
-        include_answer: includeAnswer,
-        include_raw_content: includeRawContent,
-      };
-
-      const response = await fetch(this.apiUrl, {
-        method: 'POST',
+      const response = await fetch(this.baseUrl, {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({
+          api_key: this.apiKey,
+          query: query,
+          max_results: maxResults,
+          search_depth: searchDepth,
+          include_answer: includeAnswer,
+        }),
       });
 
       if (!response.ok) {
-        throw new Error(
-          `Tavily API error: ${response.status} ${response.statusText}`
-        );
+        const errorData = await response.json();
+        return {
+          success: false,
+          error: errorData.message || "Tavily API request failed",
+        };
       }
 
       const data = await response.json();
 
-      if (!data || !data.results) {
-        return {
-          success: true,
-          results: [],
-          answer: 'No search results found',
-          query,
-        };
-      }
-
-      const formattedResults = data.results.map((result, index) => ({
-        index: index + 1,
-        title: result.title || 'Untitled',
-        url: result.url || '',
-        content: result.content || '',
-        score: result.score || 0,
-      }));
-
-      const answer = data.answer || '';
-
       return {
         success: true,
-        results: formattedResults,
-        answer,
-        query,
-        resultCount: formattedResults.length,
+        results: data.results || [],
+        answer: data.answer || null,
       };
     } catch (error) {
-      console.error('Error in Tavily search:', error);
-
+      console.error("[TavilyTool]", error);
       return {
         success: false,
         error: error.message,
-        results: [],
-        query,
       };
     }
   }
 }
 
-export default new TavilyTool();
+// ============================================================
+// EXPORT SINGLETON
+// ============================================================
+
+const tavilyTool = new TavilyTool();
+
+export default tavilyTool;

@@ -100,9 +100,12 @@ export class LeaveBalance {
   }
 
   static async checkAvailability(userId, leaveType, days) {
-    const balance = await this.findByUserId(userId);
+    let balance = await this.findByUserId(userId);
+    
+    // If user doesn't have a leave balance record, create one with default values
     if (!balance) {
-      return false;
+      console.log(`[LeaveBalance] No balance found for user ${userId}, creating default balance`);
+      balance = await this.create(userId);
     }
 
     const columnMap = {

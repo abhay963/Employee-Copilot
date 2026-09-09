@@ -424,7 +424,73 @@ export class DocumentChunk {
       );
     }
 
-    return result.rows;
+    // ========================================================
+    // POST-PROCESSING: Prioritize newest active policies
+    // ========================================================
+    //
+    // If multiple chunks from the same document type exist,
+    // prioritize the one with the latest effective_from date.
+    //
+    // This ensures that when a new policy version is uploaded,
+    // it takes precedence over older versions.
+    //
+    // ========================================================
+
+    const documentTypeGroups = new Map();
+
+    for (const chunk of result.rows) {
+      const docType = chunk.document_type || 'general';
+
+      if (!documentTypeGroups.has(docType)) {
+        documentTypeGroups.set(docType, []);
+      }
+
+      documentTypeGroups.get(docType).push(chunk);
+    }
+
+    // For each document type, keep only the newest active version
+    const prioritizedChunks = [];
+
+    for (const [docType, chunks] of documentTypeGroups) {
+      // If only one chunk of this type, keep it
+      if (chunks.length === 1) {
+        prioritizedChunks.push(chunks[0]);
+        continue;
+      }
+
+      // Sort by effective_from (newest first), then by created_at
+      chunks.sort((a, b) => {
+        const aEffective = a.effective_from ? new Date(a.effective_from).getTime() : 0;
+        const bEffective = b.effective_from ? new Date(b.effective_from).getTime() : 0;
+
+        if (aEffective !== bEffective) {
+          return bEffective - aEffective; // Newest first
+        }
+
+        // If same effective date, use similarity as tiebreaker
+        const aSimilarity = Number(a.similarity) || 0;
+        const bSimilarity = Number(b.similarity) || 0;
+
+        return bSimilarity - aSimilarity;
+      });
+
+      // Keep the newest active version
+      prioritizedChunks.push(chunks[0]);
+    }
+
+    // Re-sort by similarity for final results
+    prioritizedChunks.sort((a, b) => {
+      const aSimilarity = Number(a.similarity) || 0;
+      const bSimilarity = Number(b.similarity) || 0;
+
+      return bSimilarity - aSimilarity;
+    });
+
+    console.log(
+      `[RAG] After versioning prioritization: ${prioritizedChunks.length} chunks`
+    );
+
+    return prioritizedChunks.slice(0, safeLimit);
   }
 }
 

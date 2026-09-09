@@ -93,14 +93,23 @@ export const uploadDocument = async (req, res) => {
     } = req.body;
 
     // --------------------------------------------------
-    // 2. Determine file type
+    // 2. Verify file exists before processing
+    // --------------------------------------------------
+    if (!fs.existsSync(tempFilePath)) {
+      return res.status(400).json({
+        error: 'Uploaded file not found. Please try uploading again.',
+      });
+    }
+
+    // --------------------------------------------------
+    // 3. Determine file type
     // --------------------------------------------------
     const fileType = documentProcessor.getFileType(
       req.file.originalname
     );
 
     // --------------------------------------------------
-    // 3. Validate file type
+    // 4. Validate file type
     // --------------------------------------------------
     if (!documentProcessor.isValidFileType(fileType)) {
       return res.status(400).json({
@@ -110,7 +119,7 @@ export const uploadDocument = async (req, res) => {
     }
 
     // --------------------------------------------------
-    // 4. Validate HR/policy document permissions
+    // 5. Validate HR/policy document permissions
     // --------------------------------------------------
     if (
       document_type &&
@@ -125,7 +134,7 @@ export const uploadDocument = async (req, res) => {
     }
 
     // --------------------------------------------------
-    // 5. Validate company visibility permissions
+    // 6. Validate company visibility permissions
     // --------------------------------------------------
     if (
       visibility === 'company' &&
@@ -139,7 +148,7 @@ export const uploadDocument = async (req, res) => {
     }
 
     // --------------------------------------------------
-    // 6. Extract text from uploaded document
+    // 7. Extract text from uploaded document
     // --------------------------------------------------
     console.log(
       `Extracting text from ${req.file.originalname}...`
@@ -147,12 +156,12 @@ export const uploadDocument = async (req, res) => {
 
     const content =
       await documentProcessor.extractText(
-        req.file.path,
+        tempFilePath,
         fileType
       );
 
     // --------------------------------------------------
-    // 7. Create document database record
+    // 8. Create document database record
     // --------------------------------------------------
     const document = await Document.create({
       title:
@@ -168,7 +177,7 @@ export const uploadDocument = async (req, res) => {
         req.file.size,
 
       file_path:
-        req.file.path,
+        tempFilePath,
 
       content:
         content,
@@ -193,12 +202,12 @@ export const uploadDocument = async (req, res) => {
     );
 
     // --------------------------------------------------
-    // 8. Supersede old policies if this is a new active policy
+    // 9. Supersede old policies if this is a new active policy
     // --------------------------------------------------
     if (
       document_type &&
       ['hr', 'policy'].includes(document_type) &&
-      status === 'active'
+      document.status === 'active'
     ) {
       try {
         await Document.supersedeOldPolicies(document_type, document.id);
@@ -215,7 +224,7 @@ export const uploadDocument = async (req, res) => {
     }
 
     // --------------------------------------------------
-    // 9. Process document for RAG
+    // 10. Process document for RAG
     //
     // extract → clean → chunk → embed → store
     // --------------------------------------------------
@@ -226,7 +235,7 @@ export const uploadDocument = async (req, res) => {
 
       await documentProcessor.processDocument(
         document.id,
-        req.file.path,
+        tempFilePath,
         fileType,
         {
           title: document.title,
@@ -234,6 +243,11 @@ export const uploadDocument = async (req, res) => {
           owner_id: userId,
           visibility: document.visibility,
           document_type: document.document_type,
+          document_id: document.id,
+          version: document.version,
+          effective_from: document.effective_from,
+          effective_until: document.effective_until,
+          status: document.status,
         }
       );
 
@@ -255,13 +269,13 @@ export const uploadDocument = async (req, res) => {
     }
 
     // --------------------------------------------------
-    // 9. Delete temporary file after successful indexing
+    // 11. Delete temporary file after successful indexing
     // --------------------------------------------------
-    if (fs.existsSync(req.file.path)) {
+    if (fs.existsSync(tempFilePath)) {
       try {
-        fs.unlinkSync(req.file.path);
+        fs.unlinkSync(tempFilePath);
         console.log(
-          `Temporary file deleted after successful indexing: ${req.file.path}`
+          `Temporary file deleted after successful indexing: ${tempFilePath}`
         );
       } catch (cleanupError) {
         console.error(
@@ -273,7 +287,7 @@ export const uploadDocument = async (req, res) => {
     }
 
     // --------------------------------------------------
-    // 10. Send response
+    // 12. Send response
     // --------------------------------------------------
     return res.status(200).json({
       success: true,
@@ -287,7 +301,7 @@ export const uploadDocument = async (req, res) => {
     );
 
     // --------------------------------------------------
-    // 11. Cleanup uploaded file if something failed
+    // 13. Cleanup uploaded file if something failed
     // --------------------------------------------------
     if (
       tempFilePath &&

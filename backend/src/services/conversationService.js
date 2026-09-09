@@ -3,7 +3,7 @@ import { Message } from '../models/Message.js';
 import {
   runEmployeeCopilot,
   resumeEmployeeCopilot,
-} from '../ai/langGraphWorkflow.js';
+} from '../ai/graph/employeeGraph.js';
 
 import conversationStateService from './conversationStateService.js';
 import conversationMemoryService from './conversationMemoryService.js';
@@ -205,10 +205,11 @@ class ConversationService {
       // Initialize conversation state
       // --------------------------------------------------------
 
-      await conversationStateService.getOrCreateState(
-        conversationId,
-        userId
-      );
+      const conversationState =
+        await conversationStateService.getOrCreateState(
+          conversationId,
+          userId
+        );
 
       // --------------------------------------------------------
       // Get conversation context
@@ -277,6 +278,11 @@ class ConversationService {
 
           compactContext:
             conversationContext.context,
+
+          // ------------------------------------------------------
+          // IMPORTANT: Pass existing pendingAction from database
+          // ------------------------------------------------------
+          pendingAction: conversationState?.pending_action || null,
         });
 
       const {
@@ -288,6 +294,40 @@ class ConversationService {
         actionMetadata = null,
         intent = null,
       } = result || {};
+
+      // --------------------------------------------------------
+      // IMPORTANT: Persist pendingAction to database
+      // --------------------------------------------------------
+      //
+      // This ensures that follow-up messages can continue
+      // the workflow instead of losing context.
+      //
+      // --------------------------------------------------------
+
+      if (pendingAction) {
+        await conversationStateService.setPendingAction(
+          conversationId,
+          pendingAction,
+          pendingAction.actionId
+        );
+
+        console.log(
+          '[ConversationService] Persisted pending action:',
+          pendingAction.actionId
+        );
+      } else if (intent && !requiresConfirmation) {
+        // ------------------------------------------------------
+        // Clear pending action if workflow completed
+        // ------------------------------------------------------
+
+        await conversationStateService.clearPendingAction(
+          conversationId
+        );
+
+        console.log(
+          '[ConversationService] Cleared pending action after completion'
+        );
+      }
 
       // --------------------------------------------------------
       // Save assistant response
@@ -421,10 +461,11 @@ class ConversationService {
       // Initialize state
       // --------------------------------------------------------
 
-      await conversationStateService.getOrCreateState(
-        conversationId,
-        userId
-      );
+      const conversationState =
+        await conversationStateService.getOrCreateState(
+          conversationId,
+          userId
+        );
 
       // --------------------------------------------------------
       // Get conversation context
@@ -505,6 +546,11 @@ class ConversationService {
 
           compactContext:
             conversationContext.context,
+
+          // ------------------------------------------------------
+          // IMPORTANT: Pass existing pendingAction from database
+          // ------------------------------------------------------
+          pendingAction: conversationState?.pending_action || null,
         });
 
       const {
@@ -516,6 +562,31 @@ class ConversationService {
         actionMetadata = null,
         intent = null,
       } = result || {};
+
+      // --------------------------------------------------------
+      // IMPORTANT: Persist pendingAction to database
+      // --------------------------------------------------------
+
+      if (pendingAction) {
+        await conversationStateService.setPendingAction(
+          conversationId,
+          pendingAction,
+          pendingAction.actionId
+        );
+
+        console.log(
+          '[ConversationService] Persisted pending action (stream):',
+          pendingAction.actionId
+        );
+      } else if (intent && !requiresConfirmation) {
+        await conversationStateService.clearPendingAction(
+          conversationId
+        );
+
+        console.log(
+          '[ConversationService] Cleared pending action after completion (stream)'
+        );
+      }
 
       // --------------------------------------------------------
       // Save assistant message

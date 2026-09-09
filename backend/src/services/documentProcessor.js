@@ -5,7 +5,7 @@ import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 
-import embeddingService from '../ai/embeddingService.js';
+import embeddingService from '../ai/embeddings/embeddingService.js';
 import { DocumentChunk } from '../models/DocumentChunk.js';
 import { config } from '../config/index.js';
 
