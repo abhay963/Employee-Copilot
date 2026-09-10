@@ -3,14 +3,21 @@
 // ============================================================
 // Main LangGraph orchestration.
 //
-// This file should ONLY be responsible for:
+// This file is responsible for:
 //
 // 1. Defining graph state
 // 2. Registering nodes
 // 3. Connecting nodes
 // 4. Routing intents
 // 5. Compiling the graph
-// 6. Exposing run/resume functions
+// 6. Running the graph
+// 7. Resuming interrupted workflows
+//
+// IMPORTANT:
+//
+// Gmail / Calendar / Leave business logic is NOT implemented here.
+//
+// Ye file sirf orchestration karta hai.
 // ============================================================
 
 import {
@@ -104,115 +111,129 @@ import {
 // GRAPH STATE
 // ============================================================
 
-export const EmployeeState = Annotation.Root({
+export const EmployeeState =
+  Annotation.Root({
 
-  // ----------------------------------------------------------
-  // User information
-  // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // User information
+    // --------------------------------------------------------
 
-  userId: Annotation(),
+    userId: Annotation(),
 
-  userRole: Annotation(),
+    userRole: Annotation(),
 
-  conversationId: Annotation(),
-
-
-  // ----------------------------------------------------------
-  // Messages
-  // ----------------------------------------------------------
-
-  messages: Annotation({
-    reducer: (current, update) => {
-      return [
-        ...current,
-        ...update,
-      ];
-    },
-
-    default: () => [],
-  }),
+    conversationId: Annotation(),
 
 
-  // ----------------------------------------------------------
-  // Intent
-  // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // Messages
+    // --------------------------------------------------------
 
-  intent: Annotation(),
+    messages: Annotation({
 
+      reducer: (current, update) => {
 
-  // ----------------------------------------------------------
-  // Tool information
-  // ----------------------------------------------------------
+        return [
+          ...current,
+          ...update,
+        ];
 
-  currentTool: Annotation(),
+      },
 
-  toolResult: Annotation(),
+      default: () => [],
 
-
-  // ----------------------------------------------------------
-  // Action / confirmation
-  // ----------------------------------------------------------
-
-  pendingAction: Annotation(),
-
-  requiresConfirmation: Annotation({
-    default: () => false,
-  }),
-
-  approvalDecision: Annotation({
-    default: () => null,
-  }),
+    }),
 
 
-  // ----------------------------------------------------------
-  // Calendar conflicts
-  // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // Intent
+    // --------------------------------------------------------
 
-  hasConflicts: Annotation({
-    default: () => false,
-  }),
+    intent: Annotation(),
 
 
-  // ----------------------------------------------------------
-  // Missing information
-  // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // Tool information
+    // --------------------------------------------------------
 
-  missingField: Annotation(),
+    currentTool: Annotation(),
 
-
-  // ----------------------------------------------------------
-  // General context
-  // ----------------------------------------------------------
-
-  context: Annotation({
-    default: () => ({}),
-  }),
+    toolResult: Annotation(),
 
 
-  // ----------------------------------------------------------
-  // Conversation context
-  // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // Action / confirmation
+    // --------------------------------------------------------
 
-  compactContext: Annotation(),
+    pendingAction: Annotation(),
+
+    requiresConfirmation:
+      Annotation({
+        default: () => false,
+      }),
+
+    approvalDecision:
+      Annotation({
+        default: () => null,
+      }),
 
 
-  // ----------------------------------------------------------
-  // Final response
-  // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // Calendar conflicts
+    // --------------------------------------------------------
 
-  response: Annotation(),
+    hasConflicts:
+      Annotation({
+        default: () => false,
+      }),
 
-  sources: Annotation({
-    default: () => [],
-  }),
+
+    // --------------------------------------------------------
+    // Missing information
+    // --------------------------------------------------------
+
+    missingField: Annotation(),
 
 
-  // ----------------------------------------------------------
-  // Error
-  // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // General context
+    // --------------------------------------------------------
 
-  error: Annotation(),
-});
+    context:
+      Annotation({
+        default: () => ({}),
+      }),
+
+
+    // --------------------------------------------------------
+    // Conversation context
+    // --------------------------------------------------------
+
+    compactContext:
+      Annotation(),
+
+
+    // --------------------------------------------------------
+    // Final response
+    // --------------------------------------------------------
+
+    response:
+      Annotation(),
+
+    sources:
+      Annotation({
+        default: () => [],
+      }),
+
+
+    // --------------------------------------------------------
+    // Error
+    // --------------------------------------------------------
+
+    error:
+      Annotation(),
+
+  });
 
 
 // ============================================================
@@ -398,6 +419,7 @@ workflow.addConditionalEdges(
   routeByIntent,
 
   {
+
     leave_balance:
       INTENT_ROUTES.leave_balance,
 
@@ -424,6 +446,7 @@ workflow.addConditionalEdges(
 
     general:
       INTENT_ROUTES.general,
+
   }
 );
 
@@ -466,25 +489,6 @@ workflow.addEdge(
 // ============================================================
 // LEAVE FLOW
 // ============================================================
-//
-// extractLeaveDetails
-//        ↓
-// prepareLeave
-//        ↓
-// validateLeave
-//        ↓
-// approval?
-//   ┌────┴────┐
-//   ↓         ↓
-// approval   response
-//   ↓
-// approved?
-//   ┌────┴────┐
-//   ↓         ↓
-// submit    response
-//   ↓
-// response
-// ============================================================
 
 workflow.addEdge(
   "extractLeaveDetails",
@@ -501,19 +505,23 @@ workflow.addConditionalEdges(
   "validateLeave",
 
   (state) => {
+
     if (state.requiresConfirmation) {
       return "approval";
     }
 
     return "done";
+
   },
 
   {
+
     approval:
       "leaveApproval",
 
     done:
       "generateResponse",
+
   }
 );
 
@@ -522,21 +530,27 @@ workflow.addConditionalEdges(
   "leaveApproval",
 
   (state) => {
+
     if (
       state.approvalDecision === true
     ) {
+
       return "submit";
+
     }
 
     return "cancel";
+
   },
 
   {
+
     submit:
       "submitLeave",
 
     cancel:
       "generateResponse",
+
   }
 );
 
@@ -566,19 +580,23 @@ workflow.addConditionalEdges(
   "validateCalendar",
 
   (state) => {
+
     if (state.requiresConfirmation) {
       return "approval";
     }
 
     return "done";
+
   },
 
   {
+
     approval:
       "calendarApproval",
 
     done:
       "generateResponse",
+
   }
 );
 
@@ -587,21 +605,27 @@ workflow.addConditionalEdges(
   "calendarApproval",
 
   (state) => {
+
     if (
       state.approvalDecision === true
     ) {
+
       return "create";
+
     }
 
     return "cancel";
+
   },
 
   {
+
     create:
       "createCalendar",
 
     cancel:
       "generateResponse",
+
   }
 );
 
@@ -615,6 +639,26 @@ workflow.addEdge(
 // ============================================================
 // EMAIL FLOW
 // ============================================================
+//
+// IMPORTANT:
+//
+// Gmail send flow:
+//
+// prepareEmail
+//      ↓
+// emailApproval
+//      ↓
+// interrupt()
+//      ↓
+// PAUSE
+//      ↓
+// user confirms
+//      ↓
+// resume
+//      ↓
+// sendEmail
+//
+// ============================================================
 
 workflow.addEdge(
   "extractEmailDetails",
@@ -626,19 +670,27 @@ workflow.addConditionalEdges(
   "prepareEmail",
 
   (state) => {
-    if (state.requiresConfirmation) {
+
+    if (
+      state.requiresConfirmation
+    ) {
+
       return "approval";
+
     }
 
     return "done";
+
   },
 
   {
+
     approval:
       "emailApproval",
 
     done:
       "generateResponse",
+
   }
 );
 
@@ -647,21 +699,27 @@ workflow.addConditionalEdges(
   "emailApproval",
 
   (state) => {
+
     if (
       state.approvalDecision === true
     ) {
+
       return "send";
+
     }
 
     return "cancel";
+
   },
 
   {
+
     send:
       "sendEmail",
 
     cancel:
       "generateResponse",
+
   }
 );
 
@@ -685,6 +743,14 @@ workflow.addEdge(
 // ============================================================
 // CHECKPOINTER
 // ============================================================
+//
+// MemorySaver graph execution ko thread ke basis par
+// checkpoint karta hai.
+//
+// Isliye same conversationId/threadId ke saath graph ko
+// resume kiya ja sakta hai.
+//
+// ============================================================
 
 const checkpointer =
   new MemorySaver();
@@ -701,35 +767,159 @@ export const employeeCopilotGraph =
 
 
 // ============================================================
+// HELPER:
+// CHECK WHETHER GRAPH WAS INTERRUPTED
+// ============================================================
+//
+// LangGraph interrupted execution ko result ke andar
+// `__interrupt__` ke form mein expose kar sakta hai.
+//
+// Isliye sirf catch(error) par depend nahi karna chahiye.
+//
+// ============================================================
+
+function getInterruptData(result) {
+
+  if (
+    !result ||
+    !result.__interrupt__
+  ) {
+
+    return null;
+
+  }
+
+
+  const interrupts =
+    result.__interrupt__;
+
+
+  if (
+    !Array.isArray(interrupts) ||
+    interrupts.length === 0
+  ) {
+
+    return null;
+
+  }
+
+
+  // Usually latest/first interrupt is the active one.
+  const interruptItem =
+    interrupts[0];
+
+
+  // LangGraph interrupt payload generally
+  // `.value` ke andar hota hai.
+
+  return (
+    interruptItem?.value ||
+    interruptItem ||
+    null
+  );
+}
+
+
+// ============================================================
 // RUN EMPLOYEE COPILOT
+// ============================================================
+//
+// Normal request:
+//
+// User
+//   ↓
+// Graph
+//   ↓
+// Result
+//
+// Approval request:
+//
+// User
+//   ↓
+// Graph
+//   ↓
+// prepareEmail
+//   ↓
+// emailApproval
+//   ↓
+// interrupt()
+//   ↓
+// __interrupt__
+//   ↓
+// Return confirmation data
+//
 // ============================================================
 
 export async function runEmployeeCopilot({
+
   userMessage,
+
   userId,
+
   userRole,
+
   conversationId,
+
   compactContext = null,
+
 }) {
+
+  // ==========================================================
+  // THREAD ID
+  // ==========================================================
+
   const threadId =
     conversationId ||
     `user_${userId}`;
 
+
+  // ==========================================================
+  // LANGGRAPH CONFIG
+  // ==========================================================
+
   const config = {
+
     configurable: {
-      thread_id: threadId,
+
+      thread_id:
+        threadId,
+
     },
+
   };
 
+
   try {
+
+    // ========================================================
+    // RUN GRAPH
+    // ========================================================
+
+    console.log(
+      "[EmployeeCopilotGraph] Starting graph:",
+      {
+        threadId,
+        userId,
+      }
+    );
+
+
     const result =
       await employeeCopilotGraph.invoke(
+
         {
+
           messages: [
+
             {
+
               role: "user",
-              content: userMessage,
+
+              content:
+                userMessage,
+
             },
+
           ],
 
           userId,
@@ -739,14 +929,106 @@ export async function runEmployeeCopilot({
           conversationId,
 
           compactContext,
+
         },
 
         config
+
       );
 
+
+    // ========================================================
+    // CHECK FOR LANGGRAPH INTERRUPT
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // interrupt() is an expected workflow pause.
+    //
+    // It is NOT an application failure.
+    //
+    // ========================================================
+
+    const interruptData =
+      getInterruptData(result);
+
+
+    if (interruptData) {
+
+      console.log(
+        "[EmployeeCopilotGraph] Graph interrupted for approval:",
+        {
+          threadId,
+
+          type:
+            interruptData?.type,
+
+          action:
+            interruptData?.action,
+
+        }
+      );
+
+
+      // ------------------------------------------------------
+      // Get pending action
+      // ------------------------------------------------------
+
+      const pendingAction =
+        result.pendingAction ||
+        interruptData?.action ||
+        null;
+
+
+      // ------------------------------------------------------
+      // Return successful confirmation state
+      // ------------------------------------------------------
+
+      return {
+
+        response:
+          interruptData?.message ||
+          result.toolResult ||
+          result.response ||
+          "Please confirm this action.",
+
+        sources:
+          result.sources || [],
+
+        requiresConfirmation:
+          true,
+
+        pendingAction,
+
+        context:
+          result.context || null,
+
+        error:
+          null,
+
+      };
+
+    }
+
+
+    // ========================================================
+    // NORMAL COMPLETED GRAPH
+    // ========================================================
+
+    console.log(
+      "[EmployeeCopilotGraph] Graph completed:",
+      {
+        threadId,
+      }
+    );
+
+
     return {
+
       response:
-        result.response,
+        result.response ||
+        result.toolResult ||
+        "",
 
       sources:
         result.sources || [],
@@ -766,57 +1048,249 @@ export async function runEmployeeCopilot({
       error:
         result.error ||
         null,
+
     };
+
+
   } catch (error) {
+
+    // ========================================================
+    // REAL ERROR
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // We DON'T blindly convert everything into
+    // "I was unable to generate a response."
+    //
+    // Actual errors are logged with stack trace.
+    //
+    // ========================================================
+
     console.error(
-      "[EmployeeCopilotGraph]",
-      error
+      "[EmployeeCopilotGraph] Graph execution failed:",
+      {
+        threadId,
+
+        message:
+          error?.message,
+
+        name:
+          error?.name,
+
+        stack:
+          error?.stack,
+
+      }
     );
 
+
     return {
+
       response:
         "I encountered an error while processing your request. Please try again.",
 
       sources: [],
 
-      requiresConfirmation: false,
+      requiresConfirmation:
+        false,
 
-      pendingAction: null,
+      pendingAction:
+        null,
 
-      error: error.message,
+      context:
+        null,
+
+      error:
+        error?.message ||
+        "Unknown graph error",
+
     };
+
   }
+
 }
 
 
 // ============================================================
 // RESUME / CONFIRM WORKFLOW
 // ============================================================
+//
+// User confirmation:
+//
+// approved = true
+//
+//      ↓
+//
+// Command({
+//   resume: true
+// })
+//
+//      ↓
+//
+// Same thread
+//
+//      ↓
+//
+// emailApprovalNode resumes
+//
+//      ↓
+//
+// approvalDecision = true
+//
+//      ↓
+//
+// sendEmail
+//
+// ============================================================
 
 export async function resumeEmployeeCopilot({
+
   conversationId,
+
   approved,
+
 }) {
+
+  // ==========================================================
+  // VALIDATE THREAD
+  // ==========================================================
+
+  if (!conversationId) {
+
+    return {
+
+      response:
+        "Conversation ID is required to resume the workflow.",
+
+      sources: [],
+
+      requiresConfirmation:
+        false,
+
+      pendingAction:
+        null,
+
+      error:
+        "Missing conversationId",
+
+    };
+
+  }
+
+
+  // ==========================================================
+  // THREAD CONFIG
+  // ==========================================================
+
   const config = {
+
     configurable: {
+
       thread_id:
         conversationId,
+
     },
+
   };
 
+
   try {
+
+    console.log(
+      "[EmployeeCopilotResume] Resuming workflow:",
+      {
+        conversationId,
+        approved,
+      }
+    );
+
+
+    // ========================================================
+    // RESUME SAME GRAPH THREAD
+    // ========================================================
+
     const result =
       await employeeCopilotGraph.invoke(
+
         new Command({
-          resume: approved,
+          resume:
+            Boolean(approved),
         }),
 
         config
+
       );
 
+
+    // ========================================================
+    // CHECK IF ANOTHER INTERRUPT OCCURRED
+    // ========================================================
+
+    const interruptData =
+      getInterruptData(result);
+
+
+    if (interruptData) {
+
+      console.log(
+        "[EmployeeCopilotResume] Workflow interrupted again:",
+        {
+          conversationId,
+          type:
+            interruptData?.type,
+        }
+      );
+
+
+      return {
+
+        response:
+          interruptData?.message ||
+          result.toolResult ||
+          "Additional confirmation is required.",
+
+        sources:
+          result.sources || [],
+
+        requiresConfirmation:
+          true,
+
+        pendingAction:
+          result.pendingAction ||
+          interruptData?.action ||
+          null,
+
+        context:
+          result.context ||
+          null,
+
+        error:
+          null,
+
+      };
+
+    }
+
+
+    // ========================================================
+    // WORKFLOW COMPLETED
+    // ========================================================
+
+    console.log(
+      "[EmployeeCopilotResume] Workflow completed:",
+      {
+        conversationId,
+      }
+    );
+
+
     return {
+
       response:
-        result.response,
+        result.response ||
+        result.toolResult ||
+        "",
 
       sources:
         result.sources || [],
@@ -836,26 +1310,55 @@ export async function resumeEmployeeCopilot({
       error:
         result.error ||
         null,
+
     };
+
+
   } catch (error) {
+
+    // ========================================================
+    // REAL RESUME ERROR
+    // ========================================================
+
     console.error(
-      "[EmployeeCopilotResume]",
-      error
+      "[EmployeeCopilotResume] Resume failed:",
+      {
+        conversationId,
+
+        message:
+          error?.message,
+
+        name:
+          error?.name,
+
+        stack:
+          error?.stack,
+
+      }
     );
 
+
     return {
+
       response:
-        "I could not resume the workflow.",
+        "I could not resume the workflow. Please try again.",
 
       sources: [],
 
-      requiresConfirmation: false,
+      requiresConfirmation:
+        false,
 
-      pendingAction: null,
+      pendingAction:
+        null,
 
-      error: error.message,
+      error:
+        error?.message ||
+        "Unknown resume error",
+
     };
+
   }
+
 }
 
 

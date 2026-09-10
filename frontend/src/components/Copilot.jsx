@@ -27,7 +27,6 @@ import { FaBrain, FaUser } from 'react-icons/fa';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-import ActionCard from './ActionCard';
 import ConfirmationModal from './ConfirmationModal';
 
 // ============================================================
@@ -1695,6 +1694,70 @@ const Copilot = ({
   };
 
   // ============================================================
+  // RECOVER PENDING ACTION
+  // ============================================================
+  // Backend workflow ke paas action pending ho sakta hai even when
+  // normal message response me actionMetadata na aaye.
+  // Isliye confirmation state ko server se recover karte hain.
+
+  const recoverPendingAction = async () => {
+    if (!conversation?.id) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/conversations/${conversation.id}/state`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+
+      if (
+        data?.pendingAction &&
+        data?.workflowStep === 'READY_FOR_CONFIRMATION'
+      ) {
+        const recoveredAction = {
+          ...data.pendingAction,
+          actionId:
+            data.actionId ||
+            data.pendingAction.actionId,
+          actionType:
+            data.pendingAction.actionType ||
+            data.pendingAction.type,
+          calendarStatus:
+            data.calendarStatus,
+          hasConflicts:
+            Boolean(data.context?.calendarConflicts),
+          conflictDetails:
+            data.context?.calendarConflicts || null,
+        };
+
+        setPendingAction(recoveredAction);
+
+        return recoveredAction;
+      }
+
+      return null;
+    } catch (error) {
+      console.error(
+        'Error recovering pending action:',
+        error
+      );
+
+      return null;
+    }
+  };
+
+  // ============================================================
   // SEND MESSAGE
   // ============================================================
 
@@ -1713,6 +1776,81 @@ const Copilot = ({
 
     const currentQuestion =
       question.trim();
+
+    // ========================================================
+    // DIRECT CONFIRMATION HANDLING
+    // ========================================================
+    // Agar pending action already available hai aur user
+    // "yes", "confirm", "send it" type karta hai, to is text ko
+    // normal AI chat me mat bhejo.
+    //
+    // Directly action endpoint use karo.
+    const normalizedConfirmation =
+      currentQuestion
+        .toLowerCase()
+        .replace(/[.!?,]/g, '')
+        .trim();
+
+    const positiveConfirmations = new Set([
+      'yes',
+      'yes send',
+      'yes send it',
+      'send it',
+      'confirm',
+      'confirmed',
+      'proceed',
+      'do it',
+      'go ahead',
+      'send this',
+      'send this mail',
+      'send this email',
+      'yes send this mail',
+      'yes send this email',
+    ]);
+
+    const negativeConfirmations = new Set([
+      'no',
+      'cancel',
+      'cancel it',
+      'dont send',
+      "don't send",
+      'do not send',
+      'stop',
+    ]);
+
+    if (pendingAction) {
+      if (
+        positiveConfirmations.has(
+          normalizedConfirmation
+        )
+      ) {
+        // User ke confirmation ko chat message ke roop me save
+        // karna optional hai; actual action backend endpoint se hoga.
+        setQuestion('');
+
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+        }
+
+        await handleConfirmAction();
+        return;
+      }
+
+      if (
+        negativeConfirmations.has(
+          normalizedConfirmation
+        )
+      ) {
+        setQuestion('');
+
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+        }
+
+        await handleCancelAction();
+        return;
+      }
+    }
 
     // ========================================================
     // USER MESSAGE
@@ -1834,13 +1972,52 @@ const Copilot = ({
       const responseData =
         response?.data || response;
 
-      const actionMetadata =
+      /*
+       * Ideally backend response directly returns:
+       * {
+       *   requiresConfirmation: true,
+       *   actionMetadata: { ... }
+       * }
+       *
+       * Agar actionMetadata missing hai, server-side workflow state
+       * se pending action recover karenge. Isse screenshot wala
+       * duplicate "Please confirm..." problem avoid hota hai.
+       */
+      let actionMetadata =
         responseData?.actionMetadata;
 
-      const requiresConfirmation =
+      let requiresConfirmation =
         Boolean(
           responseData?.requiresConfirmation
         );
+
+      if (
+        !actionMetadata &&
+        requiresConfirmation
+      ) {
+        actionMetadata =
+          await recoverPendingAction();
+      }
+
+      /*
+       * Kuch backend implementations sirf confirmation text return
+       * karte hain. Us case me bhi workflow state recover karne ki
+       * koshish karo.
+       */
+      if (
+        !actionMetadata &&
+        typeof assistantContent === 'string' &&
+        assistantContent
+          .toLowerCase()
+          .includes('please confirm')
+      ) {
+        actionMetadata =
+          await recoverPendingAction();
+
+        if (actionMetadata) {
+          requiresConfirmation = true;
+        }
+      }
 
       if (
         actionMetadata &&
@@ -2109,6 +2286,14 @@ const Copilot = ({
 
   const handleCancelAction =
     async () => {
+      if (
+        !pendingAction ||
+        !conversation ||
+        executingAction
+      ) {
+        return;
+      }
+
       try {
         // Call backend to cancel the workflow
         await fetch(`/api/conversations/${conversation.id}/actions/cancel`, {
@@ -2479,21 +2664,352 @@ const Copilot = ({
                   ACTION
               ================================================== */}
 
+              {/* ==================================================
+                  CONFIRMATION ACTION CARD
+              ================================================== */}
               {pendingAction && (
-                <ActionCard
-                  actionMetadata={
-                    pendingAction
-                  }
-                  onConfirm={
-                    handleConfirmAction
-                  }
-                  onCancel={
-                    handleCancelAction
-                  }
-                  isLoading={
-                    executingAction
-                  }
-                />
+                <motion.div
+                  initial={{
+                    opacity: 0,
+                    y: 12,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                  }}
+                  transition={{
+                    duration: 0.25,
+                  }}
+                  className="
+                    mt-4
+                    w-full
+                    max-w-[900px]
+                    rounded-2xl
+                    border
+                    border-accent-primary/30
+                    bg-surface
+                    p-4
+                    shadow-lg
+                  "
+                >
+                  {/* ------------------------------------------------
+                      HEADER
+                  ------------------------------------------------ */}
+                  <div className="mb-4 flex items-center gap-3">
+                    <div
+                      className="
+                        flex
+                        h-10
+                        w-10
+                        flex-shrink-0
+                        items-center
+                        justify-center
+                        rounded-xl
+                        bg-accent-primary/10
+                        text-accent-primary
+                      "
+                    >
+                      <BrainCircuit size={18} />
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-primary">
+                        Confirm action
+                      </p>
+
+                      <p className="mt-0.5 text-xs text-secondary">
+                        Please review the details before continuing.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* ------------------------------------------------
+                      EMAIL DETAILS
+                  ------------------------------------------------ */}
+                  {(
+                    pendingAction.actionType === "gmail_send" ||
+                    pendingAction.type === "gmail_send"
+                  ) && (
+                    <div
+                      className="
+                        mb-4
+                        space-y-3
+                        rounded-xl
+                        border
+                        border-default
+                        bg-surface-tertiary
+                        p-4
+                      "
+                    >
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                          To
+                        </p>
+                        <p className="mt-1 break-all text-sm text-primary">
+                          {pendingAction.to || "Not specified"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                          Subject
+                        </p>
+                        <p className="mt-1 text-sm text-primary">
+                          {pendingAction.subject || "No subject"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                          Message
+                        </p>
+                        <div
+                          className="
+                            mt-1
+                            max-h-40
+                            overflow-y-auto
+                            whitespace-pre-wrap
+                            rounded-lg
+                            border
+                            border-light
+                            bg-surface
+                            p-3
+                            text-sm
+                            leading-5
+                            text-secondary
+                          "
+                        >
+                          {pendingAction.body || "No message body"}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ------------------------------------------------
+                      CALENDAR DETAILS
+                  ------------------------------------------------ */}
+                  {(
+                    pendingAction.actionType === "calendar_create" ||
+                    pendingAction.type === "calendar_create"
+                  ) && (
+                    <div
+                      className="
+                        mb-4
+                        space-y-3
+                        rounded-xl
+                        border
+                        border-default
+                        bg-surface-tertiary
+                        p-4
+                      "
+                    >
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                          Meeting
+                        </p>
+                        <p className="mt-1 text-sm text-primary">
+                          {pendingAction.title || "Untitled meeting"}
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                            Date
+                          </p>
+                          <p className="mt-1 text-sm text-primary">
+                            {pendingAction.date ||
+                              pendingAction.start_date ||
+                              "Not specified"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                            Time
+                          </p>
+                          <p className="mt-1 text-sm text-primary">
+                            {pendingAction.start_time || "Not specified"}
+                            {pendingAction.end_time
+                              ? ` - ${pendingAction.end_time}`
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
+
+                      {pendingAction.description && (
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                            Description
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap text-sm text-secondary">
+                            {pendingAction.description}
+                          </p>
+                        </div>
+                      )}
+
+                      {pendingAction.location && (
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                            Location
+                          </p>
+                          <p className="mt-1 text-sm text-secondary">
+                            {pendingAction.location}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ------------------------------------------------
+                      LEAVE DETAILS
+                  ------------------------------------------------ */}
+                  {(
+                    pendingAction.actionType === "leave_request" ||
+                    pendingAction.type === "leave_request"
+                  ) && (
+                    <div
+                      className="
+                        mb-4
+                        space-y-3
+                        rounded-xl
+                        border
+                        border-default
+                        bg-surface-tertiary
+                        p-4
+                      "
+                    >
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                          Leave type
+                        </p>
+                        <p className="mt-1 text-sm text-primary">
+                          {pendingAction.leave_type ||
+                            pendingAction.leaveType ||
+                            "Not specified"}
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                            Start date
+                          </p>
+                          <p className="mt-1 text-sm text-primary">
+                            {pendingAction.start_date ||
+                              pendingAction.startDate ||
+                              "Not specified"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                            End date
+                          </p>
+                          <p className="mt-1 text-sm text-primary">
+                            {pendingAction.end_date ||
+                              pendingAction.endDate ||
+                              "Not specified"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {(pendingAction.number_of_days ||
+                        pendingAction.numberOfDays) && (
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-tertiary">
+                            Days
+                          </p>
+                          <p className="mt-1 text-sm text-primary">
+                            {pendingAction.number_of_days ||
+                              pendingAction.numberOfDays}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ------------------------------------------------
+                      CONFIRM / CANCEL BUTTONS
+                  ------------------------------------------------ */}
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={handleCancelAction}
+                      disabled={executingAction}
+                      className="
+                        inline-flex
+                        min-h-10
+                        items-center
+                        justify-center
+                        gap-2
+                        rounded-xl
+                        border
+                        border-default
+                        bg-surface
+                        px-5
+                        py-2.5
+                        text-sm
+                        font-semibold
+                        text-secondary
+                        transition-all
+                        hover:bg-hover
+                        hover:text-primary
+                        disabled:cursor-not-allowed
+                        disabled:opacity-50
+                      "
+                    >
+                      <span aria-hidden="true">×</span>
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleConfirmAction}
+                      disabled={executingAction}
+                      className="
+                        inline-flex
+                        min-h-10
+                        items-center
+                        justify-center
+                        gap-2
+                        rounded-xl
+                        bg-accent-primary
+                        px-5
+                        py-2.5
+                        text-sm
+                        font-semibold
+                        text-inverse
+                        shadow-md
+                        shadow-accent-primary/20
+                        transition-all
+                        hover:bg-accent-primary-hover
+                        disabled:cursor-not-allowed
+                        disabled:opacity-50
+                      "
+                    >
+                      {executingAction ? (
+                        <>
+                          <Loader2
+                            size={15}
+                            className="animate-spin"
+                          />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Check size={15} />
+                          {(
+                            pendingAction.actionType === "gmail_send" ||
+                            pendingAction.type === "gmail_send"
+                          )
+                            ? "Confirm & Send"
+                            : "Confirm"}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
               )}
 
               <div
