@@ -118,7 +118,7 @@ api.interceptors.response.use(
       return Promise.reject({
         success: false,
         error:
-          'Unable to connect to the server. Please make sure the backend is running.',
+          'Under Construction',
         code: 'NETWORK_ERROR'
       });
     }
