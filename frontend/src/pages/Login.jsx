@@ -496,7 +496,7 @@ const Login = () => {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} autoComplete="on" className="relative space-y-4">
+            <form id="login-form" name="login" method="post" onSubmit={handleSubmit} autoComplete="on" className="relative space-y-4">
               {/* Email Input */}
               <div>
                 <label
@@ -514,10 +514,12 @@ const Login = () => {
                     name="email"
                     type="email"
                     autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     required
                     value={formData.email}
                     onChange={handleChange}
-                    disabled={loading}
+                    readOnly={loading}
                     placeholder="you@company.com"
                     className="w-full rounded-xl border border-white/[0.10] bg-white/[0.03] py-3.5 pl-11 pr-4 text-[14px] text-white outline-none transition-all duration-300 placeholder:text-white/25 focus:border-[#7FCBFF]/35 focus:bg-white/[0.05] focus:ring-2 focus:ring-[#7FCBFF]/15 disabled:cursor-not-allowed disabled:opacity-50"
                   />
@@ -544,7 +546,7 @@ const Login = () => {
                     required
                     value={formData.password}
                     onChange={handleChange}
-                    disabled={loading}
+                    readOnly={loading}
                     placeholder="••••••••"
                     className="w-full rounded-xl border border-white/[0.10] bg-white/[0.03] py-3.5 pl-11 pr-12 text-[14px] text-white outline-none transition-all duration-300 placeholder:text-white/25 focus:border-[#7FCBFF]/35 focus:bg-white/[0.05] focus:ring-2 focus:ring-[#7FCBFF]/15 disabled:cursor-not-allowed disabled:opacity-50"
                   />
