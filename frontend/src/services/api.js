@@ -117,7 +117,7 @@ api.interceptors.response.use(
 
       return Promise.reject({
         success: false,
-       error: '⚙️🔨 Under Development 🚧',
+       error: '⚙️🔨 Under Construction 🚧',
         code: 'NETWORK_ERROR'
       });
     }

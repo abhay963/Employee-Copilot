@@ -659,7 +659,7 @@ const Register = () => {
                     value={formData.name}
                     onChange={handleChange}
                     disabled={loading}
-                    placeholder="John Doe"
+                    placeholder="your name"
                     className="w-full rounded-xl border border-white/[0.10] bg-white/[0.03] py-3.5 pl-11 pr-4 text-[14px] text-white outline-none transition-all duration-300 placeholder:text-white/25 focus:border-[#7FCBFF]/35 focus:bg-white/[0.05] focus:ring-2 focus:ring-[#7FCBFF]/15 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </div>
