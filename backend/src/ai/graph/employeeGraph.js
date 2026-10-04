@@ -1,24 +1,26 @@
 // ============================================================
-// EMPLOYEE COPILOT GRAPH
+// EMPLOYEE COPILOT - MAIN LANGGRAPH
 // ============================================================
-// Main LangGraph orchestration.
 //
-// This file is responsible for:
+// This is the central LangGraph orchestration file.
 //
-// 1. Defining graph state
-// 2. Registering nodes
-// 3. Connecting nodes
-// 4. Routing intents
-// 5. Compiling the graph
-// 6. Running the graph
-// 7. Resuming interrupted workflows
+// Responsibilities:
 //
-// IMPORTANT:
+// 1. Define EmployeeState
+// 2. Classify user intent
+// 3. Route intent
+// 4. Register nodes
+// 5. Connect nodes
+// 6. Handle conditional workflows
+// 7. Compile graph
+// 8. Checkpoint graph execution
+// 9. Run graph
+// 10. Resume interrupted workflows
 //
-// Gmail / Calendar / Leave business logic is NOT implemented here.
+// Business logic remains inside ./nodes/*.js
 //
-// Ye file sirf orchestration karta hai.
 // ============================================================
+
 
 import {
   StateGraph,
@@ -29,32 +31,28 @@ import {
   Command,
 } from "@langchain/langgraph";
 
+import { z } from "zod";
+
+import  geminiLLM  from "../llm/gemini.js";
+
 
 // ============================================================
-// CORE NODES
+// NODE IMPORTS
 // ============================================================
+
+
+// ------------------------------------------------------------
+// VALIDATION
+// ------------------------------------------------------------
 
 import {
   validateInputNode,
 } from "./nodes/validation.js";
 
-import {
-  classifyIntentNode,
-  routeByIntent,
-} from "./nodes/intent.js";
 
-import {
-  INTENT_ROUTES,
-} from "./router.js";
-
-import {
-  responseNode,
-} from "./nodes/response.js";
-
-
-// ============================================================
-// LEAVE NODES
-// ============================================================
+// ------------------------------------------------------------
+// LEAVE
+// ------------------------------------------------------------
 
 import {
   leaveBalanceNode,
@@ -67,9 +65,9 @@ import {
 } from "./nodes/leave.js";
 
 
-// ============================================================
-// CALENDAR NODES
-// ============================================================
+// ------------------------------------------------------------
+// CALENDAR
+// ------------------------------------------------------------
 
 import {
   calendarQueryNode,
@@ -81,9 +79,9 @@ import {
 } from "./nodes/calendar.js";
 
 
-// ============================================================
-// EMAIL NODES
-// ============================================================
+// ------------------------------------------------------------
+// EMAIL / GMAIL
+// ------------------------------------------------------------
 
 import {
   gmailReadNode,
@@ -94,150 +92,696 @@ import {
 } from "./nodes/email.js";
 
 
-// ============================================================
-// OTHER NODES
-// ============================================================
+// ------------------------------------------------------------
+// WEB SEARCH
+// ------------------------------------------------------------
 
 import {
   webSearchNode,
 } from "./nodes/webSearch.js";
+
+
+// ------------------------------------------------------------
+// RAG
+// ------------------------------------------------------------
 
 import {
   ragNode,
 } from "./nodes/rag.js";
 
 
-// ============================================================
-// GRAPH STATE
-// ============================================================
+// ------------------------------------------------------------
+// RESPONSE
+// ------------------------------------------------------------
 
-export const EmployeeState =
-  Annotation.Root({
-
-    // --------------------------------------------------------
-    // User information
-    // --------------------------------------------------------
-
-    userId: Annotation(),
-
-    userRole: Annotation(),
-
-    conversationId: Annotation(),
-
-
-    // --------------------------------------------------------
-    // Messages
-    // --------------------------------------------------------
-
-    messages: Annotation({
-
-      reducer: (current, update) => {
-
-        return [
-          ...current,
-          ...update,
-        ];
-
-      },
-
-      default: () => [],
-
-    }),
-
-
-    // --------------------------------------------------------
-    // Intent
-    // --------------------------------------------------------
-
-    intent: Annotation(),
-
-
-    // --------------------------------------------------------
-    // Tool information
-    // --------------------------------------------------------
-
-    currentTool: Annotation(),
-
-    toolResult: Annotation(),
-
-
-    // --------------------------------------------------------
-    // Action / confirmation
-    // --------------------------------------------------------
-
-    pendingAction: Annotation(),
-
-    requiresConfirmation:
-      Annotation({
-        default: () => false,
-      }),
-
-    approvalDecision:
-      Annotation({
-        default: () => null,
-      }),
-
-
-    // --------------------------------------------------------
-    // Calendar conflicts
-    // --------------------------------------------------------
-
-    hasConflicts:
-      Annotation({
-        default: () => false,
-      }),
-
-
-    // --------------------------------------------------------
-    // Missing information
-    // --------------------------------------------------------
-
-    missingField: Annotation(),
-
-
-    // --------------------------------------------------------
-    // General context
-    // --------------------------------------------------------
-
-    context:
-      Annotation({
-        default: () => ({}),
-      }),
-
-
-    // --------------------------------------------------------
-    // Conversation context
-    // --------------------------------------------------------
-
-    compactContext:
-      Annotation(),
-
-
-    // --------------------------------------------------------
-    // Final response
-    // --------------------------------------------------------
-
-    response:
-      Annotation(),
-
-    sources:
-      Annotation({
-        default: () => [],
-      }),
-
-
-    // --------------------------------------------------------
-    // Error
-    // --------------------------------------------------------
-
-    error:
-      Annotation(),
-
-  });
+import {
+  responseNode,
+} from "./nodes/response.js";
 
 
 // ============================================================
-// CREATE WORKFLOW
+// 1. EMPLOYEE STATE
+// ============================================================
+//
+// This is the SINGLE shared state for the complete graph.
+//
+// Every node receives this state and can return partial updates.
+//
+// ============================================================
+
+export const EmployeeState = Annotation.Root({
+
+  // ----------------------------------------------------------
+  // USER INFORMATION
+  // ----------------------------------------------------------
+
+  userId: Annotation(),
+
+  userRole: Annotation(),
+
+  conversationId: Annotation(),
+
+
+  // ----------------------------------------------------------
+  // CONVERSATION MESSAGES
+  // ----------------------------------------------------------
+
+  messages: Annotation({
+
+    reducer: (current, update) => [
+      ...current,
+      ...update,
+    ],
+
+    default: () => [],
+
+  }),
+
+
+  // ----------------------------------------------------------
+  // INTENT
+  // ----------------------------------------------------------
+
+  intent: Annotation(),
+
+
+  // ----------------------------------------------------------
+  // TOOL INFORMATION
+  // ----------------------------------------------------------
+
+  currentTool: Annotation(),
+
+  toolResult: Annotation(),
+
+
+  // ----------------------------------------------------------
+  // ACTION / APPROVAL
+  // ----------------------------------------------------------
+
+  pendingAction: Annotation(),
+
+  requiresConfirmation: Annotation({
+    default: () => false,
+  }),
+
+  approvalDecision: Annotation({
+    default: () => null,
+  }),
+
+
+  // ----------------------------------------------------------
+  // VALIDATION
+  // ----------------------------------------------------------
+
+  hasConflicts: Annotation({
+    default: () => false,
+  }),
+
+  missingField: Annotation(),
+
+
+  // ----------------------------------------------------------
+  // CONTEXT
+  // ----------------------------------------------------------
+
+  context: Annotation({
+    default: () => ({}),
+  }),
+
+  compactContext: Annotation(),
+
+
+  // ----------------------------------------------------------
+  // FINAL RESPONSE
+  // ----------------------------------------------------------
+
+  response: Annotation(),
+
+  sources: Annotation({
+    default: () => [],
+  }),
+
+
+  // ----------------------------------------------------------
+  // ERROR
+  // ----------------------------------------------------------
+
+  error: Annotation(),
+
+});
+
+
+// ============================================================
+// 2. INTENT DEFINITIONS
+// ============================================================
+//
+// These are the ONLY supported intents.
+//
+// ============================================================
+
+const VALID_INTENTS = [
+
+  "leave_balance",
+
+  "leave_policy",
+
+  "leave_request",
+
+  "calendar_events",
+
+  "calendar_create",
+
+  "gmail_read",
+
+  "gmail_send",
+
+  "web_search",
+
+  "general",
+
+];
+
+
+// ============================================================
+// 3. INTENT VALIDATION SCHEMA
+// ============================================================
+
+const IntentSchema = z.enum(VALID_INTENTS);
+
+
+// ============================================================
+// 4. INTENT CLASSIFIER
+// ============================================================
+//
+// First we use deterministic rules for common requests.
+//
+// If no rule matches, Gemini performs classification.
+//
+// ============================================================
+
+async function classifyIntent(userMessage) {
+
+  // ----------------------------------------------------------
+  // EMPTY MESSAGE
+  // ----------------------------------------------------------
+
+  if (!userMessage) {
+
+    return "general";
+
+  }
+
+
+  const message =
+    userMessage
+      .toLowerCase()
+      .trim();
+
+
+  // ==========================================================
+  // LEAVE BALANCE
+  // ==========================================================
+
+  if (
+
+    message.includes("leave balance") ||
+
+    message.includes("remaining leave") ||
+
+    message.includes("how many leaves") ||
+
+    message.includes("leaves left")
+
+  ) {
+
+    return "leave_balance";
+
+  }
+
+
+  // ==========================================================
+  // LEAVE POLICY
+  // ==========================================================
+
+  if (
+
+    message.includes("leave policy") ||
+
+    message.includes("leave rules") ||
+
+    message.includes("leave policies")
+
+  ) {
+
+    return "leave_policy";
+
+  }
+
+
+  // ==========================================================
+  // LEAVE REQUEST
+  // ==========================================================
+
+  if (
+
+    message.includes("apply leave") ||
+
+    message.includes("request leave") ||
+
+    message.includes("take leave") ||
+
+    message.includes("book leave")
+
+  ) {
+
+    return "leave_request";
+
+  }
+
+
+  // ==========================================================
+  // CALENDAR QUERY
+  // ==========================================================
+
+  if (
+
+    message.includes("calendar") &&
+
+    (
+
+      message.includes("event") ||
+
+      message.includes("meeting") ||
+
+      message.includes("today") ||
+
+      message.includes("tomorrow") ||
+
+      message.includes("schedule")
+
+    )
+
+  ) {
+
+    // --------------------------------------------------------
+    // If the user wants to CREATE something, handle it later.
+    // --------------------------------------------------------
+
+    if (
+
+      message.includes("create") ||
+
+      message.includes("schedule") ||
+
+      message.includes("book") ||
+
+      message.includes("arrange") ||
+
+      message.includes("add")
+
+    ) {
+
+      return "calendar_create";
+
+    }
+
+
+    return "calendar_events";
+
+  }
+
+
+  // ==========================================================
+  // CALENDAR CREATE
+  // ==========================================================
+
+  if (
+
+    (
+
+      message.includes("schedule") ||
+
+      message.includes("create") ||
+
+      message.includes("add") ||
+
+      message.includes("book") ||
+
+      message.includes("arrange")
+
+    ) &&
+
+    (
+
+      message.includes("meeting") ||
+
+      message.includes("event") ||
+
+      message.includes("calendar")
+
+    )
+
+  ) {
+
+    return "calendar_create";
+
+  }
+
+
+  // ==========================================================
+  // GMAIL SEND
+  // ==========================================================
+
+  if (
+
+    (
+
+      message.includes("email") ||
+
+      message.includes("gmail") ||
+
+      message.includes("mail") ||
+
+      message.includes("inbox")
+
+    ) &&
+
+    (
+
+      message.includes("send") ||
+
+      message.includes("write") ||
+
+      message.includes("compose") ||
+
+      message.includes("draft")
+
+    )
+
+  ) {
+
+    return "gmail_send";
+
+  }
+
+
+  // ==========================================================
+  // GMAIL READ
+  // ==========================================================
+
+  if (
+
+    message.includes("email") ||
+
+    message.includes("gmail") ||
+
+    message.includes("mail") ||
+
+    message.includes("inbox")
+
+  ) {
+
+    return "gmail_read";
+
+  }
+
+
+  // ==========================================================
+  // WEB SEARCH
+  // ==========================================================
+
+  if (
+
+    message.includes("latest") ||
+
+    message.includes("current") ||
+
+    message.includes("recent") ||
+
+    message.includes("internet") ||
+
+    message.includes("web search") ||
+
+    message.includes("online")
+
+  ) {
+
+    return "web_search";
+
+  }
+
+
+  // ==========================================================
+  // GEMINI FALLBACK
+  // ==========================================================
+
+  try {
+
+    const prompt = `
+
+You are an intent classifier for an Employee AI Copilot.
+
+Classify the user's message into exactly ONE of these categories:
+
+${VALID_INTENTS.join(", ")}
+
+Rules:
+
+leave_balance:
+Questions about remaining or available leave.
+
+leave_policy:
+Questions about company leave policies.
+
+leave_request:
+Requests to apply, request, or take leave.
+
+calendar_events:
+Questions about existing calendar events or meetings.
+
+calendar_create:
+Requests to create or schedule calendar events.
+
+gmail_read:
+Requests to read, search, or check emails.
+
+gmail_send:
+Requests to send, write, compose, or draft emails.
+
+web_search:
+Requests requiring current internet or web information.
+
+general:
+Anything that does not fit the above categories.
+
+Return ONLY the category name.
+
+User message:
+${userMessage}
+`;
+
+
+    const result =
+      await geminiLLM.invoke(prompt);
+
+
+    const rawResponse =
+
+      typeof result?.content === "string"
+
+        ? result.content
+
+        : String(
+            result?.content ?? ""
+          );
+
+
+    const cleanedResponse =
+
+      rawResponse
+        .trim()
+        .toLowerCase()
+        .replace(/```/g, "")
+        .trim();
+
+
+    const parsed =
+      IntentSchema.safeParse(
+        cleanedResponse
+      );
+
+
+    if (parsed.success) {
+
+      return parsed.data;
+
+    }
+
+
+    return "general";
+
+  } catch (error) {
+
+    console.error(
+      "[IntentClassifier] Error:",
+      error
+    );
+
+    return "general";
+
+  }
+
+}
+
+
+// ============================================================
+// 5. INTENT CLASSIFICATION NODE
+// ============================================================
+
+async function classifyIntentNode(state) {
+
+  const messages =
+    state.messages || [];
+
+
+  // ----------------------------------------------------------
+  // NO MESSAGE
+  // ----------------------------------------------------------
+
+  if (messages.length === 0) {
+
+    return {
+      intent: "general",
+    };
+
+  }
+
+
+  // ----------------------------------------------------------
+  // LAST MESSAGE
+  // ----------------------------------------------------------
+
+  const lastMessage =
+    messages[messages.length - 1];
+
+
+  let userMessage;
+
+
+  if (
+    typeof lastMessage === "string"
+  ) {
+
+    userMessage =
+      lastMessage;
+
+  } else {
+
+    userMessage =
+      lastMessage?.content || "";
+
+  }
+
+
+  // ----------------------------------------------------------
+  // CLASSIFY
+  // ----------------------------------------------------------
+
+  const intent =
+    await classifyIntent(
+      userMessage
+    );
+
+
+  console.log(
+    `[Intent] ${userMessage} -> ${intent}`
+  );
+
+
+  return {
+    intent,
+  };
+
+}
+
+
+// ============================================================
+// 6. INTENT ROUTES
+// ============================================================
+//
+// Intent → Graph Node
+//
+// ============================================================
+
+const INTENT_ROUTES = {
+
+  leave_balance:
+    "leaveBalance",
+
+  leave_policy:
+    "leavePolicy",
+
+  leave_request:
+    "extractLeaveDetails",
+
+  calendar_events:
+    "calendarQuery",
+
+  calendar_create:
+    "extractCalendarEventDetails",
+
+  gmail_read:
+    "gmailRead",
+
+  gmail_send:
+    "extractEmailDetails",
+
+  web_search:
+    "webSearch",
+
+  general:
+    "generalRAG",
+
+};
+
+
+// ============================================================
+// 7. ROUTER
+// ============================================================
+//
+// This function returns the intent key.
+//
+// The conditional edge below maps that key to the
+// corresponding graph node.
+//
+// ============================================================
+
+function routeByIntent(state) {
+
+  const intent =
+    state.intent;
+
+
+  if (
+
+    !intent ||
+
+    !INTENT_ROUTES[intent]
+
+  ) {
+
+    return "general";
+
+  }
+
+
+  return intent;
+
+}
+
+
+// ============================================================
+// 8. CREATE GRAPH
 // ============================================================
 
 const workflow =
@@ -245,13 +789,14 @@ const workflow =
 
 
 // ============================================================
-// CORE NODES
+// 9. REGISTER CORE NODES
 // ============================================================
 
 workflow.addNode(
   "validateInput",
   validateInputNode
 );
+
 
 workflow.addNode(
   "classifyIntent",
@@ -260,7 +805,7 @@ workflow.addNode(
 
 
 // ============================================================
-// LEAVE NODES
+// 10. REGISTER LEAVE NODES
 // ============================================================
 
 workflow.addNode(
@@ -268,30 +813,36 @@ workflow.addNode(
   leaveBalanceNode
 );
 
+
 workflow.addNode(
   "leavePolicy",
   leavePolicyNode
 );
+
 
 workflow.addNode(
   "extractLeaveDetails",
   extractLeaveDetails
 );
 
+
 workflow.addNode(
   "prepareLeave",
   prepareLeaveNode
 );
+
 
 workflow.addNode(
   "validateLeave",
   validateLeaveNode
 );
 
+
 workflow.addNode(
   "leaveApproval",
   leaveApprovalNode
 );
+
 
 workflow.addNode(
   "submitLeave",
@@ -300,7 +851,7 @@ workflow.addNode(
 
 
 // ============================================================
-// CALENDAR NODES
+// 11. REGISTER CALENDAR NODES
 // ============================================================
 
 workflow.addNode(
@@ -308,25 +859,30 @@ workflow.addNode(
   calendarQueryNode
 );
 
+
 workflow.addNode(
   "extractCalendarEventDetails",
   extractCalendarEventDetails
 );
+
 
 workflow.addNode(
   "prepareCalendar",
   prepareCalendarNode
 );
 
+
 workflow.addNode(
   "validateCalendar",
   validateCalendarNode
 );
 
+
 workflow.addNode(
   "calendarApproval",
   calendarApprovalNode
 );
+
 
 workflow.addNode(
   "createCalendar",
@@ -335,7 +891,7 @@ workflow.addNode(
 
 
 // ============================================================
-// EMAIL NODES
+// 12. REGISTER EMAIL NODES
 // ============================================================
 
 workflow.addNode(
@@ -343,20 +899,24 @@ workflow.addNode(
   gmailReadNode
 );
 
+
 workflow.addNode(
   "extractEmailDetails",
   extractEmailDetails
 );
+
 
 workflow.addNode(
   "prepareEmail",
   prepareEmailNode
 );
 
+
 workflow.addNode(
   "emailApproval",
   emailApprovalNode
 );
+
 
 workflow.addNode(
   "sendEmail",
@@ -365,7 +925,7 @@ workflow.addNode(
 
 
 // ============================================================
-// OTHER NODES
+// 13. REGISTER OTHER NODES
 // ============================================================
 
 workflow.addNode(
@@ -373,15 +933,12 @@ workflow.addNode(
   webSearchNode
 );
 
+
 workflow.addNode(
   "generalRAG",
   ragNode
 );
 
-
-// ============================================================
-// FINAL RESPONSE
-// ============================================================
 
 workflow.addNode(
   "generateResponse",
@@ -390,7 +947,7 @@ workflow.addNode(
 
 
 // ============================================================
-// START → VALIDATE
+// 14. START → VALIDATION
 // ============================================================
 
 workflow.addEdge(
@@ -400,7 +957,7 @@ workflow.addEdge(
 
 
 // ============================================================
-// VALIDATE → CLASSIFY
+// 15. VALIDATION → CLASSIFICATION
 // ============================================================
 
 workflow.addEdge(
@@ -410,10 +967,11 @@ workflow.addEdge(
 
 
 // ============================================================
-// INTENT ROUTING
+// 16. INTENT → ROUTING
 // ============================================================
 
 workflow.addConditionalEdges(
+
   "classifyIntent",
 
   routeByIntent,
@@ -421,64 +979,100 @@ workflow.addConditionalEdges(
   {
 
     leave_balance:
-      INTENT_ROUTES.leave_balance,
+      "leaveBalance",
 
     leave_policy:
-      INTENT_ROUTES.leave_policy,
+      "leavePolicy",
 
     leave_request:
-      INTENT_ROUTES.leave_request,
+      "extractLeaveDetails",
 
     calendar_events:
-      INTENT_ROUTES.calendar_events,
+      "calendarQuery",
 
     calendar_create:
-      INTENT_ROUTES.calendar_create,
+      "extractCalendarEventDetails",
 
     gmail_read:
-      INTENT_ROUTES.gmail_read,
+      "gmailRead",
 
     gmail_send:
-      INTENT_ROUTES.gmail_send,
+      "extractEmailDetails",
 
     web_search:
-      INTENT_ROUTES.web_search,
+      "webSearch",
 
     general:
-      INTENT_ROUTES.general,
+      "generalRAG",
 
   }
+
 );
 
 
 // ============================================================
-// SIMPLE NODES → RESPONSE
+// 17. SIMPLE FLOWS
 // ============================================================
+//
+// These nodes perform an operation and then generate
+// the final natural-language response.
+//
+// ============================================================
+
+
+// ------------------------------------------------------------
+// Leave balance
+// ------------------------------------------------------------
 
 workflow.addEdge(
   "leaveBalance",
   "generateResponse"
 );
 
+
+// ------------------------------------------------------------
+// Leave policy
+// ------------------------------------------------------------
+
 workflow.addEdge(
   "leavePolicy",
   "generateResponse"
 );
+
+
+// ------------------------------------------------------------
+// Calendar query
+// ------------------------------------------------------------
 
 workflow.addEdge(
   "calendarQuery",
   "generateResponse"
 );
 
+
+// ------------------------------------------------------------
+// Gmail read
+// ------------------------------------------------------------
+
 workflow.addEdge(
   "gmailRead",
   "generateResponse"
 );
 
+
+// ------------------------------------------------------------
+// Web search
+// ------------------------------------------------------------
+
 workflow.addEdge(
   "webSearch",
   "generateResponse"
 );
+
+
+// ------------------------------------------------------------
+// RAG
+// ------------------------------------------------------------
 
 workflow.addEdge(
   "generalRAG",
@@ -487,7 +1081,25 @@ workflow.addEdge(
 
 
 // ============================================================
-// LEAVE FLOW
+// 18. LEAVE REQUEST FLOW
+// ============================================================
+//
+// User:
+// "I want leave tomorrow"
+//
+//      ↓
+// extractLeaveDetails
+//      ↓
+// prepareLeave
+//      ↓
+// validateLeave
+//      ↓
+//      ├── approval → leaveApproval
+//      │                    ↓
+//      │              approved/rejected
+//      │
+//      └── done → generateResponse
+//
 // ============================================================
 
 workflow.addEdge(
@@ -495,38 +1107,79 @@ workflow.addEdge(
   "prepareLeave"
 );
 
+
 workflow.addEdge(
   "prepareLeave",
   "validateLeave"
 );
 
 
+// ------------------------------------------------------------
+// Leave validation routing
+// ------------------------------------------------------------
+
 workflow.addConditionalEdges(
+
   "validateLeave",
 
   (state) => {
 
-    if (state.requiresConfirmation) {
-      return "approval";
+    if (
+      state.missingField
+    ) {
+
+      return "missing";
+
     }
 
-    return "done";
+
+    if (
+      state.hasConflicts
+    ) {
+
+      return "conflict";
+
+    }
+
+
+    if (
+      state.requiresConfirmation
+    ) {
+
+      return "approval";
+
+    }
+
+
+    return "submit";
 
   },
 
   {
 
+    missing:
+      "generateResponse",
+
+    conflict:
+      "generateResponse",
+
     approval:
       "leaveApproval",
 
-    done:
-      "generateResponse",
+    submit:
+      "submitLeave",
 
   }
+
 );
 
 
+// ------------------------------------------------------------
+// Leave approval result
+// ------------------------------------------------------------
+
 workflow.addConditionalEdges(
+
   "leaveApproval",
 
   (state) => {
@@ -538,6 +1191,7 @@ workflow.addConditionalEdges(
       return "submit";
 
     }
+
 
     return "cancel";
 
@@ -552,8 +1206,13 @@ workflow.addConditionalEdges(
       "generateResponse",
 
   }
+
 );
 
+
+// ------------------------------------------------------------
+// Submit leave
+// ------------------------------------------------------------
 
 workflow.addEdge(
   "submitLeave",
@@ -562,7 +1221,25 @@ workflow.addEdge(
 
 
 // ============================================================
-// CALENDAR FLOW
+// 19. CALENDAR CREATE FLOW
+// ============================================================
+//
+// User:
+// "Schedule a meeting with Rahul tomorrow at 5 PM"
+//
+//      ↓
+// extractCalendarEventDetails
+//      ↓
+// prepareCalendar
+//      ↓
+// validateCalendar
+//      ↓
+//      ├── approval → calendarApproval
+//      │                    ↓
+//      │              approved/rejected
+//      │
+//      └── done → generateResponse
+//
 // ============================================================
 
 workflow.addEdge(
@@ -570,38 +1247,79 @@ workflow.addEdge(
   "prepareCalendar"
 );
 
+
 workflow.addEdge(
   "prepareCalendar",
   "validateCalendar"
 );
 
 
+// ------------------------------------------------------------
+// Calendar validation routing
+// ------------------------------------------------------------
+
 workflow.addConditionalEdges(
+
   "validateCalendar",
 
   (state) => {
 
-    if (state.requiresConfirmation) {
-      return "approval";
+    if (
+      state.missingField
+    ) {
+
+      return "missing";
+
     }
 
-    return "done";
+
+    if (
+      state.hasConflicts
+    ) {
+
+      return "conflict";
+
+    }
+
+
+    if (
+      state.requiresConfirmation
+    ) {
+
+      return "approval";
+
+    }
+
+
+    return "create";
 
   },
 
   {
 
+    missing:
+      "generateResponse",
+
+    conflict:
+      "generateResponse",
+
     approval:
       "calendarApproval",
 
-    done:
-      "generateResponse",
+    create:
+      "createCalendar",
 
   }
+
 );
 
 
+// ------------------------------------------------------------
+// Calendar approval
+// ------------------------------------------------------------
+
 workflow.addConditionalEdges(
+
   "calendarApproval",
 
   (state) => {
@@ -613,6 +1331,7 @@ workflow.addConditionalEdges(
       return "create";
 
     }
+
 
     return "cancel";
 
@@ -627,8 +1346,13 @@ workflow.addConditionalEdges(
       "generateResponse",
 
   }
+
 );
 
+
+// ------------------------------------------------------------
+// Create event
+// ------------------------------------------------------------
 
 workflow.addEdge(
   "createCalendar",
@@ -637,22 +1361,22 @@ workflow.addEdge(
 
 
 // ============================================================
-// EMAIL FLOW
+// 20. GMAIL SEND FLOW
 // ============================================================
 //
-// IMPORTANT:
+// User:
+// "Send an email to Rahul"
 //
-// Gmail send flow:
-//
+//      ↓
+// extractEmailDetails
+//      ↓
 // prepareEmail
 //      ↓
 // emailApproval
 //      ↓
 // interrupt()
 //      ↓
-// PAUSE
-//      ↓
-// user confirms
+// WAIT
 //      ↓
 // resume
 //      ↓
@@ -666,7 +1390,12 @@ workflow.addEdge(
 );
 
 
+// ------------------------------------------------------------
+// Email preparation
+// ------------------------------------------------------------
+
 workflow.addConditionalEdges(
+
   "prepareEmail",
 
   (state) => {
@@ -678,6 +1407,7 @@ workflow.addConditionalEdges(
       return "approval";
 
     }
+
 
     return "done";
 
@@ -692,10 +1422,16 @@ workflow.addConditionalEdges(
       "generateResponse",
 
   }
+
 );
 
 
+// ------------------------------------------------------------
+// Email approval
+// ------------------------------------------------------------
+
 workflow.addConditionalEdges(
+
   "emailApproval",
 
   (state) => {
@@ -707,6 +1443,7 @@ workflow.addConditionalEdges(
       return "send";
 
     }
+
 
     return "cancel";
 
@@ -721,8 +1458,13 @@ workflow.addConditionalEdges(
       "generateResponse",
 
   }
+
 );
 
+
+// ------------------------------------------------------------
+// Send email
+// ------------------------------------------------------------
 
 workflow.addEdge(
   "sendEmail",
@@ -731,7 +1473,7 @@ workflow.addEdge(
 
 
 // ============================================================
-// FINAL RESPONSE → END
+// 21. FINAL RESPONSE
 // ============================================================
 
 workflow.addEdge(
@@ -741,14 +1483,12 @@ workflow.addEdge(
 
 
 // ============================================================
-// CHECKPOINTER
+// 22. CHECKPOINTER
 // ============================================================
 //
-// MemorySaver graph execution ko thread ke basis par
-// checkpoint karta hai.
+// MemorySaver stores graph checkpoints using thread_id.
 //
-// Isliye same conversationId/threadId ke saath graph ko
-// resume kiya ja sakta hai.
+// Same thread_id allows interrupted workflows to resume.
 //
 // ============================================================
 
@@ -757,7 +1497,7 @@ const checkpointer =
 
 
 // ============================================================
-// COMPILE GRAPH
+// 23. COMPILE GRAPH
 // ============================================================
 
 export const employeeCopilotGraph =
@@ -767,15 +1507,7 @@ export const employeeCopilotGraph =
 
 
 // ============================================================
-// HELPER:
-// CHECK WHETHER GRAPH WAS INTERRUPTED
-// ============================================================
-//
-// LangGraph interrupted execution ko result ke andar
-// `__interrupt__` ke form mein expose kar sakta hai.
-//
-// Isliye sirf catch(error) par depend nahi karna chahiye.
-//
+// 24. INTERRUPT HELPER
 // ============================================================
 
 function getInterruptData(result) {
@@ -804,50 +1536,21 @@ function getInterruptData(result) {
   }
 
 
-  // Usually latest/first interrupt is the active one.
   const interruptItem =
     interrupts[0];
 
-
-  // LangGraph interrupt payload generally
-  // `.value` ke andar hota hai.
 
   return (
     interruptItem?.value ||
     interruptItem ||
     null
   );
+
 }
 
 
 // ============================================================
-// RUN EMPLOYEE COPILOT
-// ============================================================
-//
-// Normal request:
-//
-// User
-//   ↓
-// Graph
-//   ↓
-// Result
-//
-// Approval request:
-//
-// User
-//   ↓
-// Graph
-//   ↓
-// prepareEmail
-//   ↓
-// emailApproval
-//   ↓
-// interrupt()
-//   ↓
-// __interrupt__
-//   ↓
-// Return confirmation data
-//
+// 25. RUN EMPLOYEE COPILOT
 // ============================================================
 
 export async function runEmployeeCopilot({
@@ -864,18 +1567,18 @@ export async function runEmployeeCopilot({
 
 }) {
 
-  // ==========================================================
+  // ----------------------------------------------------------
   // THREAD ID
-  // ==========================================================
+  // ----------------------------------------------------------
 
   const threadId =
     conversationId ||
     `user_${userId}`;
 
 
-  // ==========================================================
+  // ----------------------------------------------------------
   // LANGGRAPH CONFIG
-  // ==========================================================
+  // ----------------------------------------------------------
 
   const config = {
 
@@ -891,10 +1594,6 @@ export async function runEmployeeCopilot({
 
   try {
 
-    // ========================================================
-    // RUN GRAPH
-    // ========================================================
-
     console.log(
       "[EmployeeCopilotGraph] Starting graph:",
       {
@@ -903,6 +1602,10 @@ export async function runEmployeeCopilot({
       }
     );
 
+
+    // ========================================================
+    // INVOKE GRAPH
+    // ========================================================
 
     const result =
       await employeeCopilotGraph.invoke(
@@ -938,15 +1641,7 @@ export async function runEmployeeCopilot({
 
 
     // ========================================================
-    // CHECK FOR LANGGRAPH INTERRUPT
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // interrupt() is an expected workflow pause.
-    //
-    // It is NOT an application failure.
-    //
+    // CHECK INTERRUPT
     // ========================================================
 
     const interruptData =
@@ -956,33 +1651,20 @@ export async function runEmployeeCopilot({
     if (interruptData) {
 
       console.log(
-        "[EmployeeCopilotGraph] Graph interrupted for approval:",
+        "[EmployeeCopilotGraph] Waiting for approval:",
         {
           threadId,
-
           type:
             interruptData?.type,
-
-          action:
-            interruptData?.action,
-
         }
       );
 
-
-      // ------------------------------------------------------
-      // Get pending action
-      // ------------------------------------------------------
 
       const pendingAction =
         result.pendingAction ||
         interruptData?.action ||
         null;
 
-
-      // ------------------------------------------------------
-      // Return successful confirmation state
-      // ------------------------------------------------------
 
       return {
 
@@ -1012,7 +1694,7 @@ export async function runEmployeeCopilot({
 
 
     // ========================================================
-    // NORMAL COMPLETED GRAPH
+    // NORMAL COMPLETION
     // ========================================================
 
     console.log(
@@ -1054,19 +1736,6 @@ export async function runEmployeeCopilot({
 
   } catch (error) {
 
-    // ========================================================
-    // REAL ERROR
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // We DON'T blindly convert everything into
-    // "I was unable to generate a response."
-    //
-    // Actual errors are logged with stack trace.
-    //
-    // ========================================================
-
     console.error(
       "[EmployeeCopilotGraph] Graph execution failed:",
       {
@@ -1080,7 +1749,6 @@ export async function runEmployeeCopilot({
 
         stack:
           error?.stack,
-
       }
     );
 
@@ -1113,34 +1781,24 @@ export async function runEmployeeCopilot({
 
 
 // ============================================================
-// RESUME / CONFIRM WORKFLOW
+// 26. RESUME / CONFIRM WORKFLOW
 // ============================================================
 //
-// User confirmation:
+// When the graph reaches interrupt():
 //
-// approved = true
-//
-//      ↓
-//
-// Command({
-//   resume: true
-// })
-//
-//      ↓
-//
-// Same thread
-//
-//      ↓
-//
-// emailApprovalNode resumes
-//
-//      ↓
-//
-// approvalDecision = true
-//
-//      ↓
-//
-// sendEmail
+// Graph
+//   ↓
+// interrupt()
+//   ↓
+// checkpoint saved
+//   ↓
+// frontend asks user
+//   ↓
+// resumeEmployeeCopilot()
+//   ↓
+// Command({ resume: true/false })
+//   ↓
+// same thread resumes
 //
 // ============================================================
 
@@ -1152,9 +1810,9 @@ export async function resumeEmployeeCopilot({
 
 }) {
 
-  // ==========================================================
-  // VALIDATE THREAD
-  // ==========================================================
+  // ----------------------------------------------------------
+  // VALIDATE CONVERSATION
+  // ----------------------------------------------------------
 
   if (!conversationId) {
 
@@ -1179,9 +1837,9 @@ export async function resumeEmployeeCopilot({
   }
 
 
-  // ==========================================================
-  // THREAD CONFIG
-  // ==========================================================
+  // ----------------------------------------------------------
+  // SAME THREAD CONFIG
+  // ----------------------------------------------------------
 
   const config = {
 
@@ -1207,15 +1865,17 @@ export async function resumeEmployeeCopilot({
 
 
     // ========================================================
-    // RESUME SAME GRAPH THREAD
+    // RESUME GRAPH
     // ========================================================
 
     const result =
       await employeeCopilotGraph.invoke(
 
         new Command({
+
           resume:
             Boolean(approved),
+
         }),
 
         config
@@ -1224,7 +1884,7 @@ export async function resumeEmployeeCopilot({
 
 
     // ========================================================
-    // CHECK IF ANOTHER INTERRUPT OCCURRED
+    // CHECK FOR ANOTHER INTERRUPT
     // ========================================================
 
     const interruptData =
@@ -1232,16 +1892,6 @@ export async function resumeEmployeeCopilot({
 
 
     if (interruptData) {
-
-      console.log(
-        "[EmployeeCopilotResume] Workflow interrupted again:",
-        {
-          conversationId,
-          type:
-            interruptData?.type,
-        }
-      );
-
 
       return {
 
@@ -1316,10 +1966,6 @@ export async function resumeEmployeeCopilot({
 
   } catch (error) {
 
-    // ========================================================
-    // REAL RESUME ERROR
-    // ========================================================
-
     console.error(
       "[EmployeeCopilotResume] Resume failed:",
       {
@@ -1333,7 +1979,6 @@ export async function resumeEmployeeCopilot({
 
         stack:
           error?.stack,
-
       }
     );
 
@@ -1360,6 +2005,25 @@ export async function resumeEmployeeCopilot({
   }
 
 }
+
+
+// ============================================================
+// 27. EXPORTS
+// ============================================================
+
+export {
+
+  VALID_INTENTS,
+
+  IntentSchema,
+
+  classifyIntent,
+
+  routeByIntent,
+
+  INTENT_ROUTES,
+
+};
 
 
 // ============================================================
